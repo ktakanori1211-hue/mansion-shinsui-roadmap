@@ -65,7 +65,7 @@ _PERMIT = re.compile(r"いい|よい|良い|大丈夫|平気|したい|ていい
 _EXPLAIN = re.compile(r"どういう|とは|なぜ|どうして|なんで|何が|何の|どこに|どれ|誰が|いくら|費用|補助|助成|総会|理事会|決議|意味|教えて|説明")
 _DIRECT = re.compile(r"(代わり|代理).{0,12}(判断|復旧)|復電|通電|送電|再起動|リセット|電源車|電源を入れ|(垂|切れ|落ち).*電線|電線.*(垂|切れ|落ち)|(水の位置|[123]の位置).*(入れ|入っ|はい)|もう(安全|大丈夫)")
 # 建物の部屋や盤の操作のやり方を聞く文。説明の語があっても AI に回さない。
-_HOWTO = re.compile(r"(開け|あけ|切[るり]|入れ|落と|詰め|塞|ふさ|外[しす]|下げ|上げ|戻).{0,24}(方法|手順|やり方|しかた|仕方)")
+_HOWTO = re.compile(r"(開け|あけ|切[るり]|入れ|落と|詰め|塞|ふさ|外[しす]|下げ|上げ|戻|止め|閉め|開放|オ[フン]に|オ[フン]す|接続|操作|復旧|確認す|見る).{0,24}(方法|手順|やり方|しかた|仕方)")
 # 費用や決め方を聞く文と、模型の想定を見せてと頼む文。立入や操作の語がなければ AI に回す。
 _COST = re.compile(r"いくら|費用|補助|助成|総会|理事会|決議|決め|見積|想定|見せ|切り替え|模型")
 _HARD = re.compile(r"入[っるれりろ]|はい[っるれり]|開け|あけ|触|さわ|切(?:[っるれ]|り(?!替))|戻|電源|排水")
@@ -75,10 +75,47 @@ _FOREIGN = re.compile(r"electric|enter|breaker|switch|flood|电|进入|配电")
 _FORECAST = re.compile(r"今夜|今晩|今日.*(浸水|雨)|明日.*(浸水|雨)|いつ.*雨|予報|何ミリ|降る")
 
 
+# 水が来ている、止まった、など「今起きている」ことを言う語。
+_NOW = re.compile(
+    r"今(?!のうち)|いま|現在|さっき|中で|の中|中に|浸水中|冠水中|停電中|大雨だ|大雨で|雨がひど|雨が強|入ってき|入って来|来ている|来てる|来ました|水が来た|上がってき|水位が上|流れ込|あふれ|越水|逆流|水没|漏れ"
+    r"|溜ま|たまっ|浸か|濡れ|ぬれ|冠水路|冠水した道|冠水し(?:て|た(?!ら))|浸水し(?:て|た(?!ら))|停電し(?:て|た(?!ら))|停電にな|電気が消|水が引|引いた|復旧した|止まった"
+    r"|避難指示|避難の?情報が出|が出た|が出て|出ている|倒れ|感電|煙|火が|火花|焦げ|閉じ込められ|出られない|ビリ|バチ|ショート|もう"
+)
+# 危険な場所への立入、操作、接触の語。備えの話でも、これがあれば通さない。
+_NO_PREPARE_ACT = re.compile(
+    r"入[っるりろ]|はい[っるれり]|開け|あけ|外[しす]|触|さわ|切(?:[っるれ]|り(?!替))|戻|電源|通電|送電|復電|復旧|再起動|リセット|排水|抜[いきくけ]|汲|くみ|見に|見て[行き]|見てき|覗|のぞ|降り|近づ|様子"
+    r"|取りに|置きに|出しに|取り付けに|に行|に向か|鍵|撮|つな|接続|コーキング|シーリング|シリコン|止水材|栓|詰|落と|下げ|閉め|開放|オ[フン]に|オ[フン]す|操作"
+)
+_DANGER_PLACE = re.compile(r"電気室|電気の部屋|受電|受変電|配電|高圧|主幹|開閉器|キュービクル|盤|ブレーカー|遮断|スイッチ|つまみ|レバー|借室|変圧器|ポンプ|ピット|マンホール|蓋|ふた|ハンドホール|管路|電線|貯留|タンク|バルブ|弁|発電機|蓄電池|太陽光")
+# 車は、車いす、救急車、電車、電源車を含めない。
+CAR_WORD = r"(?<!救急)(?<!消防)(?<!電)(?<!電源)車(?!いす|椅子)|駐車"
+# 具体的な備えの話。これがあれば通す。
+_PREPARE_SPECIFIC = re.compile(CAR_WORD + r"|止水板|土のう|吸水|防水板|閉じ込め(の|への)?(対策|備え)|ポータブル電源")
+# 一般的な備えの語。電気の話が混ざらないときだけ通す。
+_PREPARE_GENERAL = re.compile(r"備え|事前|あらかじめ|前に|準備|対策|手順|ふだん|普段|平時|訓練|役割|連絡先|段取り")
+_ELECTRIC_WORD = re.compile(r"電気|電源|電線|停電させ")
+_SAFE_WORDS = re.compile(r"ポータブル電源|モバイルバッテリー")
+_TRAPPED_PLAN = re.compile(r"閉じ込め(の|への)?(対策|備え)")
+
+
+def is_preparation(message: str) -> bool:
+    """事前の備えの質問か。今起きていること、危険な場所への立入や操作に触れる文は当てはめない。"""
+    text = _SAFE_WORDS.sub("備品", unicodedata.normalize("NFKC", message))
+    if _NOW.search(text) or _NO_PREPARE_ACT.search(text):
+        return False
+    if _DANGER_PLACE.search(text) and (_ACT.search(text) or re.search(r"止め|手順|方法|やり方", text)):
+        return False
+    if _PREPARE_SPECIFIC.search(text) or _PREPARE_SPECIFIC.search(message):
+        return True
+    return bool(_PREPARE_GENERAL.search(text)) and not _ELECTRIC_WORD.search(text) and not _DANGER_PLACE.search(text)
+
+
 def _touches_safety(message: str) -> bool:
-    """説明を求めるだけの質問は通し、立入や操作に触れそうなものは止める。取りこぼしより出しすぎを許す。"""
+    """固定の文に回すのは、浸水や停電の中の危険な場所への立入、操作、接触。取りこぼしより出しすぎを許すが、事前の備えは塞がない。"""
     if _DIRECT.search(message) or _FOREIGN.search(message.lower()):
         return True
+    if is_preparation(message):
+        return False
     act = bool(_ACT.search(message))
     near = bool(_PLACE.search(message) or _WATER.search(message))
     if near and _HOWTO.search(message):
@@ -110,7 +147,9 @@ def fixed_answer(message: str, has_chief_engineer: bool = True, unsure: bool = F
     foreign = bool(_FOREIGN.search(message.lower())) or (bool(re.search(r"[A-Za-z]", message)) and not re.search(r"[ぁ-んァ-ヶ一-龠]", message))
     if _MEDICAL.search(message) and not _SHOCK.search(message):
         return {"kind": "medical", "text": MEDICAL_TEXT}
-    if _EMERGENCY.search(message):
+    prepared = is_preparation(message)
+    # 緊急の文は備えの判定に左右させない。外すのは「閉じ込め対策」のような言い方だけ。
+    if _EMERGENCY.search(_TRAPPED_PLAN.sub("", message)):
         return {"kind": "emergency", "text": EMERGENCY_TEXT.format(contact=contact) + "\n\n" + notice}
     if _HOME.search(message):
         return {
@@ -158,7 +197,7 @@ def fixed_answer(message: str, has_chief_engineer: bool = True, unsure: bool = F
             "kind": "is_safe",
             "text": "この道具は、建物が安全かどうかを言いません。判定は画面の札のとおりで、「未確認」はまだ確かめていないという意味です。「問題なし」の札も、立ち入ってよいという意味ではありません。未確認の行は、依頼メモで管理会社に確かめてもらいます。\n\n" + notice,
         }
-    if _FORECAST.search(message):
+    if _FORECAST.search(message) and not prepared:
         return {
             "kind": "forecast",
             "text": "この道具は予報ではなく、現時点の静的な整理です。雨や浸水の見込みは、自治体と気象庁が出す警戒レベルで確かめてください。避難の情報が出たら従い、地下へ降りません。警戒レベルが出たときに誰が何をするかは、一枚の「大雨が近づいたら」に書いています。",
@@ -166,7 +205,7 @@ def fixed_answer(message: str, has_chief_engineer: bool = True, unsure: bool = F
     return None
 
 
-_BANNED = re.compile(r"月1回|月に1回|入ってよい|入っても|入室でき|開けてよい|操作してよい|安心|心配ありません|大丈夫でしょう|すぐ使え|安全です|安全だと|浸水しません|大丈夫です|問題ありません|構いません|入って大丈夫|入ってください|入れます|使えます|触って|触れて|開けて|開けても|切ってください|入れてください|戻して|確認してきて|近づいて|ブレーカーを入れ|復電して|MΩ|メガオーム|世界初|唯一")
+_BANNED = re.compile(r"月1回|月に1回|オフにして|閉めてください|開放して|接続して|止めてください|操作してください|入ってよい|入っても|入室でき|開けてよい|操作してよい|安心|心配ありません|大丈夫でしょう|すぐ使え|安全です|安全だと|浸水しません|大丈夫です|問題ありません|構いません|入って大丈夫|入ってください|入れます|使えます|触って|触れて|開けて|開けても|切ってください|入れてください|戻して|確認してきて|近づいて|ブレーカーを入れ|復電して|MΩ|メガオーム|世界初|唯一")
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _WITH_UNIT = re.compile(r"(\d+(?:\.\d+)?)\s*(cm|mm|m|メートル|センチ|ミリ|日|時間|週間|か月|ヶ月|カ月|万円|円|kV|V|A)")
 _SAME_UNIT = {"ヶ月": "か月", "カ月": "か月", "メートル": "m", "センチ": "cm", "ミリ": "mm"}

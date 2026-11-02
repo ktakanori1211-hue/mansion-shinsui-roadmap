@@ -34,6 +34,9 @@ SYSTEM_CHAT = """あなたはマンションの浸水対策を理事会向けに
 電気室、東京電力の変圧器の部屋、ポンプ室、エレベーターの底へ入る、触る、開ける、電気を切る、入れる、という指示を出しません。復電は電気主任技術者の判断です。
 東京電力の変圧器の部屋の穴や管路に、だれも栓や止水材を入れません。排水を始める条件は、東京電力パワーグリッドの切り離しと主任技術者の確認です。歩道ぎわの蓋は開けません。
 特定の業者を勧めません。申請を勧めません。総会か理事会かは条件つきで答え、管理会社に規約で確かめてもらうと添えます。
+緊急の話（倒れている、閉じ込められている、火や煙など）には 119 番を先に出します。
+電気を止める、発電機をつなぐ、弁を閉めるなどの手順は答えず、主任技術者（いない建物では電気工事の業者）に確かめると答えます。
+冠水中や避難の情報が出たあとに、車や止水板を取りに行かせません。
 住民に見に行かせる提案をしません。外から見られる所を挙げるときは、雨や警戒レベルが出ておらず水も来ていないときに、車路に入らず敷地の外から、と条件を添えます。
 部屋の中の確認は、主任技術者（いない建物では電気工事の業者）の立会いと指示のもとで業者が行い、盤に触れません。入らない人を挙げるときは「住民、理事、管理員」と書きます。
 点検は「主任技術者の月次点検」と書き、部屋の中は「月次点検に合わせ、主任技術者の指示のもとで業者が見ます」と書きます。
@@ -146,9 +149,28 @@ def _subsidy_text(region: str) -> str:
 _STATEMENT = re.compile(r"(うちは|うちの|この建物は)?.{0,8}(地下\d*階?|\d+階|屋上).{0,8}(電気室|受電|キュービクル|ポンプ|借室|変圧器|盤)|(電気室|受電|ポンプ|借室|変圧器|盤).{0,8}(地下\d*階?|\d+階|屋上)(にある|です|にあります)?")
 
 
+# 事前の備えの質問への説明カード。キーがないときに使う。数字は足さず、一枚の「大雨が近づいたら」と同じことを言う。
+_PREPARE_CARDS = [
+    (guard.CAR_WORD, "slope", "大雨の前に、車を高い場所へ移すかを決めておきます。いつ誰が動かすかは、一枚の「大雨が近づいたら」に書いています。避難の情報が出たら、または道路に水が出始めたら、車を取りに行かず、冠水した道路を車で通りません。機械式駐車場の操作は、保守会社の決まりを確かめます。"),
+    (r"止水板|土のう|防水板|吸水", "slope", "止水板や土のうは、水が来る前に出します。誰が出すかを先に決めておきます。避難の情報が出たら、または道路から水が流れ込み始めたら、出しに行かず、車路に入りません。置く場所と必要な高さは、管理会社が業者に現地を見てもらって決めます。ケーブルを通す壁の穴など、止水板では防げない入り道もあります。"),
+    (r"閉じ込め|エレベーター", "ev", "エレベーターの保守会社に、どの深さで止まるか、再開に何が要るかを確かめます。閉じ込められたら、すぐ 119 番に連絡し、非常ボタンかインターホンでも連絡します。自力で出ようとしません。"),
+    (r"備え|事前|あらかじめ|準備|対策|手順|役割|前に|連絡先|段取り|訓練|ふだん|普段|平時", None, "大雨が近づいたときに誰が何をするかは、一枚の「大雨が近づいたら」に書いています。役割と、電気の部屋に水が来そうなときの連絡先を、理事会で先に決めておきます。住民、理事、管理員は電気の部屋に入りません。"),
+]
+
+
+def _prepare_card(message: str) -> Optional[dict]:
+    for pattern, target, text in _PREPARE_CARDS:
+        if re.search(pattern, message):
+            return {"text": text, "actions": [{"type": "focus", "target": target}] if target else []}
+    return None
+
+
 def _fallback_chat(message: str, context: dict) -> dict:
     sample = _sample_of(context)
     actions = []
+    prepared = guard.is_preparation(message) and not re.search(r"補助|助成", message) and _prepare_card(message)
+    if prepared:
+        return prepared
     if _STATEMENT.search(message) and not message.rstrip().endswith(("？", "?", "か")):
         return {
             "text": f"「{message.strip()[:60]}」を聞き取りとして入れました。判定は変わらず、図面で確かめるまで未確認のままです。依頼メモ①で管理会社に竣工図を確かめてもらいます。",
@@ -228,7 +250,7 @@ def chat(message: str, history: List[dict], context: dict) -> dict:
 def _ask_with_tools(messages: List[dict], context: dict, actions: List[dict]) -> dict:
     """道具を使い終わるまで呼ぶ。messages に途中のやり取りを足していく。"""
     for _ in range(6):
-        response = claude.create(messages, SYSTEM_CHAT, tools=CHAT_TOOLS, max_tokens=8000, effort="low")
+        response = claude.create(messages, SYSTEM_CHAT, tools=CHAT_TOOLS, max_tokens=1024, effort="low")
         if response.get("stop_reason") != "tool_use":
             break
         messages.append({"role": "assistant", "content": response["content"]})
@@ -346,7 +368,8 @@ def read_plan(body: dict) -> dict:
             response = claude.create(
                 [{"role": "user", "content": [block, {"type": "text", "text": "この図面から部屋と設備を読み取ってください。"}]}],
                 SYSTEM_PLAN,
-                max_tokens=8000,
+                max_tokens=3000,
+                effort="medium",
                 schema=_ROOM_SCHEMA,
             )
             parsed = claude.json_of(response)
@@ -477,7 +500,7 @@ def _word_is_in(word: str, text: str) -> bool:
 
 def _claude_report(text: str) -> Optional[dict]:
     try:
-        response = claude.create([{"role": "user", "content": text}], SYSTEM_REPORT, max_tokens=8000, effort="low", schema=_REPORT_SCHEMA)
+        response = claude.create([{"role": "user", "content": text}], SYSTEM_REPORT, max_tokens=3000, effort="medium", schema=_REPORT_SCHEMA)
         parsed = claude.json_of(response)
     except claude.ClaudeUnavailable:
         return None
@@ -586,18 +609,39 @@ def _safe_rewrite(original: str, rewritten: str) -> bool:
     return all(rewritten.count(word) <= original.count(word) for word in _NO_NEW_WORDS)
 
 
-def polish(items: List[dict], context: dict) -> dict:
+# 1 回の応答が max_tokens に収まるように分ける。切れると全部の文が元のままになるので。
+_POLISH_BATCH_CHARS = 1500
+
+
+def _batches(items: List[dict]) -> List[List[dict]]:
+    groups: List[List[dict]] = []
+    size = 0
+    for item in items:
+        if not groups or size + len(item["text"]) > _POLISH_BATCH_CHARS:
+            groups.append([])
+            size = 0
+        groups[-1].append(item)
+        size += len(item["text"])
+    return groups
+
+
+def polish(items: List[dict], context: dict, max_tokens: int = 3000, effort: str = "medium") -> dict:
     """採用できた文だけ差し替える。キーがないとき、検査を通らないときはもとの文のまま。"""
     clean = [{"key": str(item.get("key")), "text": str(item.get("text"))} for item in items if item.get("text")]
     if not claude.available():
         return {"source": "program", "items": clean, "notice": "API キーが未設定なので、もとの文のままです。"}
-    try:
-        response = claude.create(
-            [{"role": "user", "content": json.dumps(clean, ensure_ascii=False)}], SYSTEM_POLISH, max_tokens=16000, effort="low", schema=_POLISH_SCHEMA
-        )
-        rewritten = {item["key"]: item["text"] for item in claude.json_of(response)["items"]}
-    except claude.ClaudeUnavailable as error:
-        return {"source": "program", "items": clean, "notice": f"{error} もとの文のままです。"}
+    rewritten = {}
+    failure = None
+    for group in _batches(clean):
+        try:
+            response = claude.create(
+                [{"role": "user", "content": json.dumps(group, ensure_ascii=False)}], SYSTEM_POLISH, max_tokens=max_tokens, effort=effort, schema=_POLISH_SCHEMA
+            )
+            rewritten.update({item["key"]: item["text"] for item in claude.json_of(response)["items"]})
+        except claude.ClaudeUnavailable as error:
+            failure = error
+    if failure and not rewritten:
+        return {"source": "program", "items": clean, "notice": f"{failure} もとの文のままです。"}
     result, kept = [], 0
     for item in clean:
         candidate = rewritten.get(item["key"], "")
@@ -611,15 +655,14 @@ def polish(items: List[dict], context: dict) -> dict:
 
 
 def rephrase_pins(pins: List[dict], context: dict) -> dict:
-    """ピンの説明を建物の階や部屋の名前に合わせる。キーがないときは階を添えるだけにする。"""
+    """ピンの説明を建物の階や部屋の名前に合わせる。画面からは自動で呼ばない。"""
     rooms = context.get("rooms") or {}
     keyed = []
     for pin in pins:
         floor = rooms.get(pin.get("target"), "")
         lead = f"（{floor}）" if floor else ""
         keyed.append({"key": pin.get("key"), "text": f"{lead}{pin.get('how_water', '')}"})
-    result = polish(keyed, context)
-    return result
+    return polish(keyed, context, max_tokens=1024, effort="low")
 
 
 # 相談の文書
@@ -778,7 +821,7 @@ def consult(body: dict) -> dict:
         return {**documents, "source": "template", "notice": "API キーが未設定なので、Claude ではなくプログラムの定型の文面です。"}
     try:
         response = claude.create(
-            [{"role": "user", "content": json.dumps(documents, ensure_ascii=False)}], SYSTEM_CONSULT, max_tokens=8000, schema=_CONSULT_SCHEMA
+            [{"role": "user", "content": json.dumps(documents, ensure_ascii=False)}], SYSTEM_CONSULT, max_tokens=3000, effort="medium", schema=_CONSULT_SCHEMA
         )
         improved = claude.json_of(response)
         if not all(_consult_keeps(documents[key], improved[key]) for key in documents):

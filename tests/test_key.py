@@ -161,5 +161,80 @@ class KeyServerTest(unittest.TestCase):
         self.assertNotIn(FAKE_KEY, connection.getresponse().read().decode("utf-8"))
 
 
+
+class CacheTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory)
+        cache = mock.patch.object(claude, "CACHE_DIR", os.path.join(self.directory, "cache"))
+        cache.start()
+        self.addCleanup(cache.stop)
+        environ = mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": FAKE_KEY})
+        environ.start()
+        self.addCleanup(environ.stop)
+        os.environ.pop("ANTHROPIC_NO_CACHE", None)
+
+    @staticmethod
+    def reply(stop="end_turn"):
+        answer = mock.MagicMock()
+        answer.__enter__.return_value.read.return_value = json.dumps({"content": [{"type": "text", "text": "はい"}], "stop_reason": stop}).encode()
+        return answer
+
+    def call(self, text="x", **kw):
+        return claude.create([{"role": "user", "content": text}], "s", **kw)
+
+    def test_same_input_does_not_call_the_api_again(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen:
+            first = self.call()
+            second = self.call()
+        self.assertEqual(urlopen.call_count, 1)
+        self.assertEqual(first, second)
+
+    def test_different_input_calls_the_api(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen:
+            self.call("x")
+            self.call("y")
+            self.call("x", effort="low")
+            self.call("x", tools=[{"name": "t"}])
+        self.assertEqual(urlopen.call_count, 4)
+
+    def test_no_cache_setting_always_calls(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen, mock.patch.dict("os.environ", {"ANTHROPIC_NO_CACHE": "1"}):
+            self.call()
+            self.call()
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertFalse(os.path.exists(claude.CACHE_DIR))
+
+    def test_cut_off_answer_is_not_kept(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply("max_tokens")) as urlopen:
+            self.call()
+            self.call()
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_key_is_not_written_and_file_is_private(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()):
+            self.call()
+        name = os.listdir(claude.CACHE_DIR)[0]
+        path = os.path.join(claude.CACHE_DIR, name)
+        self.assertNotIn(FAKE_KEY, name)
+        with open(path, encoding="utf-8") as file:
+            self.assertNotIn(FAKE_KEY, file.read())
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
+    def test_broken_cache_file_calls_the_api(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen:
+            self.call()
+            name = os.listdir(claude.CACHE_DIR)[0]
+            with open(os.path.join(claude.CACHE_DIR, name), "w") as file:
+                file.write("壊れた")
+            self.call()
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_default_max_tokens(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen:
+            self.call()
+        self.assertEqual(json.loads(urlopen.call_args[0][0].data)["max_tokens"], 2048)
+
+
 if __name__ == "__main__":
     unittest.main()

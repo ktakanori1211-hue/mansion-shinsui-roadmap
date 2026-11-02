@@ -186,8 +186,7 @@ const PlanPanel = (() => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       message.textContent = result.message;
-      pins = result.pins.map((pin) => ({ ...pin }));
-      await rephrasePins(result.rooms);
+      pins = withFloors(result.pins, result.rooms);
       renderPins();
       renderRooms(result);
     } catch (error) {
@@ -195,21 +194,10 @@ const PlanPanel = (() => {
     }
   }
 
-  // 階や部屋の名前に合わせて説明を言い直す。キーがないときは階を添えるだけ。
-  async function rephrasePins(rooms) {
+  // 読めた階を説明の頭に添える。API は呼ばない。
+  function withFloors(found, rooms) {
     const floors = Object.fromEntries(rooms.map((room) => [room.kind, room.floor]));
-    try {
-      const response = await fetch("/api/pins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pins, context: { rooms: floors } }),
-      });
-      const result = await response.json();
-      const byKey = Object.fromEntries(result.items.map((item) => [item.key, item.text]));
-      pins = pins.map((pin) => ({ ...pin, how_water: byKey[pin.key] || pin.how_water }));
-    } catch (error) {
-      // 言い直せなくても、もとの説明で出す。
-    }
+    return found.map((pin) => ({ ...pin, how_water: floors[pin.target] ? `（${floors[pin.target]}）${pin.how_water}` : pin.how_water }));
   }
 
   function offerSample() {
