@@ -24,6 +24,8 @@ LANDFORM_URL = "https://cyberjapandata.gsi.go.jp/xyz/{layer}/{z}/{x}/{y}.geojson
 
 HAZARD_ZOOM = 17
 LANDFORM_ZOOM = 16
+# 「すぐ近く（数m先）」として見る範囲。ズーム 17 の 1 ピクセルは東京付近で約 1m。仮の値。
+NEARBY_PIXELS = 8
 TIMEOUT_SECONDS = 15
 USER_AGENT = "mansion-shinsui-roadmap"
 
@@ -144,10 +146,26 @@ def pixel_position(longitude: float, latitude: float, zoom: int) -> tuple:
     return (int(world_x // 256), int(world_y // 256), int(world_x) % 256, int(world_y) % 256)
 
 
+def nearest_legend(image: png.Image, px: int, py: int, radius: int = NEARBY_PIXELS):
+    """代表点のすぐ近くの色を探す。タイルの外までは見ない。"""
+    nearest = None
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            x, y = px + dx, py + dy
+            if not (0 <= x < image.width and 0 <= y < image.height):
+                continue
+            r, g, b, a = image.rgba(x, y)
+            if a and (r, g, b) in HAZARD_LEGEND:
+                distance = dx * dx + dy * dy
+                if nearest is None or distance < nearest[0]:
+                    nearest = (distance, HAZARD_LEGEND[(r, g, b)])
+    return nearest[1] if nearest else None
+
+
 def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: float) -> dict:
     tile_x, tile_y, px, py = pixel_position(longitude, latitude, HAZARD_ZOOM)
     url = HAZARD_URL.format(layer=layer, z=HAZARD_ZOOM, x=tile_x, y=tile_y)
-    result = {"key": key, "label": label, "legend": None}
+    result = {"key": key, "label": label, "layer": layer, "legend": None, "nearby_legend": None}
     try:
         image = png.decode(_get(url))
     except urllib.error.HTTPError as error:
@@ -159,6 +177,7 @@ def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: f
     r, g, b, a = image.rgba(px, py)
     if a == 0:
         result["status"] = "no_color"
+        result["nearby_legend"] = nearest_legend(image, px, py)
     elif (r, g, b) in HAZARD_LEGEND:
         result["status"] = "color"
         result["legend"] = HAZARD_LEGEND[(r, g, b)]
@@ -261,5 +280,8 @@ def read_location(longitude: float, latitude: float, distance_m: float = 50) -> 
                 "points": [{"key": k, "label": l, **future.result()} for k, l, future in elevations],
             },
             "hazards": [future.result() for future in hazards],
+            "hazard_legend": [
+                {"color": "#%02x%02x%02x" % rgb, "label": label} for rgb, label in HAZARD_LEGEND.items()
+            ],
             "landforms": [future.result() for future in landforms],
         }

@@ -8,7 +8,7 @@ import urllib.parse
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from . import location
+from . import judge, location, records, state
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
@@ -17,6 +17,25 @@ DEMO_POINTS = {
     "saiwaicho": {"label": "千葉市 幸町2丁目", "longitude": 140.091583, "latitude": 35.621826},
     "ryokuen": {"label": "横浜市 緑園3丁目", "longitude": 139.519836, "latitude": 35.441181},
 }
+
+
+def parse_pin(query: dict) -> dict:
+    """利用者が動かしたピンの位置を読む。国内の範囲だけを受ける。"""
+    try:
+        longitude = float(query["longitude"][0])
+        latitude = float(query["latitude"][0])
+    except (KeyError, ValueError) as error:
+        raise location.AddressError("ピンの位置を読めませんでした。") from error
+    if not (122 <= longitude <= 154 and 20 <= latitude <= 46):
+        raise location.AddressError("ピンの位置が国内の範囲の外です。")
+    return {"longitude": longitude, "latitude": latitude}
+
+
+def build_state(label: str, longitude: float, latitude: float, basis: str, is_demo: bool) -> dict:
+    reading = location.read_location(longitude, latitude)
+    rows = judge.judge_location(reading, basis, records.find(label))
+    site = state.Site(label, longitude, latitude, basis, is_demo)
+    return state.new_state(site, reading, rows, basis_note=judge.basis_note(basis))
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -32,9 +51,13 @@ class Handler(SimpleHTTPRequestHandler):
     def _location(self, query: dict):
         demo = DEMO_POINTS.get(query.get("demo", [""])[0])
         address = query.get("address", [""])[0].strip()
+        basis = state.REPRESENTATIVE
         try:
             if demo:
                 label, point = demo["label"], demo
+            elif "longitude" in query:
+                label, point = address, parse_pin(query)
+                basis = state.BUILDING
             elif address:
                 label, point = address, location.geocode(address)
             else:
@@ -42,8 +65,7 @@ class Handler(SimpleHTTPRequestHandler):
         except location.AddressError as error:
             self._send_json(422, {"error": str(error)})
             return
-        result = location.read_location(point["longitude"], point["latitude"])
-        self._send_json(200, {"label": label, **result})
+        self._send_json(200, build_state(label, point["longitude"], point["latitude"], basis, bool(demo)))
 
     def _send_json(self, status: int, body) -> None:
         payload = json.dumps(body, ensure_ascii=False).encode("utf-8")

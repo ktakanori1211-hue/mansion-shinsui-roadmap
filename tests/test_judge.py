@@ -1,0 +1,196 @@
+"""立地の三分類の決まりを確かめる。ネットワークには出ない。"""
+
+import re
+import unittest
+
+from app import judge, records, state
+from app.location import HAZARD_LEGEND, AddressError, nearest_legend
+from app.server import parse_pin
+
+
+def hazard(key, status="no_color", legend=None, nearby=None):
+    return {"key": key, "label": key, "layer": key, "status": status, "legend": legend, "nearby_legend": nearby}
+
+
+def reading(hazards=None, center=20.0, around=(20.1, 20.0, 20.2, 20.1), codes=("10314",)):
+    keys = ["flood_planned", "flood_max", "inland", "storm_surge"]
+    given = hazards or {}
+    return {
+        "hazards": [given.get(key, hazard(key)) for key in keys],
+        "elevation": {
+            "distance_m": 50,
+            "points": [{"key": "center", "label": "中心", "elevation_m": center}]
+            + [{"key": str(i), "label": "北東南西"[i], "elevation_m": value} for i, value in enumerate(around)],
+        },
+        "landforms": [
+            {"key": "natural", "label": "自然地形", "status": "found", "codes": list(codes), "names": [None] * len(codes)},
+            {"key": "artificial", "label": "人工地形", "status": "none", "codes": [], "names": []},
+        ],
+    }
+
+
+NO_RECORD = {"source": "s", "caution": "c", "confirm_by": "m", "note": None, "rows": []}
+
+
+def row(rows, key):
+    return next(item for item in rows if item.key == key)
+
+
+class RepresentativePointTest(unittest.TestCase):
+    def test_color_at_representative_point_stays_unconfirmed(self):
+        rows = judge.judge_location(
+            reading({"storm_surge": hazard("storm_surge", "color", "0.5m〜3m")}), state.REPRESENTATIVE, None
+        )
+        self.assertEqual(row(rows, "surge").verdict, state.UNCONFIRMED)
+        self.assertIn("0.5m〜3m", row(rows, "surge").headline)
+
+    def test_clean_values_at_representative_point_are_not_clear(self):
+        rows = judge.judge_location(reading(), state.REPRESENTATIVE, NO_RECORD)
+        self.assertTrue(all(item.verdict == state.UNCONFIRMED for item in rows))
+
+    def test_nearby_color_is_reported(self):
+        rows = judge.judge_location(
+            reading({"flood_max": hazard("flood_max", nearby="〜0.5m")}), state.REPRESENTATIVE, None
+        )
+        self.assertIn("すぐ近く（数m先）", row(rows, "flood").headline)
+
+
+class BuildingPositionTest(unittest.TestCase):
+    def test_color_at_building_is_risk_without_confirmer(self):
+        rows = judge.judge_location(reading({"inland": hazard("inland", "color", "〜0.3m")}), state.BUILDING, None)
+        self.assertEqual(row(rows, "inland").verdict, state.RISK)
+        self.assertIsNone(row(rows, "inland").confirm_by)
+
+    def test_missing_tile_is_never_called_no_color(self):
+        rows = judge.judge_location(reading({"inland": hazard("inland", "no_tile")}), state.BUILDING, NO_RECORD)
+        inland = row(rows, "inland")
+        self.assertEqual(inland.verdict, state.UNCONFIRMED)
+        self.assertIn("データが取れて", inland.headline)
+        self.assertNotIn("色がありません", inland.headline)
+        self.assertTrue(inland.confirm_by)
+
+    def test_all_five_clean_at_building_are_clear(self):
+        rows = judge.judge_location(reading(), state.BUILDING, NO_RECORD)
+        self.assertTrue(all(item.verdict == state.CLEAR for item in rows))
+        self.assertTrue(all(item.confirm_by is None for item in rows))
+
+    def test_one_clean_layer_alone_is_not_clear(self):
+        rows = judge.judge_location(reading({"storm_surge": hazard("storm_surge", "no_tile")}), state.BUILDING, NO_RECORD)
+        self.assertEqual(row(rows, "flood").verdict, state.UNCONFIRMED)
+
+    def test_town_without_records_is_not_clear(self):
+        rows = judge.judge_location(reading(), state.BUILDING, None)
+        self.assertEqual(row(rows, "record").verdict, state.UNCONFIRMED)
+        self.assertEqual(row(rows, "flood").verdict, state.UNCONFIRMED)
+
+    def test_water_landform_is_not_clear(self):
+        rows = judge.judge_location(reading(codes=("11005",)), state.BUILDING, NO_RECORD)
+        self.assertEqual(row(rows, "ground").verdict, state.UNCONFIRMED)
+
+    def test_missing_landform_data_is_not_clear(self):
+        rows = judge.judge_location(reading(codes=()), state.BUILDING, NO_RECORD)
+        self.assertEqual(row(rows, "ground").verdict, state.UNCONFIRMED)
+
+
+class GroundTest(unittest.TestCase):
+    def test_depression_stays_unconfirmed(self):
+        rows = judge.judge_location(reading(center=10.0, around=(10.5, 10.4, 10.3, 10.6)), state.BUILDING, None)
+        ground = row(rows, "ground")
+        self.assertEqual(ground.verdict, state.UNCONFIRMED)
+        self.assertIn("くぼ地の仮の目安に当たります", ground.headline)
+        self.assertTrue(any("排水口" in line for line in ground.details))
+
+    def test_flat_low_ground(self):
+        rows = judge.judge_location(reading(center=3.0, around=(3.1, 3.0, 2.9, 3.0)), state.BUILDING, None)
+        self.assertIn("低く平らな土地の仮の目安に当たります", row(rows, "ground").headline)
+
+    def test_missing_elevation_is_reported(self):
+        rows = judge.judge_location(reading(center=None), state.BUILDING, NO_RECORD)
+        self.assertIn("一部取れていません", row(rows, "ground").headline)
+
+    def test_landform_note_says_it_is_general(self):
+        data = reading(codes=("11005",))
+        data["landforms"][0]["names"] = ["盛土地・埋立地"]
+        ground = row(judge.judge_location(data, state.REPRESENTATIVE, None), "ground")
+        self.assertTrue(any("この敷地のリスクを示すものではありません" in line for line in ground.details))
+
+
+class RecordTest(unittest.TestCase):
+    def test_demo_towns_are_found_with_or_without_ward(self):
+        self.assertIsNotNone(records.find("千葉市 幸町2丁目"))
+        self.assertIsNotNone(records.find("横浜市 緑園3丁目"))
+        self.assertIsNotNone(records.find("千葉市若葉区幸町二丁目1番"))
+
+    def test_other_towns_are_not_found(self):
+        self.assertIsNone(records.find("千葉市 幸町1丁目"))
+        self.assertIsNone(records.find("千葉市 幸町21丁目"))
+        self.assertIsNone(records.find("横浜市 幸町2丁目"))
+
+    def test_saiwaicho_counts_rows_and_dates(self):
+        rows = judge.judge_location(reading(), state.REPRESENTATIVE, records.find("千葉市 幸町2丁目"))
+        record = row(rows, "record")
+        self.assertEqual(record.verdict, state.RISK)
+        self.assertIn("13行、日付は9つ", record.headline)
+
+    def test_records_do_not_hold_block_numbers(self):
+        rows = judge.judge_location(reading(), state.REPRESENTATIVE, records.find("千葉市 幸町2丁目"))
+        record = row(rows, "record")
+        self.assertEqual(len(record.records), 13)
+        self.assertFalse(any(re.search(r"\d-\d", line) for line in record.records + record.details))
+
+
+class StateTest(unittest.TestCase):
+    def test_unknown_verdict_is_rejected(self):
+        with self.assertRaises(ValueError):
+            state.Row("k", "l", "危険", "h")
+
+    def test_drawing_needs_a_person_to_confirm(self):
+        read_only = state.Equipment("e", "電気室", state.UNCONFIRMED, "h", evidence=state.DRAWING)
+        confirmed = state.Equipment(
+            "e", "電気室", state.UNCONFIRMED, "h", evidence=state.DRAWING, confirmed_by_person=True
+        )
+        spoken = state.Equipment("e", "電気室", state.UNCONFIRMED, "h", evidence=state.QUESTION, confirmed_by_person=True)
+        self.assertFalse(read_only.confirmed_on_drawing)
+        self.assertTrue(confirmed.confirmed_on_drawing)
+        self.assertFalse(spoken.confirmed_on_drawing)
+
+    def test_new_state_has_the_shared_shape(self):
+        site = state.Site("横浜市 緑園3丁目", 139.5, 35.4, state.REPRESENTATIVE, True)
+        rows = judge.judge_location(reading(), state.REPRESENTATIVE, None)
+        data = state.new_state(site, {}, rows)
+        self.assertEqual(set(data), {"schema_version", "site", "location", "equipment", "pins"})
+        self.assertEqual(len(data["location"]["rows"]), 5)
+        self.assertEqual(data["location"]["rows"][0]["verdict_label"], "未確認（調査が必要）")
+
+
+class PinTest(unittest.TestCase):
+    def test_pin_outside_japan_is_rejected(self):
+        with self.assertRaises(AddressError):
+            parse_pin({"longitude": ["0"], "latitude": ["0"]})
+
+    def test_broken_pin_is_rejected(self):
+        with self.assertRaises(AddressError):
+            parse_pin({"longitude": ["x"], "latitude": ["35"]})
+
+
+class NearestLegendTest(unittest.TestCase):
+    class FakeImage:
+        width = height = 256
+
+        def __init__(self, x, y, rgb):
+            self.x, self.y, self.rgb = x, y, rgb
+
+        def rgba(self, x, y):
+            return (*self.rgb, 255) if (x, y) == (self.x, self.y) else (0, 0, 0, 0)
+
+    def test_finds_color_within_radius(self):
+        rgb = next(iter(HAZARD_LEGEND))
+        self.assertEqual(nearest_legend(self.FakeImage(107, 100, rgb), 100, 100), HAZARD_LEGEND[rgb])
+
+    def test_ignores_color_beyond_radius(self):
+        rgb = next(iter(HAZARD_LEGEND))
+        self.assertIsNone(nearest_legend(self.FakeImage(120, 100, rgb), 100, 100))
+
+
+if __name__ == "__main__":
+    unittest.main()

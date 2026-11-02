@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>マンション浸水ロードマップ</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -36,7 +38,7 @@
         <li class="step" id="step-location" data-state="waiting">
           <h2><span class="step-number">2</span>立地の結果</h2>
           <div class="step-body" id="location-body" aria-live="polite">
-            <p class="hint">住所を入れると、ここに公開データの値が出ます。</p>
+            <p class="hint">住所を入れると、ここに五つの項目の判定が出ます。</p>
           </div>
         </li>
 
@@ -52,7 +54,16 @@
       </ol>
     </section>
 
-    <section class="preview" aria-label="A4一枚の表示">
+    <section class="preview" aria-label="地図とA4一枚の表示">
+      <section class="map-card" id="map-card" aria-label="地図" hidden>
+        <h2>地図（国のハザードマップをそのまま重ねています）</h2>
+        <div class="layer-choices" id="layer-choices" role="radiogroup" aria-label="重ねる地図"></div>
+        <div id="map" class="map"></div>
+        <p class="map-pin-note" id="map-pin-note"></p>
+        <p class="map-fixed">地図に色がないことは、安全という意味ではありません。斜線は地図のデータが取れていない所で、色があるかどうかも分かりません。</p>
+        <div class="map-legend" id="map-legend"></div>
+      </section>
+
       <div class="preview-bar">
         <span>A4一枚(作成中)</span>
         <button type="button" id="print-button">印刷</button>
@@ -99,9 +110,19 @@
           </ul>
         </section>
       </article>
+
+      <article class="sheet" id="sheet-basis" hidden>
+        <p class="sheet-face">別紙（条件と出典）</p>
+        <p class="sheet-address" id="sheet-basis-address"></p>
+        <h3>どこから水が来るか</h3>
+        <div id="sheet-basis-rows"></div>
+      </article>
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="map.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
