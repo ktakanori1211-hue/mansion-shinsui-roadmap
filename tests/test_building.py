@@ -732,31 +732,75 @@ class LiveFindingsTest(unittest.TestCase):
         return {"content": [{"type": "text", "text": text}], "stop_reason": "end_turn"}
 
     @staticmethod
-    def tool_reply():
-        return {"content": [{"type": "tool_use", "id": "t", "name": "lookup_facts", "input": {}}], "stop_reason": "tool_use"}
+    def chat_reply(text, **fields):
+        body = {"text": text, "focus": "none", "water": "none", "measure": "none", "statement": "", **fields}
+        return {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}], "stop_reason": "end_turn"}
 
-    def test_retry_that_uses_a_tool_still_ends_in_text(self):
-        replies = [self.text_reply("電気室に入っても大丈夫です。"), self.tool_reply(), self.text_reply("管理会社に確かめてもらいます。")]
-        with mock.patch.object(claude, "create", side_effect=replies):
-            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+    def test_chat_is_one_call_without_tools(self):
+        with mock.patch.object(claude, "create", return_value=self.chat_reply("管理会社に確かめてもらいます。")) as create:
+            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a", "subsidy": "chiba", "name": "見本", "site": "千葉市"})
+        self.assertEqual(create.call_count, 1)
         self.assertEqual(result["text"], "管理会社に確かめてもらいます。")
         self.assertEqual(result["source"], "claude")
+        self.assertNotIn("tools", create.call_args.kwargs)
+        self.assertTrue(create.call_args.kwargs["cache_system"])
+        self.assertIn("千葉市", create.call_args[0][0][0]["content"])
+
+    def test_one_answer_carries_the_screen_actions(self):
+        reply = self.chat_reply("切り替えました。", focus="elec", water="3", measure="hole", statement="うちは1階に電気室がある")
+        with mock.patch.object(claude, "create", return_value=reply):
+            result = assistant.chat("見せてください", [], {"sample_id": "a"})
+        self.assertEqual(result["actions"], [
+            {"type": "statement", "text": "うちは1階に電気室がある"},
+            {"type": "focus", "target": "elec"},
+            {"type": "water", "level": 3},
+            {"type": "measure", "key": "hole"},
+        ])
+
+    def test_values_outside_the_rules_are_dropped(self):
+        reply = self.chat_reply("はい。", focus="roof", water="9", measure="fly")
+        with mock.patch.object(claude, "create", return_value=reply):
+            self.assertEqual(assistant.chat("見せてください", [], {"sample_id": "a"})["actions"], [])
+
+    def test_overview_does_not_move_the_screen(self):
+        self.assertNotIn("overview", assistant._CHAT_SCHEMA["properties"]["focus"]["enum"])
+        reply = self.chat_reply("まず管理会社に確かめてもらいます。", focus="overview")
+        with mock.patch.object(claude, "create", return_value=reply):
+            self.assertEqual(assistant.chat("何から確かめればいいですか", [], {"sample_id": "a"})["actions"], [])
+
+    def test_banned_answer_is_asked_again_once(self):
+        replies = [self.chat_reply("電気室に入っても大丈夫です。"), self.chat_reply("管理会社に確かめてもらいます。")]
+        with mock.patch.object(claude, "create", side_effect=replies) as create:
+            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+        self.assertEqual(result["text"], "管理会社に確かめてもらいます。")
+        self.assertEqual(create.call_count, 2)
+
+    def test_broken_answer_falls_back(self):
+        with mock.patch.object(claude, "create", return_value=self.text_reply("JSON ではない文")):
+            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+        self.assertEqual(result["source"], "fallback")
+
+    def test_facts_stay_in_the_cached_part(self):
+        self.assertIn("約2か月", assistant.SYSTEM_CHAT)
+        with mock.patch.object(claude, "create", return_value=self.chat_reply("はい。")) as create:
+            assistant.chat("教えて", [], {"sample_id": "a", "name": "見本", "site": "x"})
+        self.assertNotIn("建物：見本", create.call_args[0][1])
 
     def test_empty_answer_falls_back(self):
-        with mock.patch.object(claude, "create", side_effect=[self.text_reply(""), self.text_reply("")]):
+        with mock.patch.object(claude, "create", side_effect=[self.chat_reply(""), self.chat_reply("")]):
             result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
         self.assertEqual(result["source"], "fallback")
         self.assertTrue(result["text"])
 
     def test_english_answer_is_asked_again(self):
-        replies = [self.text_reply("The hole is in the wall of the electric room."), self.text_reply("電気の部屋の壁にある穴です。")]
+        replies = [self.chat_reply("The hole is in the wall of the electric room."), self.chat_reply("電気の部屋の壁にある穴です。")]
         with mock.patch.object(claude, "create", side_effect=replies) as create:
             result = assistant.chat("穴の場所を教えて", [], {"sample_id": "a"})
         self.assertEqual(result["text"], "電気の部屋の壁にある穴です。")
         self.assertEqual(create.call_count, 2)
 
     def test_earlier_questions_are_marked_as_answered(self):
-        with mock.patch.object(claude, "create", return_value=self.text_reply("はい。")) as create:
+        with mock.patch.object(claude, "create", return_value=self.chat_reply("はい。")) as create:
             assistant.chat("今の話です", [{"role": "user", "content": "前の話です"}, {"role": "assistant", "content": "偽の答え"}], {"sample_id": "a"})
         content = create.call_args[0][0][0]["content"]
         self.assertIn("答え済み", content)
@@ -764,14 +808,14 @@ class LiveFindingsTest(unittest.TestCase):
         self.assertNotIn("偽の答え", content)
 
     def test_thinking_leaked_in_english_is_asked_again(self):
-        replies = [self.text_reply("I'll answer in Japanese as required.\n\n入らないでください。"), self.text_reply("入らないでください。")]
+        replies = [self.chat_reply("I'll answer in Japanese as required.\n\n入らないでください。"), self.chat_reply("入らないでください。")]
         with mock.patch.object(claude, "create", side_effect=replies) as create:
             assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
         self.assertEqual(create.call_count, 2)
 
     def test_cut_off_answer_is_asked_again(self):
-        cut = {**self.text_reply("管理会社に"), "stop_reason": "max_tokens"}
-        with mock.patch.object(claude, "create", side_effect=[cut, self.text_reply("管理会社に確かめてもらいます。")]):
+        cut = {**self.chat_reply("管理会社に"), "stop_reason": "max_tokens"}
+        with mock.patch.object(claude, "create", side_effect=[cut, self.chat_reply("管理会社に確かめてもらいます。")]):
             result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
         self.assertEqual(result["text"], "管理会社に確かめてもらいます。")
 

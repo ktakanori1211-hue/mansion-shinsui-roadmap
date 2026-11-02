@@ -230,6 +230,14 @@ class CacheTest(unittest.TestCase):
             self.call()
         self.assertEqual(urlopen.call_count, 2)
 
+    def test_system_is_marked_for_prompt_cache_only_when_asked(self):
+        with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen:
+            self.call("a")
+            self.call("b", cache_system=True)
+        plain, marked = [json.loads(call[0][0].data)["system"] for call in urlopen.call_args_list]
+        self.assertEqual(plain, "s")
+        self.assertEqual(marked, [{"type": "text", "text": "s", "cache_control": {"type": "ephemeral"}}])
+
     def test_default_max_tokens(self):
         with mock.patch("urllib.request.urlopen", return_value=self.reply()) as urlopen:
             self.call()

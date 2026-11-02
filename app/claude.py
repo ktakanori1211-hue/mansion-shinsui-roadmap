@@ -122,6 +122,7 @@ def create(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     effort: str = "medium",
     schema: Optional[dict] = None,
+    cache_system: bool = False,
 ) -> dict:
     key = _key()
     if not key:
@@ -132,7 +133,8 @@ def create(
     body = {
         "model": MODEL,
         "max_tokens": max_tokens,
-        "system": system,
+        # 毎回同じ指示は Anthropic 側のプロンプトキャッシュに置く。読むときの料金が下がる。
+        "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if cache_system else system,
         "messages": messages,
         "output_config": output_config,
         "thinking": {"type": "adaptive"},
