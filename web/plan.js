@@ -70,7 +70,7 @@ const PlanPanel = (() => {
       element("p", `水の入り道：${pin.how_water}`),
       element("p", `確かめること：${pin.check}`),
       element("p", `確かめる人：${pin.who}（依頼メモ${["", "①", "②", "③"][pin.memo]}）`),
-      element("p", App.building.fixed.disclaimer_1, "fixed-note strong"),
+      element("p", App.disclaimerText(), "fixed-note strong"),
     );
     pinsLayer.querySelectorAll(".plan-pin").forEach((node) => node.classList.toggle("selected", node.textContent === pin.key));
   }

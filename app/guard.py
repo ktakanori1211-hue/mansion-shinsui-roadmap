@@ -12,6 +12,14 @@ from typing import Iterable, List, Optional
 
 DISCLAIMER_1 = "本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する"
 
+NO_ENGINEER_NOTE = "（電気主任技術者を選任していない建物では、東京電力パワーグリッドおよび電気工事業者が安全を確認して判断する）"
+
+
+def disclaimer(has_chief_engineer: bool = True) -> str:
+    """固定の文の本体は変えず、主任技術者のいない建物では括弧書きを添える。"""
+    return DISCLAIMER_1 if has_chief_engineer else DISCLAIMER_1 + NO_ENGINEER_NOTE
+
+
 _EMERGENCY = re.compile(r"感電|しびれ|ビリ|倒れ|意識が|呼吸|火が|火花|燃え|煙|焦げ|異臭|バチ|ショート|閉じ込め|出られない|人工呼吸|酸素|吸引器|透析|医療機器.*(止|切)|息が")
 _WATER = re.compile(r"水|雨|浸|冠|濡れ|ぬれ|洪|台風|停電|断水")
 _PLACE = re.compile(r"電気|受電|キュービクル|盤|ブレーカー|遮断|電源|スイッチ|ポンプ|ピット|マンホール|蓋|ふた|ハンドホール|借室|変圧器|地下|駐車場|車|スロープ|エレベーター|発電機|蓄電池|太陽光|止水板|土のう|管路|穴|電線|貯留|タンク|バルブ")
@@ -45,15 +53,16 @@ def _touches_safety(message: str) -> bool:
 def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict]:
     """固定の文を返す。当たらなければ None で、AI に回してよい。"""
     message = unicodedata.normalize("NFKC", message)
+    notice = disclaimer(has_chief_engineer)
     if _EMERGENCY.search(message):
         return {
             "kind": "emergency",
-            "text": "人が感電した、倒れている、火が出た、閉じ込められた、在宅の医療機器が止まったときは、すぐ 119 番に連絡してください。倒れている人には、電気が切れたと確かめられるまで素手で触れないでください。電気の部屋には入らず、水に近づかないでください。\n\n" + DISCLAIMER_1,
+            "text": "人が感電した、倒れている、火が出た、閉じ込められた、在宅の医療機器が止まったときは、すぐ 119 番に連絡してください。倒れている人には、電気が切れたと確かめられるまで素手で触れないでください。電気の部屋には入らず、水に近づかないでください。\n\n" + notice,
         }
     if _HOME.search(message):
         return {
             "kind": "home",
-            "text": "濡れた分電盤やコンセント、家電には触らず、使わないでください。東京電力パワーグリッドか電気工事の業者に相談してください。ご自宅の中の判断は、この道具の範囲の外です。\n\n" + DISCLAIMER_1,
+            "text": "濡れた分電盤やコンセント、家電には触らず、使わないでください。東京電力パワーグリッドか電気工事の業者に相談してください。ご自宅の中の判断は、この道具の範囲の外です。\n\n" + notice,
         }
     if _touches_safety(message):
         if has_chief_engineer:
@@ -63,7 +72,7 @@ def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict
         return {
             "kind": "safety",
             "text": (
-                DISCLAIMER_1
+                notice
                 + "\n\n電気室・盤の部屋・東京電力の変圧器の部屋・ポンプ室・エレベーターの底に入らず、扉も開けません。"
                 "水に浸かった盤、コード、ブレーカーに触れません。電気を切るために中へ入りません。"
                 "歩道ぎわの蓋やマンホールは開けません。東京電力の変圧器の部屋の穴や管路に、だれも栓や止水材を入れません。垂れた電線や水に浸かった地上の変圧器には近づきません。冠水の中へ入りません。"
@@ -74,7 +83,7 @@ def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict
                     if has_chief_engineer
                     else "排水を始める前に、東京電力パワーグリッドに電話で切り離しを確かめ、電気工事の業者が始めてよいと答えてから始めます。"
                 )
-                + "水の位置は、立ち入ってよい高さではありません。"
+                + "水の位置は、立ち入ってよい高さではありません。水が引いても、主任技術者（主任技術者がいない建物では東京電力パワーグリッドや電気工事業者）が安全を確かめるまで入りません。"
             ),
         }
     if _FORECAST.search(message):

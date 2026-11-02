@@ -43,6 +43,53 @@ class EquipmentTest(unittest.TestCase):
         self.assertNotIn("park", small)
 
 
+class ReceivingBoxTest(unittest.TestCase):
+    def verdict(self, **kwargs):
+        args = {"confirmed": [], "location_risk": True, "document_read": False}
+        args.update(kwargs)
+        return row(building.judge_equipment(samples.SAMPLES["a"], args["confirmed"], args["location_risk"], args["document_read"]), "power")
+
+    def test_hearing_alone_stays_open(self):
+        self.assertEqual(self.verdict()["verdict"], "unconfirmed")
+
+    def test_document_with_location_risk_is_risk(self):
+        item = self.verdict(document_read=True)
+        self.assertEqual(item["verdict"], "risk")
+        self.assertIn("高さは未確認", item["confirm_by"])
+        self.assertEqual(item["evidence"], "document")
+
+    def test_drawing_with_location_risk_is_risk(self):
+        self.assertEqual(self.verdict(confirmed=["elec"])["verdict"], "risk")
+
+    def test_document_without_location_risk_stays_open(self):
+        self.assertEqual(self.verdict(document_read=True, location_risk=False)["verdict"], "unconfirmed")
+
+    def test_report_reader_finds_basement_box(self):
+        self.assertTrue(assistant.read_report(samples.REPORTS["a"])["basement_power"])
+        self.assertTrue(assistant.read_report(samples.REPORTS["c"])["basement_power"])
+        self.assertFalse(assistant.read_report(samples.REPORTS["b"])["basement_power"])
+
+
+class FixedTextTest(unittest.TestCase):
+    def test_no_engineer_note_keeps_the_body(self):
+        body = building.FIXED["disclaimer_1"]
+        self.assertTrue(building.FIXED["disclaimer_1_no_engineer"].startswith(body))
+        self.assertIn("電気主任技術者を選任していない建物では", building.FIXED["disclaimer_1_no_engineer"])
+        self.assertEqual(guard.disclaimer(False), building.FIXED["disclaimer_1_no_engineer"])
+        self.assertEqual(guard.disclaimer(True), body)
+
+    def test_guard_uses_the_note_without_engineer(self):
+        self.assertIn("選任していない", guard.fixed_answer("電気室に入っていい？", False)["text"])
+        self.assertNotIn("選任していない", guard.fixed_answer("電気室に入っていい？", True)["text"])
+        self.assertIn("選任していない", guard.fixed_answer("人が倒れている", False)["text"])
+
+    def test_water_line_says_wait_after_water_recedes(self):
+        self.assertIn("安全を確かめるまで入りません", building.FIXED["water_not_entry"])
+
+    def test_day_action_forbids_entering_to_operate(self):
+        self.assertIn("扉を開けて中に入って操作しません", building.ACTIONS_DAY)
+
+
 class MeasureTest(unittest.TestCase):
     def test_tepco_row_only_when_transformer_room_is_risk(self):
         sample = samples.SAMPLES["a"]

@@ -123,7 +123,7 @@ const ModelPanel = (() => {
       ...scenario.notes.map((line) => element("p", line, "fixed-note strong")),
       element("p", fixed.water_not_entry, "fixed-note strong"),
       element("p", App.building.sample.has_chief_engineer ? fixed.ordinary : fixed.ordinary_no_engineer, "fixed-note strong"),
-      element("p", fixed.disclaimer_1, "fixed-note strong disclaimer-line"),
+      element("p", App.disclaimerText(), "fixed-note strong disclaimer-line"),
       element("p", "本シートは予報ではなく、現時点の静的な整理である", "fixed-note strong"),
     );
     renderChain(scenario);
@@ -171,6 +171,10 @@ const SheetPanel = (() => {
     document.getElementById("sheet-address").textContent = label;
     document.getElementById("sheet-basis-address").textContent = label;
     document.getElementById("sheet-memo-address").textContent = label;
+
+    document.querySelectorAll(".disclaimer li:first-child").forEach((node) => {
+      node.textContent = App.disclaimerText();
+    });
 
     const top = document.getElementById("sheet-top");
     top.replaceChildren(element("p", building.top_line.lead, "top-lead"));

@@ -214,6 +214,7 @@ const SimPanel = (() => {
         sample_id: App.building.sample.id,
         label: App.locationState.site.label,
         confirmed: App.confirmed,
+        document_read: App.documentRead,
         checked: [...state.checked],
         subsidy: state.region,
         location_rows: App.locationState.location.rows,

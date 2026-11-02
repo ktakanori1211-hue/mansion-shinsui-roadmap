@@ -138,7 +138,7 @@ def _fallback_chat(message: str, context: dict) -> dict:
     if target:
         actions.append({"type": "focus", "target": target})
     if pin:
-        text = f"{pin['title']}：{pin['how_water']}\n確かめること：{pin['check']}\n確かめる人：{pin['who']}\n\n{guard.DISCLAIMER_1}"
+        text = f"{pin['title']}：{pin['how_water']}\n確かめること：{pin['check']}\n確かめる人：{pin['who']}\n\n{guard.disclaimer(sample['has_chief_engineer'])}"
     elif target:
         text = f"{samples.ROOM_NAMES.get(target, target)}へカメラを寄せました。判定は画面の札のとおりです。"
     elif actions:
@@ -337,6 +337,7 @@ def _sample_rooms(sample: dict) -> List[dict]:
 # 書類の読み取り
 
 _REPORT_RULES = [
+    ("受電設備：地下", "受電の箱は地下", "立地のリスクが確定していれば、電気（共用部）の行を確定にします。高さは未確認のままです"),
     ("湿気", "床の湿気の指摘", "地下の電気の部屋の床の湿気の行を未確認で出します"),
     ("受電設備なし", "マンション側の受電設備なし", "主任技術者のいない建物として確認する人を替えます"),
     ("電気主任技術者を選任していない", "電気主任技術者を選任していない", "借室のみ型として読みます"),
@@ -357,7 +358,8 @@ def read_report(text: str) -> dict:
         if word in text:
             line = next((row.strip() for row in text.splitlines() if word in row), "")
             findings.append({"word": word, "item": item, "effect": effect, "line": line})
-    return {"mode": "text", "findings": findings, "message": "語の対応表で読みました。Claude での読み取りは API キーを設定すると使えます。" if not claude.available() else "語の対応表で読みました。"}
+    basement_power = bool(re.search(r"(受電設備|受変電|受電室|電気室).{0,12}地下|地下.{0,12}(受変電|受電|電気室)", text)) and "受電設備なし" not in text
+    return {"mode": "text", "findings": findings, "basement_power": basement_power, "message": "語の対応表で読みました（Claude での書類の読み取りは、まだ作っていません）。"}
 
 
 # 相談の文書
@@ -387,7 +389,7 @@ def consult_template(body: dict) -> dict:
     sample = samples.get(body.get("sample_id")) or samples.SAMPLES["a"]
     label = body.get("label", "")
     rows = body.get("location_rows") or []
-    equipment = building.judge_equipment(sample, body.get("confirmed") or [], any(r.get("verdict") == "risk" for r in rows))
+    equipment = building.judge_equipment(sample, body.get("confirmed") or [], any(r.get("verdict") == "risk" for r in rows), bool(body.get("document_read")))
     checked_keys = set(body.get("checked") or [])
     checked = [m for m in samples.MEASURES if m["key"] in checked_keys]
     region = body.get("subsidy") or sample["subsidy"]

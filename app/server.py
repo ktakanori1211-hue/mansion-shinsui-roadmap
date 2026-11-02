@@ -106,7 +106,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not sample:
                 self._send_json(404, {"error": "見本が見つかりません。"})
                 return
-            self._send_json(200, building.building_payload(sample, body.get("confirmed") or [], body.get("location_rows") or []))
+            self._send_json(200, building.building_payload(sample, body.get("confirmed") or [], body.get("location_rows") or [], bool(body.get("document_read"))))
         elif path == "/api/plan":
             self._send_json(200, assistant.read_plan(body))
         elif path == "/api/report":

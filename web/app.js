@@ -39,6 +39,7 @@ const App = {
   locationState: null,
   building: null,
   confirmed: [],
+  documentRead: false,
   water: 3,
   measure: "plate",
 
@@ -50,13 +51,19 @@ const App = {
     const response = await fetch("/api/building", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sample_id: this.sampleId, confirmed: this.confirmed, location_rows: this.locationState.location.rows }),
+      body: JSON.stringify({
+        sample_id: this.sampleId,
+        confirmed: this.confirmed,
+        document_read: this.documentRead,
+        location_rows: this.locationState.location.rows,
+      }),
     });
     this.building = await response.json();
   },
 
   async startBuilding() {
     this.confirmed = [];
+    this.documentRead = false;
     this.water = 3;
     this.measure = "plate";
     await this.loadBuilding();
@@ -101,6 +108,9 @@ const App = {
       const list = element("ul", undefined, "row-details");
       result.findings.forEach((item) => list.append(element("li", `「${item.word}」→ ${item.item}：${item.effect}`)));
       found.append(list);
+      this.documentRead = result.basement_power;
+      await this.loadBuilding();
+      this.refresh();
     });
     body.replaceChildren(
       element("p", `${sample.name}　${sample.floors}階建て ${sample.units}戸（${sample.kind}。建物は架空）`),
@@ -116,6 +126,11 @@ const App = {
     if (!window.Model3D) return;
     window.Model3D.load({ ...this.building.sample, confirmedRooms: this.confirmed });
     this.applyScenario();
+  },
+
+  disclaimerText() {
+    const { fixed, sample } = this.building;
+    return sample.has_chief_engineer ? fixed.disclaimer_1 : fixed.disclaimer_1_no_engineer;
   },
 
   scenario() {

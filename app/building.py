@@ -19,7 +19,8 @@ FIXED = {
     "ordinary": "ふだんも、主任技術者の同行なしに電気室に入りません。東京電力の変圧器の部屋には、東京電力パワーグリッドの許可と立会いなしにだれも入りません。",
     "ordinary_no_engineer": "ふだんも、電気工事の業者の立会いなしに、共用部のおおもとのスイッチ盤の部屋に入りません。東京電力の変圧器の部屋には、東京電力パワーグリッドの許可と立会いなしにだれも入りません。",
     "tank_outside": "雨水ますから貯留タンクへの経路は、この切り替えに含めていません。",
-    "water_not_entry": "水の位置は、立ち入ってよい高さではありません。水が残る部屋には、深さにかかわらず入りません。",
+    "disclaimer_1_no_engineer": "本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する（電気主任技術者を選任していない建物では、東京電力パワーグリッドおよび電気工事業者が安全を確認して判断する）",
+    "water_not_entry": "水の位置は、立ち入ってよい高さではありません。水が残る部屋には、深さにかかわらず入りません。水が引いても、主任技術者（主任技術者がいない建物では東京電力パワーグリッドや電気工事業者）が安全を確かめるまで入りません。",
     "timeline_top": "目安はほかの建物の実例と一般的な目安で、この建物の日数ではありません",
     "gone": "この位置では、この目安のもとになった設備（制御盤／受電の箱）は浸からない想定です。ポンプ本体やエレベーターなど、ほかの設備が浸かったときに戻るまでの期間は確かめていません",
     "nothing_wet": "この位置で浸かる設備はない想定です。戻るまでの期間の目安は出しません",
@@ -40,7 +41,7 @@ WATER_LEVELS = [
 
 ACTIONS_MORNING = "電気室などに水が残っていたら、電気室・借室・ポンプ室・EV ピットに立ち入りません。東京電力パワーグリッドが電気を切り離し、主任技術者が、水に触れずに近づけて安全と判断したときに、マンション側の受電の箱の、電気の入口側で最初のスイッチを切ります。管理員か理事長は、その二つを主任技術者に確かめてから排水を始めます。マンション側の電気を戻すかは、点検と電気の安全確認のあとで主任技術者が判断します。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
 ACTIONS_MORNING_NO_ENGINEER = "部屋などに水が残っていたら、東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません。管理員か理事長は、東京電力パワーグリッドに電話で切り離しを確かめます。盤の部屋を見に行って確かめません。電気工事の業者が、排水を始めてよいと答えてから排水を始めます。マンション側の盤に電気を戻すかは、点検のあとで電気工事の業者と決めます。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
-ACTIONS_DAY = "管理員か理事長が主任技術者に連絡します。遮断するかは主任技術者が判断し、操作は主任技術者の指示で、電気室の外から、または水に触れずにできるときだけ行います。外から切れないときは電気室に入らず、主任技術者と東京電力パワーグリッドに連絡し、引込みの停止を頼みます。遮断は、在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡とあわせて行います。浸水中は電気室・借室・ポンプ室・EV ピットに立ち入りません"
+ACTIONS_DAY = "管理員か理事長が主任技術者に連絡します。遮断するかは主任技術者が判断し、操作は主任技術者の指示で、電気室の外から、または水に触れずにできるときだけ行います。扉を開けて中に入って操作しません。外から切れないときは電気室に入らず、主任技術者と東京電力パワーグリッドに連絡し、引込みの停止を頼みます。遮断は、在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡とあわせて行います。浸水中は電気室・借室・ポンプ室・EV ピットに立ち入りません"
 ACTIONS_DAY_NO_ENGINEER = "管理員か理事長が東京電力パワーグリッドと管理会社に連絡します。この建物に主任技術者はいません。盤の部屋に入って電気を切りません。在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡をあわせて行います。浸水中は東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません"
 ACTIONS_BEFORE = "警戒レベル3で車を上へ、レベル4で止水板と土のうを出します。合図は自治体や気象庁が出す警戒レベルです"
 
@@ -71,8 +72,11 @@ def _item(key, label, verdict, headline, summary, confirm_by, confirm_short, mem
     return data
 
 
-def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool) -> List[dict]:
-    """confirmed は、図面の読み取りのあとで人が確かめた部屋の種類。"""
+def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, document_read: bool = False) -> List[dict]:
+    """confirmed は、図面の読み取りのあとで人が確かめた部屋の種類。
+
+    document_read は、点検報告書などの書類で受電の箱が地下にあると読めたこと。
+    """
     rows = []
     is_basement = sample["archetype"] in ("basement", "tower")
     drawing = lambda key: key in confirmed  # noqa: E731
@@ -95,22 +99,25 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool) -> 
     )
 
     if sample["has_chief_engineer"]:
-        verdict = RISK if location_risk else UNCONFIRMED
+        # 書類か図面で地下と分かり、立地のリスクが確定していれば確定にする。確定するのは水が来ることまで。
+        known = document_read or drawing("elec")
+        verdict = RISK if known and location_risk else UNCONFIRMED
+        source = "図面で確かめました" if drawing("elec") else "書類で読めました" if document_read else "聞いていますが、書類や図面ではまだ確かめていません"
         rows.append(
             _item(
                 "power",
                 "電気（共用部）",
                 verdict,
-                "エレベーター、給水ポンプ、廊下の照明の電気を受ける箱は、地下の電気の部屋にあります。浸かると共用部が停電し、給水ポンプも止まって断水します。",
-                "受電の箱は地下。浸かると共用部が停電し断水も",
-                "管理会社が立地の未確認を確かめ、盤の下の端は主任技術者が月次点検の立会いで測ります。",
-                "管理会社、主任技術者",
+                f"エレベーター、給水ポンプ、廊下の照明の電気を受ける箱は、地下の電気の部屋にあると{source}。浸かると共用部が停電し、給水ポンプも止まって断水します。",
+                "受電の箱は地下。浸かると共用部が停電し断水も" if known else "受電の箱は地下と聞き取り（書類は未確認）",
+                "床からの盤や箱の高さは未確認なので、依頼メモで確かめます。盤の下の端は主任技術者が月次点検の立会いで測ります。",
+                "管理会社、主任技術者（高さ）",
                 1,
                 floor=_room_on_floor(sample, "elec"),
-                evidence=evidence("elec", DOCUMENT),
+                evidence=DRAWING if drawing("elec") else DOCUMENT if document_read else QUESTION,
                 confirmed=drawing("elec"),
                 always_confirm=True,
-                details=["確定とするのは立地で水が来ることまでで、盤の高さなどの程度は別に確かめます。"] if verdict == RISK else [],
+                details=["確定とするのは立地で水が来ることまでで、床からの盤や箱の高さは別に確かめます。"] if verdict == RISK else [],
             )
         )
     else:
@@ -508,12 +515,13 @@ def scenarios(sample: dict) -> dict:
     }
 
 
-def building_payload(sample: dict, confirmed: List[str], location_rows: List[dict]) -> dict:
+def building_payload(sample: dict, confirmed: List[str], location_rows: List[dict], document_read: bool = False) -> dict:
     location_risk = any(row["verdict"] == "risk" for row in location_rows)
-    equipment = judge_equipment(sample, confirmed, location_risk)
+    equipment = judge_equipment(sample, confirmed, location_risk, document_read)
     return {
         "sample": samples.client_view(sample),
         "confirmed": confirmed,
+        "document_read": document_read,
         "equipment": equipment,
         "top_line": top_line(sample, equipment, location_rows, confirmed),
         "measures": visible_measures(sample, equipment),
