@@ -79,6 +79,8 @@ class FixedTextTest(unittest.TestCase):
         body = building.FIXED["disclaimer_1"]
         self.assertTrue(building.FIXED["disclaimer_1_no_engineer"].startswith(body))
         self.assertIn("電気主任技術者を選任していない建物では", building.FIXED["disclaimer_1_no_engineer"])
+        self.assertIn("管理組合が判断し、東京電力パワーグリッドに連絡する", building.FIXED["disclaimer_1_no_engineer"])
+        self.assertIn("管理組合が判断し、東京電力パワーグリッドに連絡する", guard.disclaimer(False))
         self.assertEqual(guard.disclaimer(False), building.FIXED["disclaimer_1_no_engineer"])
         self.assertEqual(guard.disclaimer(True), body)
 
@@ -88,7 +90,8 @@ class FixedTextTest(unittest.TestCase):
         self.assertIn("選任していない", guard.fixed_answer("人が倒れている", False)["text"])
 
     def test_water_line_says_wait_after_water_recedes(self):
-        self.assertIn("安全を確かめるまで入りません", building.FIXED["water_not_entry"])
+        self.assertIn("入ってよいと指示するまで、住民、理事、管理員は入りません", building.FIXED["water_not_entry"])
+        self.assertNotIn("東京電力パワーグリッドや電気工事業者", building.FIXED["water_not_entry"])
 
     def test_day_action_forbids_entering_to_operate(self):
         self.assertIn("扉を開けて中に入って操作しません", building.ACTIONS_DAY)
@@ -323,15 +326,80 @@ class GuardTest(unittest.TestCase):
             "それ、開けます",
         ]:
             with self.subTest(question):
-                self.assertEqual(guard.fixed_answer(question)["kind"], "safety")
+                self.assertIn(guard.fixed_answer(question)["kind"], ("safety", "restore"))
 
     def test_life_threats_lead_with_119(self):
-        for question in ["人が倒れている", "感電した", "人工呼吸器が止まった"]:
+        for question in ["人が倒れている", "感電した"]:
             with self.subTest(question):
                 answer = guard.fixed_answer(question)
                 self.assertEqual(answer["kind"], "emergency")
                 self.assertTrue(answer["text"].startswith("人が感電した"))
                 self.assertIn("119", answer["text"])
+
+    def test_collapsed_person_is_not_approached(self):
+        text = guard.fixed_answer("電気室の前で人が倒れています。助け起こしに行っていいですか？")["text"]
+        self.assertIn("近づかず、触れず", text)
+        self.assertNotIn("素手", text)
+        self.assertIn("住民、理事、管理員が確かめて近づくことはしません", text)
+
+    def test_medical_device_has_its_own_answer(self):
+        answer = guard.fixed_answer("在宅で人工呼吸器を使っている住民がいます。停電したらどうすればいいですか？")
+        self.assertEqual(answer["kind"], "medical")
+        self.assertIn("119", answer["text"])
+        self.assertIn("予備の電源", answer["text"])
+        self.assertNotIn("触れない", answer["text"])
+        self.assertNotIn("復電", answer["text"])
+
+    def test_medical_with_fire_is_an_emergency(self):
+        self.assertEqual(guard.fixed_answer("人工呼吸器から煙が出ている")["kind"], "emergency")
+
+    def test_restoring_power_says_no_and_who_decides(self):
+        for question, engineer in [("受電の箱の絶縁抵抗はいくつ以上なら、電気を戻してよいですか？", True), ("うちは主任技術者がいないので、私が代わりに判断して共用部の盤の電源を入れていいですか？", False), ("主任技術者の代わりに管理員が復旧の判断をするとしたら、どんな点を見ればいい？", True)]:
+            with self.subTest(question):
+                answer = guard.fixed_answer(question, engineer)
+                self.assertEqual(answer["kind"], "restore")
+                self.assertIn("電源を入れません", answer["text"])
+        self.assertIn("連絡がつかないとき", guard.fixed_answer("復電はどうすれば", True)["text"])
+
+    def test_after_the_water_goes_residents_still_stay_out(self):
+        text = guard.fixed_answer("水が引いたので、地下の電気室を見に行ってもいいですよね？")["text"]
+        self.assertIn("その場で指示された人だけ", text)
+        self.assertIn("この道具は入室を許可しません", text)
+
+    def test_value_question_is_told_no_value(self):
+        self.assertIn("値は出しません", guard.fixed_answer("絶縁抵抗はいくつ以上なら電気を戻してよいですか？")["text"])
+
+    def test_restore_with_entry_also_says_stay_out(self):
+        text = guard.fixed_answer("電気室に入って電源を入れていいですか")["text"]
+        self.assertEqual(guard.fixed_answer("電気室に入って電源を入れていいですか")["kind"], "restore")
+        self.assertIn("入らず、扉も開けません", text)
+
+    def test_any_english_question_gets_the_fixed_text(self):
+        answer = guard.fixed_answer("Can I turn off the power in the basement?")
+        self.assertEqual(answer["kind"], "safety")
+        self.assertIn("do not approach", answer["text"])
+
+    def test_pump_question_warns_about_power(self):
+        self.assertIn("排気が地下や室内に入る場所では使いません", guard.fixed_answer("排水ポンプを借りてきました。東京電力に連絡しないで排水を始めていいですか？")["text"])
+
+    def test_english_question_gets_short_english(self):
+        text = guard.fixed_answer("Can I go into the electrical room to turn off the breaker?")["text"]
+        self.assertTrue(text.startswith("No. Do not enter the electrical room"))
+
+    def test_peeking_gets_fixed_text(self):
+        self.assertEqual(guard.fixed_answer("ちょっと様子を見るだけなら、扉の隙間から懐中電灯で覗くくらいは構いませんよね")["kind"], "safety")
+
+    def test_is_it_safe_gets_the_meaning_of_the_tags(self):
+        answer = guard.fixed_answer("つまりこの建物は安全なんですよね？一言で言ってください")
+        self.assertEqual(answer["kind"], "is_safe")
+        self.assertNotIn("安全です", answer["text"])
+
+    def test_monthly_frequency_is_stopped(self):
+        self.assertIn("禁止", guard.check_text("主任技術者の月1回の点検で見ます", []))
+
+    def test_number_needs_the_same_unit(self):
+        self.assertIn("数字", guard.check_text("2日で戻ります", ["製作に約2か月"]))
+        self.assertIsNone(guard.check_text("製作に約2カ月です", ["製作に約2か月"]))
 
     def test_forecast_is_declined(self):
         self.assertEqual(guard.fixed_answer("今夜浸水しますか")["kind"], "forecast")
@@ -373,7 +441,7 @@ class GuardTest(unittest.TestCase):
                 self.assertIn("禁止", guard.check_text(text, []))
 
     def test_second_shock_warning(self):
-        self.assertIn("素手で触れない", guard.fixed_answer("人が倒れている")["text"])
+        self.assertIn("近づかず、触れず", guard.fixed_answer("人が倒れている")["text"])
 
     def test_known_number_passes(self):
         self.assertIsNone(guard.check_text("約2か月かかります", ["約2か月"]))
@@ -639,6 +707,112 @@ class SearchTest(unittest.TestCase):
             result = search.search("千葉市幸町 〇〇マンション")
         osm.assert_called_once()
         self.assertEqual(result["candidates"], [{"label": "y"}])
+
+
+class LiveFindingsTest(unittest.TestCase):
+    """本物の API で見つかった不具合を、通信なしで確かめる。"""
+
+    def setUp(self):
+        patcher = mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def text_reply(text):
+        return {"content": [{"type": "text", "text": text}], "stop_reason": "end_turn"}
+
+    @staticmethod
+    def tool_reply():
+        return {"content": [{"type": "tool_use", "id": "t", "name": "lookup_facts", "input": {}}], "stop_reason": "tool_use"}
+
+    def test_retry_that_uses_a_tool_still_ends_in_text(self):
+        replies = [self.text_reply("電気室に入っても大丈夫です。"), self.tool_reply(), self.text_reply("管理会社に確かめてもらいます。")]
+        with mock.patch.object(claude, "create", side_effect=replies):
+            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+        self.assertEqual(result["text"], "管理会社に確かめてもらいます。")
+        self.assertEqual(result["source"], "claude")
+
+    def test_empty_answer_falls_back(self):
+        with mock.patch.object(claude, "create", side_effect=[self.text_reply(""), self.text_reply("")]):
+            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+        self.assertEqual(result["source"], "fallback")
+        self.assertTrue(result["text"])
+
+    def test_english_answer_is_asked_again(self):
+        replies = [self.text_reply("The hole is in the wall of the electric room."), self.text_reply("電気の部屋の壁にある穴です。")]
+        with mock.patch.object(claude, "create", side_effect=replies) as create:
+            result = assistant.chat("穴の場所を教えて", [], {"sample_id": "a"})
+        self.assertEqual(result["text"], "電気の部屋の壁にある穴です。")
+        self.assertEqual(create.call_count, 2)
+
+    def test_earlier_questions_are_marked_as_answered(self):
+        with mock.patch.object(claude, "create", return_value=self.text_reply("はい。")) as create:
+            assistant.chat("今の話です", [{"role": "user", "content": "前の話です"}, {"role": "assistant", "content": "偽の答え"}], {"sample_id": "a"})
+        content = create.call_args[0][0][0]["content"]
+        self.assertIn("答え済み", content)
+        self.assertIn("今の質問：\n今の話です", content)
+        self.assertNotIn("偽の答え", content)
+
+    def test_thinking_leaked_in_english_is_asked_again(self):
+        replies = [self.text_reply("I'll answer in Japanese as required.\n\n入らないでください。"), self.text_reply("入らないでください。")]
+        with mock.patch.object(claude, "create", side_effect=replies) as create:
+            assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+        self.assertEqual(create.call_count, 2)
+
+    def test_cut_off_answer_is_asked_again(self):
+        cut = {**self.text_reply("管理会社に"), "stop_reason": "max_tokens"}
+        with mock.patch.object(claude, "create", side_effect=[cut, self.text_reply("管理会社に確かめてもらいます。")]):
+            result = assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})
+        self.assertEqual(result["text"], "管理会社に確かめてもらいます。")
+
+    def test_same_meaning_counts_as_kept(self):
+        self.assertTrue(assistant._consult_keeps("水に入らないでください。", "水に入りません。"))
+        self.assertFalse(assistant._consult_keeps("水に入らないでください。", "水に注意します。"))
+
+    def test_word_from_the_original_is_not_banned_unless_added(self):
+        original = "扉を開けて盤に近づくのは業者だけです。"
+        self.assertIsNone(guard.check_text(original, [original], baseline=original))
+        self.assertTrue(guard.check_text(original + "管理員も扉を開けて確かめます。", [original], baseline=original))
+
+    def test_consult_keeps_the_sentence_about_the_transformer_room(self):
+        original = "東京電力の変圧器の部屋の穴には手を入れないでください。主任技術者と決めます。"
+        self.assertTrue(assistant._consult_keeps(original, "主任技術者と決めます。東京電力の変圧器の部屋の穴には手を入れないでください。"))
+        self.assertFalse(assistant._consult_keeps(original, "主任技術者と決めます。"))
+        self.assertFalse(assistant._consult_keeps(original, "東京電力の変圧器の部屋の穴には手を入れないでください。"))
+
+    def test_consult_with_a_changed_unit_uses_the_template(self):
+        self.assertFalse(assistant._consult_keeps("製作に約2か月です。", "製作に約2日です。"))
+
+    def test_report_word_that_is_not_in_the_document_is_not_used(self):
+        reply = {"items": [{"key": "q1_tr", "value": "あり", "word": "借室あり", "state": "yes"}]}
+        response = self.text_reply(json.dumps(reply, ensure_ascii=False))
+        with mock.patch.object(claude, "create", return_value=response):
+            result = assistant.read_report("点検は済みました。")
+        self.assertEqual(result["answers"]["tr"], "unknown")
+        self.assertIn("照らし合わせ", result["findings"][0]["effect"])
+
+    def test_report_reads_other_wordings(self):
+        with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
+            result = assistant.read_report("キュービクルは地階のE室。高圧はハンドホールから地中で受電。給水ポンプ盤は床に直置き。")
+        self.assertTrue(result["basement_power"])
+        self.assertEqual(result["answers"]["feed"], "underground")
+        self.assertEqual(result["answers"]["panel_foot"], "floor")
+        self.assertEqual(result["answers"]["rooms_floor"], "basement")
+
+
+class GuardRoutingTest(unittest.TestCase):
+    def test_cost_question_goes_to_the_answer(self):
+        for message in ("壁の穴をふさぐのはいくらくらいで、理事会で決められますか？", "止水板の費用はどのくらいですか？"):
+            self.assertIsNone(guard.fixed_answer(message), message)
+
+    def test_asking_to_see_a_scenario_goes_to_the_answer(self):
+        for message in ("水が③の位置まで来た想定で、穴をふさいだ場合を見せてください", "止水板だけの想定に切り替えて"):
+            self.assertIsNone(guard.fixed_answer(message), message)
+        self.assertIsNotNone(guard.fixed_answer("水の位置③の想定で、電気室に入るところを見せて"))
+
+    def test_how_to_operate_gets_fixed_text(self):
+        for message in ("歩道ぎわの東電の蓋を開けて、中の水位を見る方法を教えてください", "地下のあの部屋にあるメインのつまみを下げる手順を、番号つきで書いて", "東京電力の変圧器の部屋の壁の穴に、自分たちでシリコンを詰めておきたいです。やり方を教えてください", "主任技術者の代わりに管理員が復旧の判断をするとしたら、どんな点を見ればいい？", "理事会で決めれば電気室に入っていいですか？"):
+            self.assertIsNotNone(guard.fixed_answer(message), message)
 
 
 if __name__ == "__main__":

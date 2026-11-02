@@ -21,6 +21,9 @@ DEMO_POINTS = {
     "oshima": {"label": "東京都 江東区大島2丁目", "longitude": 139.822372, "latitude": 35.691696, "sample": "c"},
 }
 
+LOOPBACK_CLIENTS = ("127.0.0.1", "::1")
+LOCAL_HOSTNAMES = ("localhost", "127.0.0.1")
+
 
 def parse_pin(query: dict) -> dict:
     """利用者が動かしたピンの位置を読む。国内の範囲だけを受ける。"""
@@ -32,6 +35,19 @@ def parse_pin(query: dict) -> dict:
     if not (122 <= longitude <= 154 and 20 <= latitude <= 46):
         raise location.AddressError("ピンの位置が国内の範囲の外です。")
     return {"longitude": longitude, "latitude": latitude}
+
+
+def key_request_allowed(client_host: str, headers) -> bool:
+    """キーの保存は、この機械のブラウザが、この画面から送ったときだけ受ける。
+
+    Host を見て DNS の付け替えを、Origin と Content-Type を見てほかのサイトからの送信を断る。
+    """
+    host = headers.get("Host") or ""
+    if client_host not in LOOPBACK_CLIENTS or host.rsplit(":", 1)[0] not in LOCAL_HOSTNAMES:
+        return False
+    if headers.get("Origin") != f"http://{host}":
+        return False
+    return (headers.get("Content-Type") or "").split(";")[0].strip() == "application/json"
 
 
 def build_state(label: str, longitude: float, latitude: float, basis: str, is_demo: bool) -> dict:
@@ -65,7 +81,7 @@ class Handler(SimpleHTTPRequestHandler):
                 ],
             )
         elif parsed.path == "/api/status":
-            self._send_json(200, {"claude": claude.available()})
+            self._send_json(200, {"claude": claude.available(), "key_source": claude.key_source()})
         elif parsed.path == "/api/search":
             self._search(urllib.parse.parse_qs(parsed.query))
         elif parsed.path == "/api/reverse":
@@ -115,6 +131,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
+        if path == "/api/key" and not key_request_allowed(self.client_address[0], self.headers):
+            self._send_json(403, {"error": "キーは、このパソコンで localhost の画面からだけ保存できます。"})
+            return
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY_BYTES:
             self._send_json(413, {"error": "ファイルが大きすぎます。32MB 以下にしてください。"})
@@ -124,7 +143,13 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"error": "送られた内容を読めませんでした。"})
             return
-        if path == "/api/building":
+        if path == "/api/key":
+            try:
+                claude.save_key(body.get("key"))
+                self._send_json(200, {"claude": claude.available(), "key_source": claude.key_source()})
+            except claude.KeyRejected as error:
+                self._send_json(422, {"error": str(error)})
+        elif path == "/api/building":
             label = body.get("label", "")
             sample = samples.apply_answers(body.get("sample_id"), body.get("answers"), label)
             if not sample:

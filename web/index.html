@@ -20,7 +20,15 @@
       <h1>マンション浸水ロードマップ</h1>
       <p>浸水のあとに水と電気がどれだけ止まりうるかを、住所と手元の情報から整理し、理事会に出せるA4一枚を作ります。</p>
     </div>
-    <p class="claude-status" id="claude-status"></p>
+    <div class="claude-box">
+      <p class="claude-status" id="claude-status"></p>
+      <form class="key-form" id="key-form" autocomplete="off" hidden>
+        <label for="key-input">APIキーを設定</label>
+        <input id="key-input" type="password" autocomplete="new-password" spellcheck="false" placeholder="ここに貼り付ける">
+        <button type="submit">保存</button>
+        <p class="key-note" id="key-note" role="status">このパソコンのホームのファイル（権限600）にだけ保存し、画面にもログにも出しません。</p>
+      </form>
+    </div>
   </header>
 
   <nav class="stage-tabs" id="stage-tabs" aria-label="4つの段階">

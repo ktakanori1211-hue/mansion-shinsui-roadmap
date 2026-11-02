@@ -450,7 +450,7 @@ details.card > summary { font-size: 15px; font-weight: 600; cursor: pointer; }
 }
 
 @media print {
-  .stage-tabs, .why-bar, .stage-next, .stage-empty, .top-banner, .chat, .chat-toggle, .stages > .stage > .card, .stage1-grid, .stage2-grid { display: none !important; }
+  .app-header, .stage-tabs, .why-bar, .stage-next, .stage-empty, .top-banner, .chat, .chat-toggle, .stages > .stage > .card, .stage1-grid, .stage2-grid { display: none !important; }
   .stage { display: block !important; }
   .stage[data-stage="1"], .stage[data-stage="2"], .stage[data-stage="4"] { display: none !important; }
   .stages { max-width: none; margin: 0; padding: 0; }
@@ -463,3 +463,12 @@ details.card > summary { font-size: 15px; font-weight: 600; cursor: pointer; }
 #sheet-front div:not(#sheet-measures) > .slim-table td:first-child,
 #sheet-front div:not(#sheet-measures) > .slim-table td:nth-child(2),
 #sheet-front div:not(#sheet-measures) > .slim-table td:last-child { width: auto; white-space: nowrap; }
+
+/* API キーの保存欄 */
+.claude-box { max-width: 460px; }
+.key-form { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 4px; font-size: 12px; }
+.key-form[hidden] { display: none; }
+.key-form label { font-weight: 600; }
+.key-form input { flex: 1 1 140px; min-width: 0; padding: 3px 6px; border: 1px solid var(--ink-muted); border-radius: 4px; font-size: 12px; }
+.key-form button { padding: 3px 10px; font-size: 12px; }
+.app-header .key-note { flex-basis: 100%; font-size: 11px; }

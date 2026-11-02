@@ -550,17 +550,56 @@ window.addEventListener("model3d-ready", () => {
   if (App.building) App.loadModel();
 });
 
+function renderClaudeStatus(status) {
+  document.getElementById("claude-status").textContent = status.claude
+    ? `Claude の API に接続する設定です（${status.key_source === "env" ? "環境変数のキー" : "保存したキー"}）。`
+    : "API キーが未設定です。Claude を使う所は、説明カードやプログラムの定型文で動きます（画面にその旨を出します）。";
+}
+
 async function showClaudeStatus() {
   try {
     const response = await fetch("/api/status");
-    const status = await response.json();
-    document.getElementById("claude-status").textContent = status.claude
-      ? "Claude の API に接続する設定です。"
-      : "API キーが未設定です。Claude を使う所は、説明カードやプログラムの定型文で動きます（画面にその旨を出します）。";
+    renderClaudeStatus(await response.json());
   } catch (error) {
     // 表示できなくても動く。
   }
 }
+
+// API キーの保存欄。localhost で開いているときだけ出す。
+(() => {
+  const form = document.getElementById("key-form");
+  const input = document.getElementById("key-input");
+  const note = document.getElementById("key-note");
+  if (!["localhost", "127.0.0.1"].includes(location.hostname)) return;
+  form.hidden = false;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const key = input.value;
+    input.value = "";
+    if (!key.trim()) {
+      note.textContent = "キーが入っていません。";
+      return;
+    }
+    try {
+      const response = await fetch("/api/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        note.textContent = body.error;
+        return;
+      }
+      renderClaudeStatus(body);
+      note.textContent = body.key_source === "env"
+        ? "保存しました。環境変数のキーがあるので、そちらを優先して使います。"
+        : "保存しました。";
+    } catch (error) {
+      note.textContent = "保存できませんでした。サーバーが動いているか確かめてください。";
+    }
+  });
+})();
 
 // 建物の質問。「分からない」も答えとして受ける。
 const QuestionPanel = (() => {

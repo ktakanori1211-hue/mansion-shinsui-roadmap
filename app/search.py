@@ -148,7 +148,7 @@ def _claude_infer(query: str) -> Optional[dict]:
     if not claude.available():
         return None
     try:
-        response = claude.create([{"role": "user", "content": query}], SYSTEM_INFER, max_tokens=1000, effort="low", schema=_INFER_SCHEMA)
+        response = claude.create([{"role": "user", "content": query}], SYSTEM_INFER, max_tokens=4000, effort="low", schema=_INFER_SCHEMA)
         return claude.json_of(response)
     except claude.ClaudeUnavailable:
         return None

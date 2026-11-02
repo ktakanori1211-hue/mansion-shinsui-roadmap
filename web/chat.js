@@ -28,13 +28,16 @@
     toggle.hidden = false;
   });
 
+  let waiting = null;
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = input.value.trim();
-    if (!text) return;
+    // 答えの順番が入れ替わらないよう、答えが返るまで次を受けない。
+    if (!text || waiting) return;
     input.value = "";
     add("user", text);
-    const waiting = element("div", "考えています。", "chat-message chat-wait");
+    waiting = element("div", "考えています。", "chat-message chat-wait");
     log.append(waiting);
     try {
       const response = await fetch("/api/chat", {
@@ -44,11 +47,13 @@
       });
       const result = await response.json();
       waiting.remove();
+      waiting = null;
       add("assistant", result.text, [SOURCE_NAMES[result.source], result.notice].filter(Boolean).join("　"));
       history.push({ role: "user", content: text }, { role: "assistant", content: result.text });
       (result.actions || []).forEach((action) => App.applyAction(action));
     } catch (error) {
       waiting.remove();
+      waiting = null;
       add("assistant", "接続できませんでした。");
     }
   });
