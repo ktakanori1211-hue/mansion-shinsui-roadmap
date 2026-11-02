@@ -7,28 +7,36 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {"imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }}
+  </script>
 </head>
 <body>
   <header class="app-header">
     <h1>マンション浸水ロードマップ</h1>
     <p>浸水のあとに住み続けられるマンションか。住所と手元の情報から、理事会に出せるA4一枚を作ります。</p>
+    <p class="claude-status" id="claude-status"></p>
   </header>
 
   <main class="workspace">
     <section class="steps" aria-label="入力">
       <ol class="step-list">
         <li class="step" id="step-address" data-state="current">
-          <h2><span class="step-number">1</span>住所</h2>
+          <h2><span class="step-number">1</span>住所かマンション名</h2>
           <div class="step-body">
             <form id="address-form">
-              <label for="address">マンションの住所(町丁まで)</label>
+              <label for="address">マンションの住所 または マンション名</label>
               <input id="address" name="address" type="text" autocomplete="off"
-                     placeholder="例：東京都江東区大島2丁目">
-              <p class="hint">都道府県、市区町村(区を含む)、町丁まで入れてください。</p>
-              <button type="submit" class="primary">立地を調べる</button>
+                     placeholder="例：千葉市幸町 〇〇マンション">
+              <p class="hint">「調べる」を押したときに1回だけ、国土地理院とOpenStreetMapで探します。入れた言葉はその検索に使います。</p>
+              <button type="submit" class="primary">調べる</button>
             </form>
+            <div class="candidates" id="candidates" hidden></div>
             <div class="demo" id="demo-points" hidden>
-              <p class="hint">デモの地点(設備は架空の設定です)</p>
+              <p class="hint">架空の見本（建物はどれも架空です）</p>
               <div class="demo-buttons" id="demo-buttons"></div>
             </div>
             <p class="error" id="address-error" role="alert" hidden></p>
@@ -42,21 +50,25 @@
           </div>
         </li>
 
-        <li class="step" data-state="waiting">
-          <h2><span class="step-number">3</span>建物の質問と書類</h2>
-          <div class="step-body"><p class="hint">この段はこれから作ります。</p></div>
+        <li class="step" id="step-building" data-state="waiting">
+          <h2><span class="step-number">3</span>建物の図面と書類</h2>
+          <div class="step-body" id="building-body">
+            <p class="hint">立地が出ると、ここで図面と書類を入れられます。</p>
+          </div>
         </li>
 
-        <li class="step" data-state="waiting">
-          <h2><span class="step-number">4</span>確認</h2>
-          <div class="step-body"><p class="hint">この段はこれから作ります。</p></div>
+        <li class="step" id="step-result" data-state="waiting">
+          <h2><span class="step-number">4</span>何が止まるか</h2>
+          <div class="step-body" id="result-body">
+            <p class="hint">建物の情報が入ると、止まるものの判定が出ます。</p>
+          </div>
         </li>
       </ol>
     </section>
 
-    <section class="preview" aria-label="地図とA4一枚の表示">
-      <section class="map-card" id="map-card" aria-label="地図" hidden>
-        <h2>地図（国のハザードマップをそのまま重ねています）</h2>
+    <section class="preview" aria-label="地図、模型、試算、A4一枚">
+      <section class="map-card card" id="map-card" aria-label="地図" hidden>
+        <h2>第1段階：地図（国のハザードマップをそのまま重ねています）</h2>
         <div class="layer-choices" id="layer-choices" role="radiogroup" aria-label="重ねる地図"></div>
         <div id="map" class="map"></div>
         <p class="map-pin-note" id="map-pin-note"></p>
@@ -64,41 +76,83 @@
         <div class="map-legend" id="map-legend"></div>
       </section>
 
+      <section class="card" id="plan-card" aria-label="平面図" hidden>
+        <h2>第2段階：平面図と確かめる場所</h2>
+        <div class="plan-actions" id="plan-actions"></div>
+        <p class="plan-message" id="plan-message"></p>
+        <div class="plan-stage" id="plan-stage" hidden>
+          <img id="plan-image" alt="読み込んだ平面図">
+          <div class="plan-pins" id="plan-pins"></div>
+        </div>
+        <div class="pin-card" id="pin-card" hidden></div>
+        <div id="plan-rooms"></div>
+      </section>
+
+      <section class="card" id="model-card" aria-label="3Dの模型" hidden>
+        <h2>第2段階：もしこの位置まで水が来たら</h2>
+        <p class="model-fixed strong" id="model-fixed-top"></p>
+        <div class="model-controls">
+          <fieldset class="control-group"><legend>水の位置</legend><div id="water-controls"></div></fieldset>
+          <fieldset class="control-group"><legend>対策</legend><div id="measure-controls"></div></fieldset>
+        </div>
+        <p class="tr-note" id="tr-note"></p>
+        <div class="model-layout">
+          <div class="model-view" id="model-view"><p class="hint model-fail" id="model-fail" hidden></p></div>
+          <div class="chain" id="chain"></div>
+        </div>
+        <div class="model-focus-buttons" id="focus-buttons"></div>
+        <div class="fixed-block" id="model-fixed"></div>
+        <div class="table-scroll"><div id="timeline"></div></div>
+        <div class="fixed-block" id="timeline-below"></div>
+      </section>
+
+      <section class="card" id="sim-card" aria-label="試算" hidden>
+        <h2>第4段階：対策を選ぶと、桁と決め方と補助が変わります</h2>
+        <div id="sim-body"></div>
+      </section>
+
+      <section class="card" id="consult-card" aria-label="相談" hidden>
+        <h2>第4段階：次の一歩</h2>
+        <button type="button" class="primary" id="consult-button">専門家に調査・見積もりを相談する</button>
+        <p class="hint">押すと、この画面の内容から文書を作ります。この道具から外へは送りません。</p>
+        <div id="consult-body"></div>
+      </section>
+
       <div class="preview-bar">
-        <span>A4一枚(作成中)</span>
-        <button type="button" id="print-button">印刷</button>
+        <span>第3段階：A4一枚（おもて・裏・別紙）と依頼メモ</span>
+        <button type="button" id="print-button">印刷（PDFに保存もできます）</button>
       </div>
 
-      <article class="sheet">
+      <article class="sheet" id="sheet-front">
         <p class="sheet-face">おもて(事前)</p>
         <p class="sheet-address" id="sheet-address">住所：まだ入っていません</p>
         <h2 class="sheet-headline">水が引いた翌朝、この建物は何日で水が出るか</h2>
-        <p class="placeholder">建物の情報が入ると、ここに一行目が出ます。</p>
+        <div id="sheet-top"><p class="placeholder">建物の情報が入ると、ここに一行目が出ます。</p></div>
 
         <h3>どこから水が来るか</h3>
         <div id="sheet-location"><p class="placeholder">住所を入れると、公開データの値が出ます。</p></div>
 
         <h3>何が止まるか</h3>
-        <p class="placeholder">建物の質問と書類から埋まります。</p>
+        <div id="sheet-equipment"><p class="placeholder">建物の図面と書類から埋まります。</p></div>
 
         <h3>いくらで、誰が決めるか</h3>
-        <p class="placeholder">確かめた内容に応じて、費用の桁と決める場が並びます。</p>
+        <div id="sheet-measures"><p class="placeholder">確かめた内容に応じて、費用の桁と決める場が並びます。</p></div>
 
         <h3>大雨が近づいたら</h3>
-        <p class="placeholder">どの合図で誰が何をするかが出ます。</p>
+        <div id="sheet-rain"><p class="placeholder">どの合図で誰が何をするかが出ます。</p></div>
       </article>
 
-      <article class="sheet">
+      <article class="sheet" id="sheet-back">
         <p class="sheet-face">裏(事後)</p>
 
         <h3>水が来ている間と、水が引いた翌朝</h3>
-        <p class="placeholder">誰がどの順で何をし、誰に連絡するかが出ます。</p>
+        <div id="sheet-during"><p class="placeholder">誰がどの順で何をし、誰に連絡するかが出ます。</p></div>
 
         <h3>何日で戻るか</h3>
-        <p class="placeholder">ほかの建物の例と一般的な目安を、出典つきで出します。</p>
+        <div id="sheet-days"><p class="placeholder">ほかの建物の例と一般的な目安を、出典つきで出します。</p></div>
 
         <h3>電気主任技術者の方へ</h3>
-        <p class="placeholder">確認していただく項目が出ます。</p>
+        <div id="sheet-engineer"><p class="placeholder">確認していただく項目が出ます。</p></div>
 
         <section class="disclaimer" aria-label="この一枚について">
           <h3>この一枚について</h3>
@@ -117,12 +171,38 @@
         <h3>どこから水が来るか</h3>
         <div id="sheet-basis-rows"></div>
       </article>
+
+      <article class="sheet" id="sheet-memo" hidden>
+        <p class="sheet-face">依頼メモ（未確認を、確認する先ごとに）</p>
+        <p class="sheet-address" id="sheet-memo-address"></p>
+        <div id="sheet-memo-body"></div>
+      </article>
     </section>
   </main>
 
+  <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
+  <aside class="chat" id="chat" aria-label="AIに相談" hidden>
+    <div class="chat-head">
+      <strong>AIに相談する</strong>
+      <button type="button" id="chat-close">閉じる</button>
+    </div>
+    <p class="chat-fixed">浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入りません。予報ではありません。</p>
+    <div class="chat-log" id="chat-log" aria-live="polite"></div>
+    <form id="chat-form">
+      <input id="chat-input" type="text" autocomplete="off" aria-label="質問" placeholder="例：ケーブルを通す壁の穴ってどういうこと？">
+      <button type="submit" class="primary">送る</button>
+    </form>
+  </aside>
+
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="map.js"></script>
   <script src="app.js"></script>
+  <script src="plan.js"></script>
+  <script src="panels.js"></script>
+  <script src="sim.js"></script>
+  <script src="chat.js"></script>
+  <script type="module" src="model3d.js"></script>
 </body>
 </html>

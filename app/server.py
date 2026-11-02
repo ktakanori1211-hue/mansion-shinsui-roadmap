@@ -8,14 +8,16 @@ import urllib.parse
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from . import judge, location, records, state
+from . import assistant, building, claude, judge, location, records, samples, search, state
 
+MAX_BODY_BYTES = 45 * 1024 * 1024  # 32MB の PDF を base64 にした大きさ
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
-# デモの 2 地点。画面に区名を出さないため、住所検索を通さず町丁の代表点の座標を持つ。
+# デモの 3 地点。画面に区名を出さないため、住所検索を通さず町丁の代表点の座標を持つ。
 DEMO_POINTS = {
-    "saiwaicho": {"label": "千葉市 幸町2丁目", "longitude": 140.091583, "latitude": 35.621826},
-    "ryokuen": {"label": "横浜市 緑園3丁目", "longitude": 139.519836, "latitude": 35.441181},
+    "saiwaicho": {"label": "千葉市 幸町2丁目", "longitude": 140.091583, "latitude": 35.621826, "sample": "a"},
+    "ryokuen": {"label": "横浜市 緑園3丁目", "longitude": 139.519836, "latitude": 35.441181, "sample": "b"},
+    "oshima": {"label": "東京都 江東区大島2丁目", "longitude": 139.822372, "latitude": 35.691696, "sample": "c"},
 }
 
 
@@ -39,12 +41,26 @@ def build_state(label: str, longitude: float, latitude: float, basis: str, is_de
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/location":
             self._location(urllib.parse.parse_qs(parsed.query))
         elif parsed.path == "/api/demo-points":
-            self._send_json(200, [{"id": key, "label": p["label"]} for key, p in DEMO_POINTS.items()])
+            self._send_json(
+                200,
+                [
+                    {"id": key, "label": samples.SAMPLES[p["sample"]]["button"], "sample": p["sample"], "kind": samples.SAMPLES[p["sample"]]["kind"]}
+                    for key, p in DEMO_POINTS.items()
+                ],
+            )
+        elif parsed.path == "/api/status":
+            self._send_json(200, {"claude": claude.available()})
+        elif parsed.path == "/api/search":
+            self._search(urllib.parse.parse_qs(parsed.query))
         else:
             super().do_GET()
 
@@ -57,7 +73,8 @@ class Handler(SimpleHTTPRequestHandler):
                 label, point = demo["label"], demo
             elif "longitude" in query:
                 label, point = address, parse_pin(query)
-                basis = state.BUILDING
+                if query.get("pin", [""])[0] == "1":
+                    basis = state.BUILDING
             elif address:
                 label, point = address, location.geocode(address)
             else:
@@ -66,6 +83,40 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(422, {"error": str(error)})
             return
         self._send_json(200, build_state(label, point["longitude"], point["latitude"], basis, bool(demo)))
+
+    def _search(self, query: dict):
+        try:
+            self._send_json(200, search.search(query.get("q", [""])[0]))
+        except location.AddressError as error:
+            self._send_json(422, {"error": str(error)})
+
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY_BYTES:
+            self._send_json(413, {"error": "ファイルが大きすぎます。32MB 以下にしてください。"})
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            self._send_json(400, {"error": "送られた内容を読めませんでした。"})
+            return
+        if path == "/api/building":
+            sample = samples.get(body.get("sample_id"))
+            if not sample:
+                self._send_json(404, {"error": "見本が見つかりません。"})
+                return
+            self._send_json(200, building.building_payload(sample, body.get("confirmed") or [], body.get("location_rows") or []))
+        elif path == "/api/plan":
+            self._send_json(200, assistant.read_plan(body))
+        elif path == "/api/report":
+            self._send_json(200, assistant.read_report(body.get("text", "")))
+        elif path == "/api/chat":
+            self._send_json(200, assistant.chat(body.get("message", ""), body.get("history") or [], body.get("context") or {}))
+        elif path == "/api/consult":
+            self._send_json(200, assistant.consult(body))
+        else:
+            self._send_json(404, {"error": "見つかりません。"})
 
     def _send_json(self, status: int, body) -> None:
         payload = json.dumps(body, ensure_ascii=False).encode("utf-8")

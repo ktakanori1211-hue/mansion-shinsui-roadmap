@@ -28,10 +28,207 @@ const FIXED_NOTES = [
 const VERDICT_LEGEND = [
   ["risk", "リスクあり（確定）", "公開データと入力で確定したもの"],
   ["unconfirmed", "未確認（調査が必要）", "まだ分からないもの。危険という意味ではありません"],
-  ["clear", "問題なし", "五つの項目がそろって当たらなかったもの"],
+  ["clear", "問題なし", "確かめた結果、当たらなかったもの"],
 ];
 
 let currentLabel = "";
+
+// 画面どうしが共有する状態。判定はサーバーが返したものだけを読む。
+const App = {
+  sampleId: null,
+  locationState: null,
+  building: null,
+  confirmed: [],
+  water: 3,
+  measure: "plate",
+
+  roomName(key) {
+    return { elec: "電気室（受電の箱の部屋）", pump: "ポンプの部屋", panel_room: "おおもとのスイッチ盤の部屋", tank: "地下の貯留タンク", gen: "非常用発電機の部屋", park: "機械式駐車場の掘り込み", slope: "車路スロープ" }[key] || key;
+  },
+
+  async loadBuilding() {
+    const response = await fetch("/api/building", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sample_id: this.sampleId, confirmed: this.confirmed, location_rows: this.locationState.location.rows }),
+    });
+    this.building = await response.json();
+  },
+
+  async startBuilding() {
+    this.confirmed = [];
+    this.water = 3;
+    this.measure = "plate";
+    await this.loadBuilding();
+    document.getElementById("plan-card").hidden = false;
+    document.getElementById("model-card").hidden = false;
+    document.getElementById("sim-card").hidden = false;
+    document.getElementById("consult-card").hidden = false;
+    document.getElementById("chat-toggle").hidden = !document.getElementById("chat").hidden;
+    document.getElementById("plan-stage").hidden = true;
+    document.getElementById("plan-message").textContent = "";
+    document.getElementById("plan-rooms").replaceChildren();
+    document.getElementById("pin-card").hidden = true;
+    document.getElementById("consult-body").replaceChildren();
+    document.getElementById("step-building").dataset.state = "current";
+    this.renderBuildingStep();
+    PlanPanel.offerSample();
+    SimPanel.reset();
+    ModelPanel.renderControls();
+    this.loadModel();
+    this.refresh();
+  },
+
+  renderBuildingStep() {
+    const sample = this.building.sample;
+    const body = document.getElementById("building-body");
+    const report = document.createElement("textarea");
+    report.id = "report-input";
+    report.rows = 5;
+    report.setAttribute("aria-label", "点検報告書の文");
+    const load = element("button", "架空の点検報告書を読み込む");
+    load.type = "button";
+    load.addEventListener("click", async () => {
+      report.value = await (await fetch(sample.report)).text();
+    });
+    const read = element("button", "書類を読む", "primary");
+    read.type = "button";
+    const found = element("div", undefined, "report-found");
+    read.addEventListener("click", async () => {
+      const response = await fetch("/api/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: report.value }) });
+      const result = await response.json();
+      found.replaceChildren(element("p", result.message, "hint"));
+      const list = element("ul", undefined, "row-details");
+      result.findings.forEach((item) => list.append(element("li", `「${item.word}」→ ${item.item}：${item.effect}`)));
+      found.append(list);
+    });
+    body.replaceChildren(
+      element("p", `${sample.name}　${sample.floors}階建て ${sample.units}戸（${sample.kind}。建物は架空）`),
+      element("p", "右の「平面図と確かめる場所」で図面を読み込みます。点検報告書はここに貼ります。", "hint"),
+      report,
+      load,
+      read,
+      found,
+    );
+  },
+
+  loadModel() {
+    if (!window.Model3D) return;
+    window.Model3D.load({ ...this.building.sample, confirmedRooms: this.confirmed });
+    this.applyScenario();
+  },
+
+  scenario() {
+    return this.building.scenarios[`${this.water}:${this.measure}`];
+  },
+
+  applyScenario() {
+    const scenario = this.scenario();
+    ModelPanel.render(scenario);
+    if (window.Model3D && !window.Model3D.failed && window.Model3D.sample) {
+      window.Model3D.apply({ water: this.water, measure: this.measure, scenario });
+    }
+  },
+
+  setWater(level) {
+    this.water = level;
+    document.querySelectorAll('input[name="water"]').forEach((node) => {
+      node.checked = Number(node.value) === level;
+    });
+    this.applyScenario();
+  },
+
+  setMeasure(key) {
+    this.measure = key;
+    document.querySelectorAll('input[name="measure"]').forEach((node) => {
+      node.checked = node.value === key;
+    });
+    this.applyScenario();
+  },
+
+  focus(key) {
+    if (window.Model3D && !window.Model3D.failed) window.Model3D.focus(key);
+    ModelPanel.highlightFocus(["elec", "tr", "pump", "ev", "panel_room"].includes(key));
+  },
+
+  selectPin(key) {
+    const pin = (PlanPanel.pins.length ? PlanPanel.pins : this.building.sample.pins).find((item) => item.key === key);
+    if (!pin) return;
+    PlanPanel.showPin(pin);
+    document.getElementById("pin-card").hidden = false;
+    this.focus(pin.focus);
+  },
+
+  verdictForPin(pin) {
+    const byPin = { tr: "tr", pump: "water", elec: "entry", slope: "entry", tank: "tank", panel_room: "power", door: "entry" };
+    const item = this.building.equipment.find((row) => row.key === byPin[pin.target]);
+    return item ? { verdict: item.verdict, label: item.verdict_label } : { verdict: "unconfirmed", label: "未確認（調査が必要）" };
+  },
+
+  afterPlanRead() {
+    document.getElementById("step-result").dataset.state = "current";
+  },
+
+  async setConfirmed(kind, value) {
+    this.confirmed = value ? [...new Set([...this.confirmed, kind])] : this.confirmed.filter((item) => item !== kind);
+    await this.loadBuilding();
+    this.refresh();
+    this.loadModel();
+  },
+
+  refresh() {
+    const rows = this.building.equipment;
+    const body = document.getElementById("result-body");
+    const lead = element("p", this.building.top_line.lead, "top-lead");
+    body.replaceChildren(lead, ...rows.map(screenRow));
+    this.applyScenario();
+    SimPanel.render();
+    SheetPanel.render();
+  },
+
+  chatContext() {
+    if (!this.building) return { sample_id: this.sampleId };
+    return {
+      sample_id: this.building.sample.id,
+      subsidy: this.building.sample.subsidy,
+      name: this.building.sample.name,
+      site: this.locationState.site.label,
+      location: this.locationState.location.rows.map((row) => ({ label: row.label, verdict: row.verdict_label, summary: row.summary, confirm_by: row.confirm_by })),
+      equipment: rowsForChat(this.building.equipment),
+      places: this.building.sample.pins.map((pin) => ({ key: pin.key, title: pin.title, how_water: pin.how_water, check: pin.check, who: pin.who })),
+      water: this.water,
+      measure: this.measure,
+    };
+  },
+
+  applyAction(action) {
+    if (action.type === "focus") this.focus(action.target);
+    if (action.type === "water") this.setWater(action.level);
+    if (action.type === "measure") this.setMeasure(action.key);
+  },
+};
+
+function rowsForChat(rows) {
+  return rows.map((row) => ({ label: row.label, verdict: row.verdict_label, summary: row.summary, confirm_by: row.confirm_by }));
+}
+
+window.App = App;
+window.addEventListener("model3d-ready", () => {
+  if (App.building) App.loadModel();
+});
+
+async function showClaudeStatus() {
+  try {
+    const response = await fetch("/api/status");
+    const status = await response.json();
+    document.getElementById("claude-status").textContent = status.claude
+      ? "Claude の API に接続する設定です。"
+      : "API キーが未設定です。Claude を使う所は、説明カードやプログラムの定型文で動きます（画面にその旨を出します）。";
+  } catch (error) {
+    // 表示できなくても動く。
+  }
+}
+showClaudeStatus();
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -46,7 +243,7 @@ function verdictTag(verdict, label) {
 
 function detailItems(row) {
   const list = element("ul", undefined, "row-details");
-  [...row.records, ...row.details].forEach((line) => list.append(element("li", line)));
+  [...(row.records || []), ...row.details].forEach((line) => list.append(element("li", line)));
   if (row.confirm_by) {
     const item = element("li", undefined, "row-confirm");
     item.append(element("strong", "誰が確かめるか："), row.confirm_by);
@@ -146,6 +343,28 @@ function renderLocation(state) {
   stepAddress.dataset.state = "done";
   stepLocation.dataset.state = "current";
   HazardMap.show(state, mapElements, movePin);
+  App.locationState = state;
+  if (App.sampleId) {
+    App.startBuilding();
+  } else {
+    offerArchetypes();
+  }
+}
+
+// 見本以外の住所では、近い形の見本を借りて説明する。
+function offerArchetypes() {
+  const body = document.getElementById("building-body");
+  body.replaceChildren(element("p", "この建物に近い形を選んでください。見本の形を借りて説明します（架空の建物の図面と設備です）。", "hint"));
+  [["a", "地下に電気室がある中〜大規模"], ["b", "地下がなく設備が1階の小〜中規模"], ["c", "地下設備のタワーマンション"]].forEach(([id, text]) => {
+    const button = element("button", text);
+    button.type = "button";
+    button.addEventListener("click", () => {
+      App.sampleId = id;
+      App.startBuilding();
+    });
+    body.append(button);
+  });
+  document.getElementById("step-building").dataset.state = "current";
 }
 
 function setBusy(busy) {
@@ -192,13 +411,51 @@ async function lookUp(params) {
 }
 
 function movePin(longitude, latitude) {
-  lookUp({ address: currentLabel, longitude, latitude });
+  lookUp({ address: currentLabel, longitude, latitude, pin: 1 });
 }
 
-form.addEventListener("submit", (event) => {
+const candidatesBox = document.getElementById("candidates");
+
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  lookUp({ address: addressInput.value });
+  candidatesBox.hidden = true;
+  addressError.hidden = true;
+  try {
+    const response = await fetch(`/api/search?${new URLSearchParams({ q: addressInput.value })}`);
+    const body = await response.json();
+    if (!response.ok) {
+      showError(body.error);
+      return;
+    }
+    renderCandidates(body.candidates);
+  } catch (error) {
+    showError("サーバーに接続できませんでした。起動しているか確かめてください。");
+  }
 });
+
+function renderCandidates(candidates) {
+  candidatesBox.replaceChildren(element("p", "候補から選んでください。", "hint"));
+  candidates.forEach((candidate) => {
+    const button = element("button", candidate.label, "candidate");
+    button.type = "button";
+    button.append(element("small", `（${candidate.source}）`));
+    button.addEventListener("click", () => {
+      App.sampleId = null;
+      lookUp({ address: candidate.label, longitude: candidate.longitude, latitude: candidate.latitude });
+    });
+    candidatesBox.append(button);
+  });
+  if (candidates.some((candidate) => candidate.source === "OpenStreetMap")) {
+    const credit = element("p", "", "hint");
+    const link = element("a", "© OpenStreetMap contributors");
+    link.href = "https://www.openstreetmap.org/copyright";
+    link.target = "_blank";
+    link.rel = "noopener";
+    credit.append(link);
+    candidatesBox.append(credit);
+  }
+  candidatesBox.hidden = false;
+}
 
 document.getElementById("print-button").addEventListener("click", () => window.print());
 
@@ -210,15 +467,18 @@ async function loadDemoPoints() {
     points.forEach((point) => {
       const button = element("button", point.label);
       button.type = "button";
+      button.title = point.kind;
       button.addEventListener("click", () => {
         addressInput.value = "";
+        candidatesBox.hidden = true;
+        App.sampleId = point.sample;
         lookUp({ demo: point.id });
       });
       buttons.append(button);
     });
     document.getElementById("demo-points").hidden = false;
   } catch (error) {
-    // デモのボタンが出なくても、住所の入力は使える。
+    // 見本のボタンが出なくても、検索は使える。
   }
 }
 

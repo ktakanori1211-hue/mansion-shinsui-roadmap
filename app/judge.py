@@ -167,7 +167,7 @@ def _ground_row(reading: dict, basis: str) -> Row:
             details.append("水の逃げ場がなく、放流先の海や川の水位が高いと排水できなくなることがあります。")
         else:
             headline = f"{place}の標高は{center}mで、くぼ地や低く平らな土地の仮の目安には当たりません。"
-            summary = f"標高{center}m。くぼ地などの仮の目安に当たらず"
+            summary = f"標高{center}m。くぼ地の仮の目安に当たらず"
         points = "、".join(f"{p['label']} {p['elevation_m']}m" for p in elevation["points"][1:])
         details.append(f"周囲{elevation['distance_m']:g}m：{points}")
         details.append("目安と周囲の点の距離は検証前の仮のものです。比べる距離を変えると結果が変わることがあります。")
@@ -251,7 +251,7 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             basis,
             _FLOOD_CONFIRM,
             [],
-            "管理会社が市の洪水の地図で",
+            "管理会社が市の洪水の図で",
         ),
         _hazard_row(
             "inland",
