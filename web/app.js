@@ -19,12 +19,6 @@ const mapElements = {
   pinNote: document.getElementById("map-pin-note"),
 };
 
-// 判定表の免責の固定の文。言い換えず、折りたたまない。
-const FIXED_NOTES = [
-  "浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない",
-  "本シートは予報ではなく、現時点の静的な整理である",
-];
-
 const VERDICT_LEGEND = [
   ["risk", "リスクあり（確定）", "公開データと入力で確定したもの"],
   ["unconfirmed", "未確認（調査が必要）", "まだ分からないもの。危険という意味ではありません"],
@@ -42,8 +36,9 @@ function verdictTag(verdict, label) {
   return element("span", label, `tag tag-${verdict}`);
 }
 
-function detailItems(row) {
+function detailItems(row, lead) {
   const list = element("ul", undefined, "row-details");
+  if (lead) list.append(element("li", lead));
   [...(row.records || []), ...row.details].forEach((line) => list.append(element("li", line)));
   if (row.confirm_by) {
     const item = element("li", undefined, "row-confirm");
@@ -53,18 +48,35 @@ function detailItems(row) {
   return list;
 }
 
-// 一段目は札と結論。二段目は条件と出典で、画面では開いて読む。
-function firstTier(row) {
-  const head = element("div", undefined, "row-head");
-  head.append(verdictTag(row.verdict, row.verdict_label), element("span", row.label, "row-label"));
-  return [head, element("p", row.headline, "row-headline")];
+function fold(title, ...nodes) {
+  const more = element("details", undefined, "fold");
+  more.append(element("summary", title), ...nodes);
+  return more;
 }
 
+// 立地のカード。一段目は大きな値、色つきの札、太字の一行だけ。判定は札のとおりで、色は地図の色の強調。
+function locationCard(row) {
+  const accent = row.accent;
+  const classes = ["loc-card", `loc-${row.verdict}`];
+  if (accent) classes.push(`accent-${accent.kind}`, `accent-${accent.level}`);
+  const card = element("article", undefined, classes.join(" "));
+  const head = element("div", undefined, "loc-head");
+  head.append(element("span", row.label, "loc-label"), verdictTag(row.verdict, row.verdict_label));
+  const face = element("div", undefined, "loc-face");
+  face.append(element("span", row.value, "loc-value"));
+  (accent?.badges || []).forEach((badge) => face.append(element("span", badge, "accent-badge")));
+  const foot = element("div", undefined, "loc-foot");
+  foot.append(element("p", row.conclusion, "loc-line"), fold("条件と出典を開く", detailItems(row, row.headline)));
+  card.append(head, face, foot);
+  return card;
+}
+
+// 何が止まるかのカード。一段目は札と短い一行で、理由と確かめる人は開いて読む。
 function screenRow(row) {
-  const article = element("article", undefined, "row");
-  const more = element("details", undefined, "row-more");
-  more.append(element("summary", "条件と出典、誰が確かめるか"), detailItems(row));
-  article.append(...firstTier(row), more);
+  const article = element("article", undefined, `row row-${row.verdict}`);
+  const head = element("div", undefined, "row-head");
+  head.append(verdictTag(row.verdict, row.verdict_label), element("span", row.label, "row-label"));
+  article.append(head, element("p", row.summary || row.headline, "row-headline"), fold("条件と出典を開く", detailItems(row, row.summary ? row.headline : "")));
   return article;
 }
 
@@ -111,12 +123,6 @@ function verdictLegend() {
   return legend;
 }
 
-function fixedNotes() {
-  const notes = element("div", undefined, "fixed-notes");
-  FIXED_NOTES.forEach((line) => notes.append(element("p", line, "fixed-note")));
-  return notes;
-}
-
 // 画面どうしが共有する状態。判定はサーバーが返したものだけを読む。
 const App = {
   sampleId: null,
@@ -145,6 +151,8 @@ const App = {
       document_read: this.documentRead,
       directions: this.directions,
       low_directions: this.locationState.location.reading.low_directions,
+      high_directions: this.locationState.location.reading.high_directions,
+      basin: this.locationState.location.reading.basin,
       statements: this.statements,
       location_rows: this.locationState.location.rows,
     };
@@ -288,6 +296,7 @@ const App = {
     document.getElementById("top-banner-lead").textContent = building.top_line.lead;
     document.getElementById("top-banner-notes").textContent = building.top_line.notes.join("");
     document.getElementById("top-banner-dir").textContent = building.direction_line;
+    document.getElementById("legal-safety").textContent = this.disclaimerText();
     const body = document.getElementById("result-body");
     const grid = element("div", undefined, "result-grid");
     grid.append(...building.equipment.map(screenRow));
@@ -343,13 +352,9 @@ window.App = App;
 
 function renderLocation(state) {
   const { site, location } = state;
-  locationBody.replaceChildren(
-    verdictLegend(),
-    element("p", location.basis_note, "basis-note"),
-    element("div", undefined, "result-grid"),
-    fixedNotes(),
-  );
-  locationBody.querySelector(".result-grid").append(...location.rows.map(screenRow));
+  locationBody.replaceChildren(...location.rows.map(locationCard), fold("札の見方", verdictLegend()));
+  document.getElementById("legal-basis").textContent = location.basis_note;
+  document.getElementById("legal-basis-box").hidden = false;
   sheetAddress.textContent = `住所：${site.label}`;
   sheetLocation.replaceChildren(
     sheetTable(location.rows),
@@ -457,6 +462,8 @@ function renderCandidates(candidates) {
       App.answers = null;
       App.directions = {};
       showTapStatus();
+      candidatesBox.hidden = true;
+      searchMessage.hidden = true;
       lookUp({ address: candidate.label, longitude: candidate.longitude, latitude: candidate.latitude });
     });
     candidatesBox.append(button);
@@ -525,9 +532,11 @@ async function loadDemoPoints() {
     const points = await response.json();
     const buttons = document.getElementById("demo-buttons");
     points.forEach((point) => {
-      const button = element("button", point.label);
+      const [name, place] = point.label.replace(/^見本/, "").split("／");
+      const button = element("button", undefined, "demo-button");
+      button.append(element("b", `見本${name.slice(0, 1)}`), element("span", place));
       button.type = "button";
-      button.title = point.kind;
+      button.title = `${point.label}（${point.kind}）`;
       button.addEventListener("click", () => {
         addressInput.value = "";
         candidatesBox.hidden = true;
@@ -551,9 +560,21 @@ window.addEventListener("model3d-ready", () => {
 });
 
 function renderClaudeStatus(status) {
-  document.getElementById("claude-status").textContent = status.claude
-    ? `Claude の API に接続する設定です（${status.key_source === "env" ? "環境変数のキー" : "保存したキー"}）。`
-    : "API キーが未設定です。Claude を使う所は、説明カードやプログラムの定型文で動きます（画面にその旨を出します）。";
+  const statusText = document.getElementById("claude-status");
+  const toggle = document.getElementById("key-toggle");
+  const keyForm = document.getElementById("key-form");
+  const local = ["localhost", "127.0.0.1"].includes(location.hostname);
+  if (status.claude) {
+    statusText.textContent = "";
+    toggle.textContent = status.key_source === "env" ? "🟢 Claude API 接続済み（環境変数）" : "🟢 Claude API 接続済み（キーを変更）";
+    toggle.hidden = false;
+    toggle.disabled = !local || status.key_source === "env";
+    keyForm.hidden = true;
+  } else {
+    statusText.textContent = "⚪ API キー未設定（説明カードと定型文で動きます）";
+    toggle.hidden = true;
+    keyForm.hidden = !local;
+  }
 }
 
 async function showClaudeStatus() {
@@ -571,13 +592,16 @@ async function showClaudeStatus() {
   const input = document.getElementById("key-input");
   const note = document.getElementById("key-note");
   if (!["localhost", "127.0.0.1"].includes(location.hostname)) return;
-  form.hidden = false;
+  document.getElementById("key-toggle").addEventListener("click", () => {
+    form.hidden = !form.hidden;
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const key = input.value;
     input.value = "";
     if (!key.trim()) {
       note.textContent = "キーが入っていません。";
+      note.classList.add("show");
       return;
     }
     try {
@@ -589,14 +613,18 @@ async function showClaudeStatus() {
       const body = await response.json();
       if (!response.ok) {
         note.textContent = body.error;
+        note.classList.add("show");
         return;
       }
+      note.classList.add("show");
       renderClaudeStatus(body);
+      form.hidden = false;
       note.textContent = body.key_source === "env"
         ? "保存しました。環境変数のキーがあるので、そちらを優先して使います。"
         : "保存しました。";
     } catch (error) {
       note.textContent = "保存できませんでした。サーバーが動いているか確かめてください。";
+      note.classList.add("show");
     }
   });
 })();

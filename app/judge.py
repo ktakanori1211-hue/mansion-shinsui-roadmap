@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import List, Optional
 
 from .state import BUILDING, CLEAR, REPRESENTATIVE, RISK, UNCONFIRMED, Row
@@ -80,6 +81,39 @@ def _short_status(hazard: dict) -> str:
 
 _LAYER_SHORT = {"flood_planned": "計画規模", "flood_max": "想定最大"}
 
+# 地図の凡例を深い順に並べたもの。カードの色の強さに使う。判定には使わない。
+_LEGEND_DEPTH = ["20m〜", "10m〜20m", "5m〜10m", "3m〜5m", "0.5m〜3m", "0.5m〜1m", "〜0.5m", "〜0.3m"]
+# 水に関わる説明がある地形分類のうち、カードで強調する名前。
+_ACCENT_LANDFORM = re.compile(r"旧水部|低地|盛土|埋立|旧河道|凹地|干拓")
+
+
+def _deepest(legends: List[str]) -> str:
+    return min(legends, key=lambda legend: _LEGEND_DEPTH.index(legend) if legend in _LEGEND_DEPTH else len(_LEGEND_DEPTH))
+
+
+def _legend_level(legend: str) -> str:
+    index = _LEGEND_DEPTH.index(legend) if legend in _LEGEND_DEPTH else len(_LEGEND_DEPTH)
+    return "high" if index <= 3 else "mid"
+
+
+def _hazard_face(hazards: List[dict]) -> tuple:
+    """カードの一段目（大きな値、太字の一行、強調）。判定は変えない。"""
+    colored = [h for h in hazards if h["status"] == "color"]
+    nearby = [h for h in hazards if h.get("nearby_legend")]
+    if colored:
+        legend = _deepest([h["legend"] for h in colored])
+        where = next(h for h in colored if h["legend"] == legend)
+        line = f"{_LAYER_SHORT[where['key']]}の想定に色あり" if len(hazards) > 1 else "想定に色あり"
+        return legend, line, {"kind": "hazard", "level": _legend_level(legend), "badges": ["ハザード着色あり"]}
+    if nearby:
+        legend = _deepest([h["nearby_legend"] for h in nearby])
+        return legend, "ピンの点に色はなく、数m先に色あり", {"kind": "nearby", "level": "low", "badges": ["すぐ近くに色あり"]}
+    if all(h["status"] == "no_color" for h in hazards):
+        return "色なし", "色がないことは安全という意味ではありません", None
+    if any(h["status"] == "no_color" for h in hazards):
+        return "一部データなし", "色があるかどうかを確かめます", None
+    return "データなし", "色があるかどうかも分かりません", None
+
 
 def _hazard_summary(hazards: List[dict]) -> str:
     if len(hazards) == 1:
@@ -109,6 +143,7 @@ def _hazard_row(
     details.extend(extra)
     details.append(HAZARD_SOURCE)
     open_item = verdict != RISK
+    value, conclusion, accent = _hazard_face(hazards)
     return Row(
         key,
         label,
@@ -118,6 +153,9 @@ def _hazard_row(
         confirm if open_item else None,
         summary=_hazard_summary(hazards),
         confirm_short=confirm_short if open_item else None,
+        value=value,
+        conclusion=conclusion,
+        accent=accent,
     )
 
 
@@ -152,27 +190,43 @@ def _ground_row(reading: dict, basis: str) -> Row:
     place = _place(basis)
     details = []
     summary = "標高のデータが一部取れず"
+    value = "データなし"
+    conclusion = "標高のデータが一部取れていません"
+    badges = []
     if center is None or None in around:
         headline = f"{place}と周囲の標高のデータが、一部取れていません。"
         details.append("標高が取れないので、くぼ地の目安を当てられません。")
     else:
         shape = _ground_shape(center, around)
+        value = f"標高{center}m"
         if shape == "depression":
             headline = f"{place}の標高は{center}mで、周囲より低く、水がたまるくぼ地の仮の目安に当たります。"
             summary = f"標高{center}m。くぼ地の仮の目安に当たる"
+            conclusion = "くぼ地の仮の目安に当たる"
+            badges.append("くぼ地の目安")
             details.append("くぼ地では、地表から入る水だけでなく、建物の排水口や雨水ますから水が上がってくる経路もありえます。起きるかどうかは判定していません。")
         elif shape == "flat_low":
             headline = f"{place}の標高は{center}mで、低く平らな土地の仮の目安に当たります。"
             summary = f"標高{center}m。低く平らな土地の仮の目安に当たる"
+            conclusion = "低く平らな土地の仮の目安に当たる"
+            badges.append("低く平らな土地の目安")
             details.append("水の逃げ場がなく、放流先の海や川の水位が高いと排水できなくなることがあります。")
         else:
             headline = f"{place}の標高は{center}mで、くぼ地や低く平らな土地の仮の目安には当たりません。"
             summary = f"標高{center}m。くぼ地の仮の目安に当たらず"
+            conclusion = "くぼ地の仮の目安に当たらず"
+        if reading.get("basin"):
+            high = "・".join(reading.get("high_directions") or [])
+            summary = f"{summary}。周囲（{high}）より低い形"
+            conclusion = f"周囲（{high}）より低い形"
+            badges.insert(0, "周囲より低い凹み（目安）")
+            details.append(f"50m先の点では、周囲（{high}）の方がピンより高く、低い向きの点がありません。地図の標高データの目安で、雨や浸水の深さの予測ではありません。")
         points = "、".join(f"{p['label']} {p['elevation_m']}m" for p in elevation["points"][1:])
         details.append(f"周囲{elevation['distance_m']:g}m：{points}")
         details.append("目安と周囲の点の距離は検証前の仮のものです。比べる距離を変えると結果が変わることがあります。")
     details.append("標高は地図の標高データの値で、敷地を測ったものではありません。")
     names = _landform_names(reading["landforms"])
+    badges.extend(f"地形分類：{name}" for name in names if _ACCENT_LANDFORM.search(name))
     if names:
         joined = "』『".join(names)
         details.append(f"国の地形分類で『{joined}』にあたる地域です（国土地理院。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません）。")
@@ -180,6 +234,8 @@ def _ground_row(reading: dict, basis: str) -> Row:
     return Row(
         "ground", "敷地の高低差", UNCONFIRMED, headline, details, _GROUND_CONFIRM,
         summary=summary, confirm_short="管理会社が履歴と管理員の記録で",
+        value=value, conclusion=conclusion,
+        accent={"kind": "terrain", "level": "mid", "badges": badges} if badges else None,
     )
 
 
@@ -203,6 +259,8 @@ def _record_row(record: Optional[dict]) -> Row:
             _RECORD_CONFIRM,
             summary="手元の表に未収録",
             confirm_short="管理会社から市区町村へ照会",
+            value="未収録",
+            conclusion="管理会社から市区町村へ照会します",
         )
     rows = record["rows"]
     source = f"出典：{record['source']}（読み取った事実を加工して作成）"
@@ -216,6 +274,8 @@ def _record_row(record: Optional[dict]) -> Row:
             _RECORD_CONFIRM,
             summary="同じ町丁の記録は見当たらず",
             confirm_short="管理会社から市区町村へ照会",
+            value="記録なし",
+            conclusion="記録がないことは、浸水がなかったことを示しません",
         )
     dates = len({date for date, _, _ in rows})
     amount = f"{len(rows)}行、日付は{dates}つ" if len(rows) > 1 else "1行"
@@ -226,6 +286,7 @@ def _record_row(record: Optional[dict]) -> Row:
     return Row(
         "record", "市の浸水の記録", RISK, headline, details, record["confirm_by"], records=lines,
         summary=f"同じ丁目に記録あり（{amount}）", confirm_short="深さは管理会社が確かめる",
+        value=f"記録{len(rows)}行", conclusion="同じ丁目に浸水の記録あり",
     )
 
 

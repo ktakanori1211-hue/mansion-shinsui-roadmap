@@ -40,7 +40,7 @@ WATER_LEVELS = [
 ]
 
 ACTIONS_MORNING = "電気室などに水が残っていたら、電気室・借室・ポンプ室・EV ピットに立ち入りません。東京電力パワーグリッドが電気を切り離し、主任技術者が、水に触れずに近づけて安全と判断したときに、マンション側の受電の箱の、電気の入口側で最初のスイッチを切ります。管理員か理事長は、その二つを主任技術者に確かめてから排水を始めます。マンション側の電気を戻すかは、点検と電気の安全確認のあとで主任技術者が判断します。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
-ACTIONS_MORNING_NO_ENGINEER = "部屋などに水が残っていたら、東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません。管理員か理事長は、東京電力パワーグリッドに電話で切り離しを確かめます。盤の部屋を見に行って確かめません。電気工事の業者が、排水を始めてよいと答えてから排水を始めます。マンション側の盤に電気を戻すかは、点検のあとで電気工事の業者と決めます。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
+ACTIONS_MORNING_NO_ENGINEER = "部屋などに水が残っていたら、東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません。管理員か理事長は、東京電力パワーグリッドに電話で切り離しを確かめます。盤の部屋を見に行って確かめません。電気工事の業者に電気が切れていて排水を始めてよいと確かめたうえで、管理組合が排水を始めます。マンション側の盤に電気を戻すかは、点検のあとで電気工事の業者と決めます。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
 ACTIONS_DAY = "管理員か理事長が主任技術者に連絡します。遮断するかは主任技術者が判断し、操作は主任技術者の指示で、電気室の外から、または水に触れずにできるときだけ行います。扉を開けて中に入って操作しません。外から切れないときは電気室に入らず、主任技術者と東京電力パワーグリッドに連絡し、引込みの停止を頼みます。遮断は、在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡とあわせて行います。浸水中は電気室・借室・ポンプ室・EV ピットに立ち入りません"
 ACTIONS_DAY_NO_ENGINEER = "管理員か理事長が東京電力パワーグリッドと管理会社に連絡します。この建物に主任技術者はいません。盤の部屋に入って電気を切りません。在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡をあわせて行います。浸水中は東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません"
 ACTIONS_BEFORE = "警戒レベル3で車を上へ、レベル4で止水板と土のうを出します。合図は自治体や気象庁が出す警戒レベルです"
@@ -672,19 +672,22 @@ def scenarios(sample: dict) -> dict:
     }
 
 
-def direction_line(directions: dict, low: List[str], sample: dict) -> str:
+def direction_line(directions: dict, low: List[str], sample: dict, high: Optional[List[str]] = None, basin: bool = False) -> str:
     """土地の低い向きと建物の入口を掛け合わせる一文。向きは答えと地図の目安で、測ったものではない。"""
     parts = []
+    lead = ""
+    if basin and high:
+        lead = f"周囲（{'・'.join(high)}）の方が高く、この場所に向かって水が集まりやすい凹み（低い土地）の形です（地図の標高データの目安）。"
     if low:
         parts.append(f"周囲より低い向きの目安は{'・'.join(low)}")
     if directions.get("water"):
         parts.append(f"水が来そうな側は{directions['water']}（指定）")
     if directions.get("door"):
         parts.append(f"電気室の扉の側は{directions['door']}（指定）")
-    if not parts:
-        return ""
     entrances = "スロープ、扉、歩道ぎわの蓋" if sample["underground_feed"] else "坂の下の側の扉、足元の換気口"
-    return "、".join(parts) + f"。その向きに{entrances}があれば、先に確かめます。"
+    if not parts:
+        return f"{lead}{entrances}の高さを先に確かめます。" if lead else ""
+    return lead + "、".join(parts) + f"。その向きに{entrances}があれば、先に確かめます。"
 
 
 def building_payload(
@@ -695,6 +698,8 @@ def building_payload(
     directions: Optional[dict] = None,
     low_directions: Optional[List[str]] = None,
     statements: Optional[List[str]] = None,
+    high_directions: Optional[List[str]] = None,
+    basin: bool = False,
 ) -> dict:
     location_risk = any(row["verdict"] == "risk" for row in location_rows)
     equipment = judge_equipment(sample, confirmed, location_risk, document_read)
@@ -707,7 +712,7 @@ def building_payload(
         "measures": visible_measures(sample, equipment),
         "subsidies": samples.SUBSIDIES,
         "memos": memos(sample, equipment, location_rows, statements or []),
-        "direction_line": direction_line(directions or {}, low_directions or [], sample),
+        "direction_line": direction_line(directions or {}, low_directions or [], sample, high_directions, basin),
         "statements": statements or [],
         "chain": chain_nodes(sample),
         "water_levels": WATER_LEVELS,

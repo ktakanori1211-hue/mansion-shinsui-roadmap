@@ -3,7 +3,7 @@
 import re
 import unittest
 
-from app import judge, records, state
+from app import judge, location, records, state
 from app.location import HAZARD_LEGEND, AddressError, nearest_legend
 from app.server import parse_pin
 
@@ -190,6 +190,86 @@ class NearestLegendTest(unittest.TestCase):
     def test_ignores_color_beyond_radius(self):
         rgb = next(iter(HAZARD_LEGEND))
         self.assertIsNone(nearest_legend(self.FakeImage(120, 100, rgb), 100, 100))
+
+
+
+class CardFaceTest(unittest.TestCase):
+    """カードの一段目の飾り。判定は変えない。"""
+
+    def rows(self, data, basis=state.REPRESENTATIVE):
+        return {row.key: row for row in judge.judge_location(data, basis, None)}
+
+    def test_color_at_a_representative_point_is_accented_but_stays_unconfirmed(self):
+        data = reading({"flood_max": hazard("flood_max", "color", "3m〜5m")})
+        row = self.rows(data)["flood"]
+        self.assertEqual(row.verdict, state.UNCONFIRMED)
+        self.assertEqual(row.value, "3m〜5m")
+        self.assertEqual(row.accent["badges"], ["ハザード着色あり"])
+        self.assertEqual(row.accent["level"], "high")
+
+    def test_deepest_color_is_the_big_value(self):
+        data = reading({"flood_planned": hazard("flood_planned", "color", "0.5m〜3m"), "flood_max": hazard("flood_max", "color", "5m〜10m")})
+        row = self.rows(data)["flood"]
+        self.assertEqual(row.value, "5m〜10m")
+        self.assertIn("想定最大", row.conclusion)
+
+    def test_shallow_color_is_a_lighter_accent(self):
+        data = reading({"storm_surge": hazard("storm_surge", "color", "0.5m〜1m")})
+        self.assertEqual(self.rows(data)["surge"].accent["level"], "mid")
+
+    def test_no_color_has_no_accent_and_does_not_say_safe_only(self):
+        row = self.rows(reading())["flood"]
+        self.assertIsNone(row.accent)
+        self.assertEqual(row.value, "色なし")
+        self.assertIn("安全という意味ではありません", row.conclusion)
+
+    def test_no_data_is_not_called_no_color(self):
+        row = self.rows(reading({"inland": hazard("inland", "no_tile")}))["inland"]
+        self.assertEqual(row.value, "データなし")
+        self.assertIsNone(row.accent)
+
+    def test_nearby_color_is_accented(self):
+        row = self.rows(reading({"inland": hazard("inland", nearby="〜0.5m")}))["inland"]
+        self.assertEqual(row.accent["kind"], "nearby")
+
+    def test_landform_is_accented(self):
+        data = reading()
+        data["landforms"][0]["names"] = ["旧水部"]
+        data["landforms"][0]["codes"] = ["10904"]
+        row = self.rows(data)["ground"]
+        self.assertIn("地形分類：旧水部", row.accent["badges"])
+        self.assertEqual(row.verdict, state.UNCONFIRMED)
+
+    def test_basin_is_named_on_the_ground_card(self):
+        data = reading(center=3.6, around=(3.7, 3.7, 3.6, 3.8))
+        data["basin"] = True
+        data["high_directions"] = ["北", "東", "西"]
+        row = self.rows(data)["ground"]
+        self.assertIn("周囲より低い凹み（目安）", row.accent["badges"])
+        self.assertIn("周囲（北・東・西）より低い形", row.summary)
+        self.assertEqual(row.verdict, state.UNCONFIRMED)
+
+
+class BasinTest(unittest.TestCase):
+    @staticmethod
+    def points(center, north, east, south, west):
+        names = [("中心", center), ("北", north), ("東", east), ("南", south), ("西", west)]
+        return [{"label": name, "elevation_m": value} for name, value in names]
+
+    def test_pin_lower_than_surroundings_is_a_basin(self):
+        points = self.points(3.6, 3.7, 3.7, 3.6, 3.8)
+        self.assertEqual(location.high_directions(points), ["北", "東", "西"])
+        self.assertEqual(location.low_directions(points), [])
+        self.assertTrue(location.is_basin(points))
+
+    def test_a_low_side_is_not_a_basin(self):
+        self.assertFalse(location.is_basin(self.points(3.6, 3.8, 3.8, 3.2, 3.8)))
+
+    def test_flat_land_is_not_a_basin(self):
+        self.assertFalse(location.is_basin(self.points(3.6, 3.6, 3.65, 3.6, 3.6)))
+
+    def test_missing_center_is_not_a_basin(self):
+        self.assertFalse(location.is_basin(self.points(None, 3.7, 3.7, 3.7, 3.7)))
 
 
 if __name__ == "__main__":

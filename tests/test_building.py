@@ -394,6 +394,16 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(answer["kind"], "is_safe")
         self.assertNotIn("安全です", answer["text"])
 
+    def test_drain_without_engineer_is_decided_by_the_association(self):
+        text = guard.fixed_answer("排水を始めてもいいですか", False)["text"]
+        self.assertIn("電気工事の業者に電気が切れていて排水を始めてよいと確かめたうえで、管理組合が排水を始めます", text)
+        self.assertIn("管理組合が排水を始めます", building.ACTIONS_MORNING_NO_ENGINEER)
+
+    def test_basin_line_names_the_high_sides(self):
+        line = building.direction_line({}, [], samples.SAMPLES["a"], ["北", "東", "西"], True)
+        self.assertTrue(line.startswith("周囲（北・東・西）の方が高く、この場所に向かって水が集まりやすい凹み（低い土地）の形です"))
+        self.assertEqual(building.direction_line({}, [], samples.SAMPLES["a"]), "")
+
     def test_monthly_frequency_is_stopped(self):
         self.assertIn("禁止", guard.check_text("主任技術者の月1回の点検で見ます", []))
 

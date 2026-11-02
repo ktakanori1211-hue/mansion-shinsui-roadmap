@@ -70,6 +70,10 @@ class Row:
     records: List[str] = field(default_factory=list)
     summary: str = ""  # 紙のおもての細い表に出す短い言い方
     confirm_short: Optional[str] = None
+    # 画面のカードの一段目。判定を変えず、見て分かるようにするだけの飾り。
+    value: str = ""  # 大きく出す値（3m〜5m、色なし、標高3.6m）
+    conclusion: str = ""  # 太字の一行
+    accent: Optional[dict] = None  # {"kind": "hazard" など, "level": "high" など, "badges": [...]}
 
     def __post_init__(self):
         _check_verdict(self.verdict)

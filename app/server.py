@@ -163,6 +163,8 @@ class Handler(SimpleHTTPRequestHandler):
                 body.get("directions") or {},
                 body.get("low_directions") or [],
                 body.get("statements") or [],
+                body.get("high_directions") or [],
+                bool(body.get("basin")),
             )
             payload["exits"] = assistant.exits(sample, label, payload)
             self._send_json(200, payload)

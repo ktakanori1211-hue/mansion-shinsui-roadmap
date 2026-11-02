@@ -53,6 +53,7 @@ const HazardMap = (() => {
     onPicked = handlers.picked;
     onTap = handlers.tap;
     map = L.map(container, { attributionControl: false }).setView([35.66, 139.95], 10);
+    new ResizeObserver(() => map.invalidateSize()).observe(container);
     L.control.attribution({ prefix: '<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>' }).addTo(map);
     L.tileLayer(BASE_URL, { maxZoom: 18, minZoom: 5, attribution: BASE_CREDIT }).addTo(map);
     relief = L.tileLayer(RELIEF_URL, { maxNativeZoom: 15, maxZoom: 18, minZoom: 5, opacity: 0.6, attribution: RELIEF_CREDIT });
@@ -118,7 +119,7 @@ const HazardMap = (() => {
     container.replaceChildren(
       ...hazards.map((hazard) => {
         const label = document.createElement("label");
-        label.className = "layer-choice";
+        label.className = hazard.status === "color" ? "layer-choice layer-colored" : "layer-choice";
         const input = document.createElement("input");
         input.type = "radio";
         input.name = "hazard-layer";
@@ -175,6 +176,7 @@ const HazardMap = (() => {
     const metresLng = 1 / (111000 * Math.cos((site.latitude * Math.PI) / 180));
     const distance = reading.elevation.distance_m;
     const lows = new Set(reading.low_directions || []);
+    const highs = new Set(reading.basin ? reading.high_directions : []);
     reading.elevation.points.slice(1).forEach((point) => {
       const [north, east] = OFFSET[point.label];
       const at = [center[0] + north * distance * metresLat, center[1] + east * distance * metresLng];
@@ -191,6 +193,16 @@ const HazardMap = (() => {
           interactive: false,
           keyboard: false,
           icon: L.divIcon({ className: "low-arrow", html: `<span style="transform:rotate(${rotation}deg)">▲</span>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
+        }).addTo(terrainLayer);
+      }
+      // 周囲の方が高い凹みでは、外からピンへ向かう矢印を出す。
+      if (highs.has(point.label)) {
+        L.polyline([at, center], { color: "#c2410c", weight: 3, dashArray: "6 4", interactive: false }).addTo(terrainLayer);
+        const rotation = { 北: 180, 東: 270, 南: 0, 西: 90 }[point.label];
+        L.marker([center[0] + north * distance * 0.4 * metresLat, center[1] + east * distance * 0.4 * metresLng], {
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({ className: "low-arrow inward-arrow", html: `<span style="transform:rotate(${rotation}deg)">▲</span>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
         }).addTo(terrainLayer);
       }
     });
@@ -275,7 +287,7 @@ const TerrainChart = (() => {
     return { min, max };
   }
 
-  function line(title, points, leftName, rightName, { min, max }) {
+  function line(title, points, leftName, rightName, { min, max }, highs) {
     const valid = points.filter(([, value]) => value !== null);
     const box = document.createElement("figure");
     box.className = "terrain-chart";
@@ -290,8 +302,8 @@ const TerrainChart = (() => {
       return box;
     }
     const width = 320;
-    const height = 120;
-    const pad = { left: 36, right: 14, top: 14, bottom: 26 };
+    const height = 96;
+    const pad = { left: 24, right: 24, top: 20, bottom: 18 };
     const xs = points.length - 1;
     const x = (index) => pad.left + (index / xs) * (width - pad.left - pad.right);
     const y = (value) => pad.top + ((max - value) / (max - min)) * (height - pad.top - pad.bottom);
@@ -301,43 +313,87 @@ const TerrainChart = (() => {
       .map(([, value], index) =>
         value === null
           ? ""
-          : `<circle cx="${x(index)}" cy="${y(value)}" r="${index === center ? 5 : 3}" fill="${index === center ? "#0b4fa8" : "#5a5a60"}"/>` +
-            `<text x="${x(index)}" y="${y(value) - 7}" font-size="10" text-anchor="middle" fill="#1a1a1c">${value}</text>`,
+          : `<circle cx="${x(index)}" cy="${y(value)}" r="${index === center ? 5.5 : 3}" fill="${index === center ? "#0b4fa8" : "#6b5b3e"}"/>` +
+            `<text x="${x(index)}" y="${y(value) - 8}" font-size="${index === center ? 13 : 11}" font-weight="${index === center ? 700 : 400}" text-anchor="middle" fill="${index === center ? "#0b4fa8" : "#1a1a1c"}">${value}</text>`,
       )
       .join("");
     const bottom = height - pad.bottom;
+    // 周囲の方が高い向きに、外からピンへ向かう矢印を引く。
+    const pinValue = points[center][1];
+    const marker = `inward-${leftName}`;
+    // 高いかどうかは 50m 先で見ている。100m 先がさらに高いときだけ、そこから引く。
+    const startOf = (side) => {
+      const near = points[center + side];
+      const far = points[center + side * 2];
+      return far && far[1] !== null && near[1] !== null && far[1] > near[1] ? center + side * 2 : center + side;
+    };
+    const arrows = [
+      [leftName, -1],
+      [rightName, 1],
+    ]
+      .filter(([name]) => highs.includes(name) && pinValue !== null)
+      .map(([, side]) => {
+        const index = startOf(side);
+        const startX = x(index);
+        const startY = y(points[index][1]) + 13;
+        const endX = x(center) + side * 13;
+        const endY = y(pinValue) + 3;
+        return `<line x1="${startX}" y1="${Math.min(startY, bottom - 2)}" x2="${endX}" y2="${endY}" stroke="#c2410c" stroke-width="3" marker-end="url(#${marker})"/>`;
+      })
+      .join("");
     box.insertAdjacentHTML(
       "beforeend",
       `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">
+        <defs><marker id="${marker}" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#c2410c"/></marker></defs>
         <polygon points="${pad.left},${bottom} ${coords.join(" ")} ${width - pad.right},${bottom}" fill="#e4e0d6"/>
         <polyline points="${coords.join(" ")}" fill="none" stroke="#6b5b3e" stroke-width="2"/>
+        ${arrows}
         ${dots}
-        <text x="${pad.left}" y="${height - 8}" font-size="11" text-anchor="middle" fill="#5a5a60">${leftName}</text>
-        <text x="${x(center)}" y="${height - 8}" font-size="11" text-anchor="middle" fill="#0b4fa8">ピン</text>
-        <text x="${width - pad.right}" y="${height - 8}" font-size="11" text-anchor="middle" fill="#5a5a60">${rightName}</text>
+        <text x="${pad.left}" y="${height - 6}" font-size="12" text-anchor="middle" fill="#5a5a60">${leftName}</text>
+        <text x="${x(center)}" y="${height - 6}" font-size="12" font-weight="700" text-anchor="middle" fill="#0b4fa8">ピン</text>
+        <text x="${width - pad.right}" y="${height - 6}" font-size="12" text-anchor="middle" fill="#5a5a60">${rightName}</text>
       </svg>`,
     );
     return box;
   }
 
+  function callout(reading) {
+    const low = reading.low_directions || [];
+    const box = document.createElement("div");
+    const title = document.createElement("strong");
+    const text = document.createElement("p");
+    if (reading.basin) {
+      box.className = "terrain-callout callout-basin";
+      title.textContent = "⚠ 周囲より低い凹み（目安）";
+      text.textContent = `周囲（${reading.high_directions.join("・")}）の方が高く、この場所に向かって水が集まりやすい凹み（低い土地）の形です`;
+    } else if (low.length) {
+      box.className = "terrain-callout callout-low";
+      title.textContent = `周囲より低い向きの目安：${low.join("・")}`;
+      text.textContent = "水が流れる向きの予測ではありません";
+    } else {
+      box.className = "terrain-callout callout-flat";
+      title.textContent = "はっきり低い向きは見つからず";
+      text.textContent = "くぼ地や低い土地ではないという意味ではありません";
+    }
+    box.append(title, text);
+    return box;
+  }
+
   function render(container, reading, site) {
     container.hidden = false;
-    const heading = document.createElement("h3");
-    heading.textContent = "ピンの周り100mの標高（地図の標高データ。単位は m）";
     const grid = document.createElement("div");
     grid.className = "terrain-grid";
     const scale = range(reading);
-    grid.append(line("南北の形（北 → ピン → 南）", reading.profile.ns, "北", "南", scale), line("東西の形（西 → ピン → 東）", reading.profile.ew, "西", "東", scale));
-    const low = reading.low_directions || [];
-    const summary = document.createElement("p");
-    summary.className = "terrain-note strong";
-    summary.textContent = low.length
-      ? `周囲より低い向きの目安（ピンより低い点がある向き）：${low.join("・")}。水が流れる向きの予測ではありません。`
-      : "ピンより低い点がある向きは、50m先の4点では見つかりませんでした。くぼ地や低い土地ではないという意味ではありません。くぼ地の目安は「敷地の高低差」の行で別に見ます。";
+    const highs = reading.basin ? reading.high_directions : [];
+    grid.append(line("南北の形", reading.profile.ns, "北", "南", scale, highs), line("東西の形", reading.profile.ew, "西", "東", scale, highs));
+    const more = document.createElement("details");
+    more.className = "fold";
+    const summary = document.createElement("summary");
+    summary.textContent = "条件と出典を開く";
     const note = document.createElement("p");
-    note.className = "hint";
-    note.textContent = `${site.basis === "representative" ? "町丁の代表点の値で、建物の位置の値ではありません。" : "ピンの位置の値です。"}地図の標高データの値で、敷地を測ったものではありません。点の距離（50m、100m）は仮の目安で、どの道路かまでは分かりません。2つの図の縦の幅はそろえて広げてあり、差は実際より大きく見えます。雨や浸水の深さの予測ではありません。出典：国土地理院 標高APIを加工して作成`;
-    container.replaceChildren(heading, grid, summary, note);
+    note.textContent = `${site.basis === "representative" ? "町丁の代表点の値で、建物の位置の値ではありません。" : "ピンの位置の値です。"}単位は m で、ピンの周り100mの地図の標高データの値です。敷地を測ったものではありません。低い向きや凹みは50m先の4点で見た目安で、点の距離（50m、100m）は仮のものです。どの道路かまでは分かりません。2つの図の縦の幅はそろえて広げてあり、差は実際より大きく見えます。水が流れる向きや、雨や浸水の深さの予測ではありません。くぼ地の目安は「敷地の高低差」の行で別に見ます。出典：国土地理院 標高APIを加工して作成`;
+    more.append(summary, note);
+    container.replaceChildren(callout(reading), grid, more);
   }
 
   return { render };

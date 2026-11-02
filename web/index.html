@@ -16,12 +16,13 @@
 </head>
 <body>
   <header class="app-header">
-    <div>
+    <div class="app-title">
       <h1>マンション浸水ロードマップ</h1>
-      <p>浸水のあとに水と電気がどれだけ止まりうるかを、住所と手元の情報から整理し、理事会に出せるA4一枚を作ります。</p>
+      <p>浸水のあとに水と電気がどれだけ止まりうるかを整理し、理事会に出せるA4一枚を作ります。</p>
     </div>
     <div class="claude-box">
       <p class="claude-status" id="claude-status"></p>
+      <button type="button" class="key-toggle" id="key-toggle" hidden></button>
       <form class="key-form" id="key-form" autocomplete="off" hidden>
         <label for="key-input">APIキーを設定</label>
         <input id="key-input" type="password" autocomplete="new-password" spellcheck="false" placeholder="ここに貼り付ける">
@@ -32,104 +33,108 @@
   </header>
 
   <nav class="stage-tabs" id="stage-tabs" aria-label="4つの段階">
-    <button type="button" data-tab="1">① ハザード×土地の形状で立地を確認</button>
-    <span aria-hidden="true">➔</span>
-    <button type="button" data-tab="2">② 平面図と3D・質問で建物の浸水を見る</button>
-    <span aria-hidden="true">➔</span>
-    <button type="button" data-tab="3">③ AIに相談しA4資料・依頼メモ・共有リンクを出す</button>
-    <span aria-hidden="true">➔</span>
-    <button type="button" data-tab="4">④ 概算・補助金を試算し専門家に相談する</button>
+    <button type="button" data-tab="1"><b>1</b>立地<small>ハザード×土地の形</small></button>
+    <button type="button" data-tab="2"><b>2</b>建物<small>平面図・3D・質問</small></button>
+    <button type="button" data-tab="3"><b>3</b>資料<small>AI相談・A4・共有</small></button>
+    <button type="button" data-tab="4"><b>4</b>費用と相談<small>補助・専門家へ</small></button>
     <button type="button" data-tab="all" class="tab-all">すべて縦に並べて見る</button>
   </nav>
 
   <section class="why-bar" id="why-bar" aria-label="なぜこの道具が要るか">
-    <article class="why-card">
-      <h2>地図に色がない ≠ 安全</h2>
-      <p>2026年8月の千葉豪雨では、被害報告の<strong>55.7%</strong>が浸水想定区域や低い土地の外（ウェザーニューズ）。9月の台風25号では、浸水・道路冠水447件の<strong>64%</strong>が洪水マップで色のない場所（同）。千葉県で内水の地図の公表義務がある38自治体のうち<strong>19</strong>が公表していなかった（FNNの調べ、2026年10月28日。調査の時点は記事に書かれていません）。</p>
+    <article class="why-card why-map">
+      <p class="why-kicker">ハザードマップ外での浸水被害</p>
+      <div class="why-numbers">
+        <p><strong>55.7%</strong><span>被害報告が想定区域・低い土地の外</span></p>
+        <p><strong>64%</strong><span>浸水・道路冠水447件が洪水マップの色の外</span></p>
+      </div>
+      <details class="why-more"><summary>出典と補足</summary><p>55.7%は2026年8月の千葉豪雨、64%は9月の台風25号で、どちらもウェザーニューズ。千葉県で内水の地図の公表義務がある38自治体のうち19が公表していなかった（FNNの調べ、2026年10月28日。調査の時点は記事に書かれていません）。</p></details>
     </article>
-    <article class="why-card">
-      <h2>建物と電気の境目に落ちていることがある</h2>
-      <p>地中から高圧のケーブルで電気を引き込む建物では、<strong>ケーブルを通す壁の穴</strong>の止水が、管理会社の仕事にも電気設備の点検の項目にも入っていないことがあります（書類で確かめます）。<strong>給水ポンプの制御盤</strong>が浸かると、受電が生きていても断水につながることがあります。</p>
+    <article class="why-card why-gap">
+      <p class="why-kicker">建物と電気の境目の盲点</p>
+      <p class="why-big">壁の穴とポンプ制御盤</p>
+      <p class="why-sub">止水が管理会社の仕事にも点検の項目にも入っていないことがある。</p>
+      <details class="why-more"><summary>補足</summary><p>地中から高圧のケーブルで電気を引き込む建物の話で、書類で確かめます。給水ポンプの制御盤が浸かると、受電が生きていても断水につながることがあります。</p></details>
     </article>
-    <article class="why-card">
-      <h2>小さな手から順に</h2>
-      <p>総会や積立金が要る大きな工事の前に、建物の規約と予算によっては<strong>理事会で決められる場合がある、数万〜十数万円（桁の目安。見積りで確かめる）の手</strong>があります。理事会で決められるか、費用が管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p>
+    <article class="why-card why-cost">
+      <p class="why-kicker">理事会・管理費でできる場合がある最初の手</p>
+      <p class="why-big">数万〜十数万円</p>
+      <p class="why-sub">桁の目安。見積りで確かめます。</p>
+      <details class="why-more"><summary>補足</summary><p>建物の規約と予算によっては、マンション側の部屋の壁の穴の止水などを理事会で決められる場合があります。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p></details>
     </article>
   </section>
 
   <main class="stages">
     <section class="stage" data-stage="1" aria-label="第1段階">
       <div class="stage1-grid">
-        <div class="card" id="step-address">
-          <h2>住所、マンション名、郵便番号、駅名で探す</h2>
-          <form id="address-form">
-            <label for="address">マンションの住所 または マンション名</label>
-            <input id="address" name="address" type="text" autocomplete="off"
-                   placeholder="例：千葉市幸町 〇〇マンション／261-0001／新浦安駅">
-            <p class="hint">「調べる」を押したときに1回だけ探します。入れた言葉は国土地理院、OpenStreetMap、郵便番号の検索サービスに送ります（API キーがあるときは Claude にも）。</p>
-            <div class="button-row">
-              <button type="submit" class="primary">調べる</button>
-              <button type="button" id="geo-button">現在地から入れる</button>
+        <div class="stage1-left">
+          <div class="card" id="step-address">
+            <form id="address-form">
+              <label for="address">住所・マンション名・郵便番号・駅名</label>
+              <div class="search-row">
+                <input id="address" name="address" type="text" autocomplete="off" placeholder="例：千葉市幸町／261-0001／新浦安駅">
+                <button type="submit" class="primary">調べる</button>
+              </div>
+              <div class="search-tools">
+                <button type="button" id="geo-button">現在地から</button>
+                <details class="fold fold-inline"><summary>入れた言葉の扱い</summary><p>「調べる」を押したときに1回だけ探します。入れた言葉は国土地理院、OpenStreetMap、郵便番号の検索サービスに送ります（API キーがあるときは Claude にも）。地図を押して場所を選ぶこともできます。</p></details>
+              </div>
+            </form>
+            <p class="search-message" id="search-message" hidden></p>
+            <div class="candidates" id="candidates" hidden></div>
+            <p class="error" id="address-error" role="alert" hidden></p>
+            <div class="demo" id="demo-points" hidden>
+              <p class="mini-head">架空の見本（建物はどれも架空です）</p>
+              <div class="demo-buttons" id="demo-buttons"></div>
             </div>
-            <p class="hint">地図を押して場所を選ぶこともできます。</p>
-          </form>
-          <p class="search-message" id="search-message" hidden></p>
-          <div class="candidates" id="candidates" hidden></div>
-          <p class="error" id="address-error" role="alert" hidden></p>
-          <div class="demo" id="demo-points" hidden>
-            <p class="hint">架空の見本（建物はどれも架空です）</p>
-            <div class="demo-buttons" id="demo-buttons"></div>
+          </div>
+          <div class="card terrain-card" id="terrain-card">
+            <div class="terrain" id="terrain"><p class="hint">場所を選ぶと、ここに土地の形が出ます。</p></div>
           </div>
         </div>
 
         <section class="card map-card" id="map-card" aria-label="地図">
-          <h2>ハザードマップ × 大雨のときの土地の形</h2>
           <div class="layer-choices" id="layer-choices" role="radiogroup" aria-label="重ねる地図"></div>
           <div class="map-tools">
-            <label class="control-inline"><input type="checkbox" id="relief-toggle"> 色別標高図（土地の高さの色分け）を重ねる</label>
+            <label class="control-inline"><input type="checkbox" id="relief-toggle"> 色別標高図</label>
             <button type="button" id="tap-water">水が来そうな側を押す</button>
             <button type="button" id="tap-door">電気室の扉の側を押す</button>
             <span class="tap-status" id="tap-status"></span>
           </div>
           <div id="map" class="map"></div>
-          <p class="map-pin-note" id="map-pin-note">住所を探すか、地図を押して場所を選んでください。</p>
-          <p class="map-fixed">地図に色がないことは、安全という意味ではありません。斜線は地図のデータが取れていない所で、色があるかどうかも分かりません。</p>
           <div class="map-legend" id="map-legend"></div>
-          <div class="terrain" id="terrain" hidden></div>
+          <p class="map-fixed">地図に色がないことは、安全という意味ではありません。斜線はデータが取れていない所です。</p>
+          <p class="map-pin-note" id="map-pin-note">住所を探すか、地図を押して場所を選んでください。</p>
         </section>
-      </div>
 
-      <div class="card" id="step-location">
-        <h2>立地の結果</h2>
-        <div id="location-body" aria-live="polite"><p class="hint">場所を選ぶと、ここに五つの項目の判定が出ます。</p></div>
+        <div class="card location-card" id="step-location">
+          <div class="location-head">
+            <h2>立地の5項目</h2>
+            <button type="button" class="primary next-inline" data-go="2">次へ：建物 ➔</button>
+          </div>
+          <div id="location-body" aria-live="polite"><p class="hint">場所を選ぶと、ここに五つの項目の判定が出ます。</p></div>
+        </div>
       </div>
-      <div class="stage-next"><button type="button" class="primary" data-go="2">次へ：②建物の浸水を見る</button></div>
     </section>
 
     <section class="stage" data-stage="2" aria-label="第2段階">
       <div class="top-banner" id="top-banner" hidden>
         <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
         <p class="top-banner-lead" id="top-banner-lead"></p>
-        <p class="top-banner-notes" id="top-banner-notes"></p>
         <p class="top-banner-dir" id="top-banner-dir"></p>
+        <p class="top-banner-notes" id="top-banner-notes"></p>
       </div>
       <p class="hint stage-empty" id="stage2-empty">①で場所を選ぶと、ここが出ます。</p>
-
-      <details class="card" id="step-building" open hidden>
-        <summary>建物の質問と書類（見本は手直しできます）</summary>
-        <div id="building-body"></div>
-      </details>
 
       <div class="stage2-grid">
         <section class="card" id="plan-card" aria-label="平面図" hidden>
           <h2>平面図と確かめる場所</h2>
-          <div class="plan-actions" id="plan-actions"></div>
-          <p class="plan-message" id="plan-message"></p>
           <div class="plan-stage" id="plan-stage" hidden>
-            <img id="plan-image" alt="読み込んだ平面図">
+            <img id="plan-image" alt="平面図">
             <div class="plan-pins" id="plan-pins"></div>
           </div>
+          <p class="plan-message" id="plan-message"></p>
           <div class="pin-card" id="pin-card" hidden></div>
+          <div class="plan-actions" id="plan-actions"></div>
           <div id="plan-rooms"></div>
         </section>
 
@@ -146,6 +151,16 @@
         </section>
       </div>
 
+      <details class="card" id="step-building" hidden>
+        <summary>建物の質問と書類に答える（分かる所だけ。見に行かずに答えられます）</summary>
+        <div id="building-body"></div>
+      </details>
+
+      <div class="card" id="step-result" hidden>
+        <h2>何が止まるか</h2>
+        <div id="result-body"></div>
+      </div>
+
       <div class="card" id="model-lower" hidden>
         <div class="fixed-block" id="model-fixed"></div>
         <div class="chain" id="chain"></div>
@@ -153,10 +168,6 @@
         <div class="fixed-block" id="timeline-below"></div>
       </div>
 
-      <div class="card" id="step-result" hidden>
-        <h2>何が止まるか</h2>
-        <div id="result-body"></div>
-      </div>
       <div class="stage-next"><button type="button" class="primary" data-go="3">次へ：③AIに相談し資料を出す</button></div>
     </section>
 
@@ -190,7 +201,8 @@
           </select>
           <button type="button" class="primary" id="share-button">共有リンクを発行</button>
         </div>
-        <p class="hint">ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。パスワードを忘れると元に戻せません。受け取った人が保存した写しや印刷した紙は消せません。</p>
+        <p class="hint">パスワードを忘れると元に戻せません。</p>
+        <details class="fold"><summary>条件を開く</summary><p>ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
         <div class="share-result" id="share-result" hidden></div>
       </div>
 
@@ -254,11 +266,18 @@
       <section class="card" id="consult-card" aria-label="相談" hidden>
         <h2>次の一歩</h2>
         <button type="button" class="primary" id="consult-button">専門家に調査・見積もりを相談する</button>
-        <p class="hint">押すと、この画面の内容から文書を作ります。API キーがあるときは、文面を整えるために内容が Anthropic の API を通ります。専門家への送信はこの道具ではしません（送るのは管理組合です）。</p>
+        <p class="hint">この道具から専門家へは送りません。送るのは管理組合です。</p>
+        <details class="fold"><summary>条件を開く</summary><p>押すと、この画面の内容から文書を作ります。API キーがあるときは、文面を整えるために内容が Anthropic の API を通ります。</p></details>
         <div id="consult-body"></div>
       </section>
     </section>
   </main>
+
+  <footer class="legal-footer" id="legal-footer" aria-label="必ず読む文">
+    <p><b>安全</b><span id="legal-safety">本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する</span></p>
+    <p><b>データ</b><span>浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない。本シートは予報ではなく、現時点の静的な整理である</span></p>
+    <p id="legal-basis-box" hidden><b>この値</b><span id="legal-basis"></span></p>
+  </footer>
 
   <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   <aside class="chat" id="chat" aria-label="AIに相談" hidden>

@@ -265,6 +265,19 @@ def low_directions(points: list) -> list:
     return [point["label"] for point in points[1:] if point["elevation_m"] is not None and point["elevation_m"] < center - LOW_MARGIN_M]
 
 
+def high_directions(points: list) -> list:
+    """ピンより高い向き。丸めるのは、3.7 と 3.6 の差が小数の誤差で 0.1 に届かなくなるのを防ぐため。"""
+    center = points[0]["elevation_m"]
+    if center is None:
+        return []
+    return [point["label"] for point in points[1:] if point["elevation_m"] is not None and round(point["elevation_m"] - center, 2) >= LOW_MARGIN_M]
+
+
+def is_basin(points: list) -> bool:
+    """低い向きがなく、高い向きが二つ以上ある形。地図の標高データの目安で、判定には使わない。"""
+    return not low_directions(points) and len(high_directions(points)) >= 2
+
+
 def read_location(longitude: float, latitude: float, distance_m: float = 50) -> dict:
     """代表点の値を読む。周囲の点の距離は仮の値で、判定の段階で決める。"""
     points = [("center", "中心", longitude, latitude)]
@@ -309,6 +322,8 @@ def read_location(longitude: float, latitude: float, distance_m: float = 50) -> 
             "elevation": {"distance_m": distance_m, "points": points},
             "profile": profile,
             "low_directions": low_directions(points),
+            "high_directions": high_directions(points),
+            "basin": is_basin(points),
             "hazards": [future.result() for future in hazards],
             "hazard_legend": [
                 {"color": "#%02x%02x%02x" % rgb, "label": label} for rgb, label in HAZARD_LEGEND.items()

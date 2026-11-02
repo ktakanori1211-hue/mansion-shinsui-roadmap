@@ -18,6 +18,17 @@ const PlanPanel = (() => {
   };
 
   let pins = [];
+  let fromReading = false;
+
+  // 読み取りを待たずに、見本の図面とピンを出す。API は呼ばない。
+  function showSamplePlan(sample) {
+    fromReading = false;
+    image.src = sample.plan.png;
+    stage.hidden = false;
+    pins = sample.pins.map((pin) => ({ ...pin }));
+    renderPins();
+    message.textContent = sample.custom ? "答えに近い形の見本の図面です。あなたの建物の図面ではありません。" : "架空の見本の図面です。実在の建物の図面ではありません。";
+  }
 
   function renderPins() {
     pinsLayer.replaceChildren();
@@ -152,6 +163,7 @@ const PlanPanel = (() => {
   }
 
   async function load(buffer, mediaType, sampleId) {
+    fromReading = true;
     message.textContent = "図面を読み取っています。";
     pinCard.hidden = true;
     try {
@@ -203,13 +215,14 @@ const PlanPanel = (() => {
   function offerSample() {
     const sample = App.building.sample;
     actions.replaceChildren();
-    const pdf = element("button", `${sample.custom ? "近い形の見本" : sample.name} の図面（PDF）を読み込む`, "primary");
+    if (!fromReading || stage.hidden) showSamplePlan(sample);
+    const pdf = element("button", "この図面を読み取る（PDF）");
     pdf.type = "button";
     pdf.addEventListener("click", async () => {
       const response = await fetch(sample.plan.pdf);
       load(await response.arrayBuffer(), "application/pdf", sample.id);
     });
-    const png = element("button", "同じ図面（画像）を読み込む");
+    const png = element("button", "画像で読み取る");
     png.type = "button";
     png.addEventListener("click", async () => {
       const response = await fetch(sample.plan.png);
@@ -227,7 +240,7 @@ const PlanPanel = (() => {
     });
     const fileLabel = element("label", "自分の図面を入れる（PDFか画像）", "plan-file-label");
     fileLabel.htmlFor = "plan-file";
-    actions.append(pdf, png, fileLabel, file, element("p", "見本の図面は架空です。実在の建物の図面ではありません。", "hint"));
+    actions.append(pdf, png, fileLabel, file);
   }
 
   return { offerSample, showPin, get pins() { return pins; } };
