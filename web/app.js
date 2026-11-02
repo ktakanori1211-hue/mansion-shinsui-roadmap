@@ -70,16 +70,20 @@ function screenRow(row) {
   return article;
 }
 
-// 紙のおもてには札と結論と誰が確かめるかを置き、条件と出典は別紙へ分ける。
-function sheetRow(row) {
-  const article = element("article", undefined, "row");
-  article.append(...firstTier(row));
-  if (row.confirm_by) {
-    const confirm = element("p", undefined, "row-confirm-sheet");
-    confirm.append(element("strong", "誰が確かめるか："), row.confirm_by);
-    article.append(confirm);
-  }
-  return article;
+// 紙のおもては細い表にする。一番大事な「何が止まるか」以降に場所を残すため。全文は別紙に出す。
+function sheetTable(rows) {
+  const table = element("table", undefined, "slim-table");
+  const header = table.createTHead().insertRow();
+  ["見たもの", "判定", "分かったこと", "誰が確かめるか"].forEach((name) => header.append(element("th", name)));
+  const body = table.createTBody();
+  rows.forEach((row) => {
+    const line = body.insertRow();
+    line.append(element("td", row.label));
+    const verdict = line.insertCell();
+    verdict.append(verdictTag(row.verdict, row.verdict_label));
+    line.append(element("td", row.summary), element("td", row.confirm_short || "—"));
+  });
+  return table;
 }
 
 // 別紙には条件と出典を折りたたまずに全文出す。
@@ -126,8 +130,12 @@ function renderLocation(state) {
   );
   sheetAddress.textContent = `住所：${site.label}`;
   sheetLocation.replaceChildren(
-    ...location.rows.map(sheetRow),
-    element("p", "条件と出典は別紙に書いています。", "sheet-pointer"),
+    sheetTable(location.rows),
+    element(
+      "p",
+      `${site.basis === "representative" ? "町丁の代表点の値で、建物の位置の値ではありません。" : "ピンの位置の値です。"}色がないことは安全という意味ではありません。条件と出典は別紙に書いています。`,
+      "sheet-pointer",
+    ),
   );
   sheetBasisAddress.textContent = `住所：${site.label}`;
   sheetBasisRows.replaceChildren(

@@ -67,7 +67,29 @@ def _status_text(hazard: dict) -> str:
     return "地図のデータが取れていない（接続できず）"
 
 
-def _hazard_row(key: str, label: str, what: str, hazards: List[dict], basis: str, confirm: str, extra: List[str]) -> Row:
+def _short_status(hazard: dict) -> str:
+    status = hazard["status"]
+    if status == "color":
+        return f"色あり（{hazard['legend']}）"
+    if status == "no_color":
+        return f"色なし（数m先に{hazard['nearby_legend']}）" if hazard.get("nearby_legend") else "色なし"
+    if status == "unknown_color":
+        return "読み取れず"
+    return "データが取れず"
+
+
+_LAYER_SHORT = {"flood_planned": "計画規模", "flood_max": "想定最大"}
+
+
+def _hazard_summary(hazards: List[dict]) -> str:
+    if len(hazards) == 1:
+        return _short_status(hazards[0])
+    return "／".join(f"{_LAYER_SHORT[h['key']]}：{_short_status(h)}" for h in hazards)
+
+
+def _hazard_row(
+    key: str, label: str, what: str, hazards: List[dict], basis: str, confirm: str, extra: List[str], confirm_short: str
+) -> Row:
     place = _place(basis)
     colored = [h for h in hazards if h["status"] == "color"]
     nearby = [h for h in hazards if h.get("nearby_legend")]
@@ -86,7 +108,17 @@ def _hazard_row(key: str, label: str, what: str, hazards: List[dict], basis: str
     details = [f"{h['label']}：{_status_text(h)}" for h in hazards]
     details.extend(extra)
     details.append(HAZARD_SOURCE)
-    return Row(key, label, verdict, headline, details, None if verdict == RISK else confirm)
+    open_item = verdict != RISK
+    return Row(
+        key,
+        label,
+        verdict,
+        headline,
+        details,
+        confirm if open_item else None,
+        summary=_hazard_summary(hazards),
+        confirm_short=confirm_short if open_item else None,
+    )
 
 
 def _ground_shape(center: float, around: List[float]) -> Optional[str]:
@@ -119,6 +151,7 @@ def _ground_row(reading: dict, basis: str) -> Row:
     around = [point["elevation_m"] for point in elevation["points"][1:]]
     place = _place(basis)
     details = []
+    summary = "標高のデータが一部取れず"
     if center is None or None in around:
         headline = f"{place}と周囲の標高のデータが、一部取れていません。"
         details.append("標高が取れないので、くぼ地の目安を当てられません。")
@@ -126,12 +159,15 @@ def _ground_row(reading: dict, basis: str) -> Row:
         shape = _ground_shape(center, around)
         if shape == "depression":
             headline = f"{place}の標高は{center}mで、周囲より低く、水がたまるくぼ地の仮の目安に当たります。"
+            summary = f"標高{center}m。くぼ地の仮の目安に当たる"
             details.append("くぼ地では、地表から入る水だけでなく、建物の排水口や雨水ますから水が上がってくる経路もありえます。起きるかどうかは判定していません。")
         elif shape == "flat_low":
             headline = f"{place}の標高は{center}mで、低く平らな土地の仮の目安に当たります。"
+            summary = f"標高{center}m。低く平らな土地の仮の目安に当たる"
             details.append("水の逃げ場がなく、放流先の海や川の水位が高いと排水できなくなることがあります。")
         else:
             headline = f"{place}の標高は{center}mで、くぼ地や低く平らな土地の仮の目安には当たりません。"
+            summary = f"標高{center}m。くぼ地などの仮の目安に当たらず"
         points = "、".join(f"{p['label']} {p['elevation_m']}m" for p in elevation["points"][1:])
         details.append(f"周囲{elevation['distance_m']:g}m：{points}")
         details.append("目安と周囲の点の距離は検証前の仮のものです。比べる距離を変えると結果が変わることがあります。")
@@ -141,7 +177,10 @@ def _ground_row(reading: dict, basis: str) -> Row:
         joined = "』『".join(names)
         details.append(f"国の地形分類で『{joined}』にあたる地域です（国土地理院。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません）。")
     details.append(ELEVATION_SOURCE)
-    return Row("ground", "敷地の高低差", UNCONFIRMED, headline, details, _GROUND_CONFIRM)
+    return Row(
+        "ground", "敷地の高低差", UNCONFIRMED, headline, details, _GROUND_CONFIRM,
+        summary=summary, confirm_short="管理会社が履歴と管理員の記録で",
+    )
 
 
 def _ground_clean(reading: dict) -> bool:
@@ -162,6 +201,8 @@ def _record_row(record: Optional[dict]) -> Row:
             "この町丁の記録は、まだ手元の表に入れていません。",
             ["推測では埋めません。手元の表に入れているのはデモの町丁の分だけです。"],
             _RECORD_CONFIRM,
+            summary="手元の表に未収録",
+            confirm_short="管理会社から市区町村へ照会",
         )
     rows = record["rows"]
     source = f"出典：{record['source']}（読み取った事実を加工して作成）"
@@ -173,6 +214,8 @@ def _record_row(record: Optional[dict]) -> Row:
             "同じ町丁の記録は見当たりません。記録がないことは、浸水がなかったことを示すものではありません。",
             [record["caution"], source],
             _RECORD_CONFIRM,
+            summary="同じ町丁の記録は見当たらず",
+            confirm_short="管理会社から市区町村へ照会",
         )
     dates = len({date for date, _, _ in rows})
     amount = f"{len(rows)}行、日付は{dates}つ" if len(rows) > 1 else "1行"
@@ -180,7 +223,10 @@ def _record_row(record: Optional[dict]) -> Row:
     lines = [f"{date}　{cause}　{kind}" for date, cause, kind in rows]
     details = [record["note"]] if record["note"] else []
     details.extend([record["caution"], "隣の町丁の記録は、まだ照らし合わせていません。", source])
-    return Row("record", "市の浸水の記録", RISK, headline, details, record["confirm_by"], records=lines)
+    return Row(
+        "record", "市の浸水の記録", RISK, headline, details, record["confirm_by"], records=lines,
+        summary=f"同じ丁目に記録あり（{amount}）", confirm_short="深さは管理会社が確かめる",
+    )
 
 
 def _all_clear(reading: dict, record: Optional[dict], basis: str) -> bool:
@@ -205,6 +251,7 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             basis,
             _FLOOD_CONFIRM,
             [],
+            "管理会社が市の洪水の地図で",
         ),
         _hazard_row(
             "inland",
@@ -217,6 +264,7 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
                 "この地図は地面の高さが基準で、色がなくても地下の部屋には水が入ることがあります。",
                 "国の地図に載るのは、オープンデータの利用を認めた市町村の分だけです。",
             ],
+            "管理会社が市区町村に照会",
         ),
         _hazard_row(
             "surge",
@@ -226,6 +274,7 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             basis,
             _SURGE_CONFIRM,
             ["どんな条件の高潮を想定した色かは、地図の案内に書かれていません。"],
+            "管理会社が県・市の高潮の図で",
         ),
         _ground_row(reading, basis),
         _record_row(record),
@@ -235,5 +284,6 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             row.verdict = CLEAR
             row.verdict_label = "問題なし"
             row.confirm_by = None
+            row.confirm_short = None
             row.details.append("五つの項目がそろって当たらなかったので問題なしとしています。現地を確かめたものではありません。")
     return rows

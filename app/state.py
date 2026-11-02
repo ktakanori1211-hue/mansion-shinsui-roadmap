@@ -55,7 +55,10 @@ class Site:
 
 @dataclass
 class Row:
-    """立地の一行。headline は二段表示の一段目、details と confirm_by は二段目。"""
+    """立地の一行。headline は二段表示の一段目、details と confirm_by は二段目。
+
+    紙のおもてには summary と confirm_short を出し、全文は別紙に出す。
+    """
 
     key: str
     label: str
@@ -65,6 +68,8 @@ class Row:
     confirm_by: Optional[str] = None
     verdict_label: str = ""
     records: List[str] = field(default_factory=list)
+    summary: str = ""  # 紙のおもての細い表に出す短い言い方
+    confirm_short: Optional[str] = None
 
     def __post_init__(self):
         _check_verdict(self.verdict)

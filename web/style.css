@@ -184,9 +184,14 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .sheet .row-label { font-size: 10pt; }
 .sheet .row-headline { margin-top: 0.5mm; font-size: 10pt; }
 .sheet .tag { font-size: 8.5pt; }
-.row-confirm-sheet { margin: 0.5mm 0 0; font-size: 9pt; line-height: 1.4; }
-.row-confirm-sheet strong { font-weight: 600; }
-.sheet-pointer { margin: 2mm 0 0; color: var(--ink-muted); font-size: 9pt; }
+.sheet-pointer { margin: 1mm 0 0; color: var(--ink-muted); font-size: 8pt; line-height: 1.35; }
+.slim-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; line-height: 1.3; }
+.slim-table th, .slim-table td { padding: 0.8mm 1.2mm; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.slim-table th { background: var(--page); font-weight: 600; white-space: nowrap; }
+.slim-table td:first-child { width: 27%; }
+.slim-table td:nth-child(2) { width: 1%; }
+.slim-table td:last-child { width: 24%; }
+.slim-table .tag { padding: 0 3px; font-size: 7.5pt; }
 .sheet[hidden] { display: none; }
 .sheet .row-details { margin-top: 0.5mm; padding-left: 4mm; font-size: 8.5pt; line-height: 1.35; }
 .record-list { columns: 2; margin: 1mm 0 0; padding: 0; list-style: none; font-size: 8.5pt; line-height: 1.35; }
