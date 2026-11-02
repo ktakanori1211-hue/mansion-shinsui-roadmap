@@ -46,6 +46,32 @@ ACTIONS_DAY_NO_ENGINEER = "管理員か理事長が東京電力パワーグリ�
 ACTIONS_BEFORE = "警戒レベル3で車を上へ、レベル4で止水板と土のうを出します。合図は自治体や気象庁が出す警戒レベルです"
 
 
+ACTIONS_DAY_UNSURE = "管理員か理事長が、東京電力パワーグリッドと管理会社と、いれば主任技術者に連絡します。電気の部屋に入って電気を切りません。扉を開けて中に入って操作しません。在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡をあわせて行います。浸水中は電気の部屋・東京電力の変圧器の部屋・ポンプ室・エレベーターの底の部分に立ち入りません"
+ACTIONS_MORNING_UNSURE = "部屋などに水が残っていたら、電気の部屋・東京電力の変圧器の部屋・ポンプ室・エレベーターの底の部分に立ち入りません。管理員か理事長は、東京電力パワーグリッドの切り離しと、主任技術者（いない建物では電気工事の業者）の確認を確かめてから排水を始めます。電気を戻すかは、点検のあとで主任技術者（いない建物では電気工事の業者）と決めます。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
+
+
+def actions_for(sample: dict) -> tuple:
+    """当日と翌朝の文。主任技術者の有無が書類で分かっていないときは、有無を決めつけない。"""
+    if sample.get("engineer_unsure"):
+        return ACTIONS_DAY_UNSURE, ACTIONS_MORNING_UNSURE
+    if sample["has_chief_engineer"]:
+        return ACTIONS_DAY, ACTIONS_MORNING
+    return ACTIONS_DAY_NO_ENGINEER, ACTIONS_MORNING_NO_ENGINEER
+
+
+def rooms_in_basement(sample: dict) -> Optional[bool]:
+    """電気と水の部屋が地下か。分からないときは None で、地下と決めつけない。"""
+    answers = sample.get("answers") or {}
+    floor = answers.get("rooms_floor")
+    if floor == "basement":
+        return True
+    if floor == "ground":
+        return False
+    if floor == "unknown":
+        return None
+    return sample["archetype"] in ("basement", "tower")
+
+
 def _room_on_floor(sample: dict, key: str) -> Optional[str]:
     for index, view in enumerate(sample["views"]):
         if any(room["key"] == key for room in view["rooms"]):
@@ -78,42 +104,61 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
     document_read は、点検報告書などの書類で受電の箱が地下にあると読めたこと。
     """
     rows = []
-    is_basement = sample["archetype"] in ("basement", "tower")
+    answers = sample.get("answers") or {}
+    in_basement_known = rooms_in_basement(sample)
+    place_word = {True: "地下", False: "1階", None: "階が未確認"}[in_basement_known]
+    unsure = sample.get("engineer_unsure")
     drawing = lambda key: key in confirmed  # noqa: E731
     evidence = lambda key, fallback: DRAWING if drawing(key) else fallback  # noqa: E731
+    mount = sample["panel_mount"]
 
     rows.append(
         _item(
             "water",
             "水（全戸）",
             UNCONFIRMED,
-            f"ポンプのスイッチ盤は{'地下' if is_basement else '1階'}のポンプの部屋の{sample['panel_mount']}にあり、床からの高さが分かりません。盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。",
-            f"{'地下' if is_basement else '1階'}のポンプの部屋の盤（{sample['panel_mount']}）。高さは未確認",
+            f"ポンプのスイッチ盤の場所（{place_word}）と高さが確かめられていません（盤の形：{mount}）。盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。" + ("床に近い位置にある盤は、浅い浸水でも浸かるおそれがあると考えられます。" if mount == "床置き" else ""),
+            f"ポンプの部屋（{place_word}）の盤（{mount}）。高さは未確認",
             "管理会社が、給水ポンプの保守業者に、スイッチ盤の下の端の高さと部屋の床の高さを測ってもらいます。",
             "管理会社→ポンプの保守業者",
             3,
-            floor=_room_on_floor(sample, "pump"),
-            evidence=evidence("pump", DOCUMENT),
+            floor=_room_on_floor(sample, "pump") if in_basement_known is not None else None,
+            evidence=evidence("pump", DOCUMENT if not sample.get("custom") else QUESTION),
             confirmed=drawing("pump"),
         )
     )
 
-    if sample["has_chief_engineer"]:
+    if unsure:
+        rows.append(
+            _item(
+                "power",
+                "電気（共用部）",
+                UNCONFIRMED,
+                "マンション側で電気を受ける部屋があるか、主任技術者がいるかが、書類で確かめられていません。受電の箱か、おおもとのスイッチ盤が浸かると、共用部が停電し、給水ポンプも止まって断水します。",
+                "受電の部屋と主任技術者の有無が未確認",
+                "管理会社が、点検報告書か保安規程、竣工図、共用部の電気代の明細で確かめます。",
+                "管理会社（書類）",
+                1,
+                evidence=QUESTION,
+            )
+        )
+    elif sample["has_chief_engineer"]:
         # 書類か図面で地下と分かり、立地のリスクが確定していれば確定にする。確定するのは水が来ることまで。
-        known = document_read or drawing("elec")
+        known = (document_read or drawing("elec")) and in_basement_known is True
         verdict = RISK if known and location_risk else UNCONFIRMED
         source = "図面で確かめました" if drawing("elec") else "書類で読めました" if document_read else "聞いていますが、書類や図面ではまだ確かめていません"
+        where = f"{place_word}にあると{source}" if in_basement_known is not None else "どの階にあるか確かめられていません"
         rows.append(
             _item(
                 "power",
                 "電気（共用部）",
                 verdict,
-                f"エレベーター、給水ポンプ、廊下の照明の電気を受ける箱は、地下の電気の部屋にあると{source}。浸かると共用部が停電し、給水ポンプも止まって断水します。",
-                "受電の箱は地下。浸かると共用部が停電し断水も" if known else "受電の箱は地下と聞き取り（書類は未確認）",
+                f"エレベーター、給水ポンプ、廊下の照明の電気を受ける箱は、{where}。浸かると共用部が停電し、給水ポンプも止まって断水します。",
+                f"受電の箱は{place_word}。浸かると共用部が停電し断水も" if known else f"受電の箱の階（{place_word}）は書類で未確認",
                 "床からの盤や箱の高さは未確認なので、依頼メモで確かめます。盤の下の端は主任技術者が月次点検の立会いで測ります。",
                 "管理会社、主任技術者（高さ）",
                 1,
-                floor=_room_on_floor(sample, "elec"),
+                floor=_room_on_floor(sample, "elec") if in_basement_known is not None else None,
                 evidence=DRAWING if drawing("elec") else DOCUMENT if document_read else QUESTION,
                 confirmed=drawing("elec"),
                 always_confirm=True,
@@ -126,8 +171,8 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "power",
                 "電気（共用部のおおもとのスイッチ盤）",
                 UNCONFIRMED,
-                "共用部の電気は、1階の盤の部屋から来ています。床が通路より少し高いだけなら、浅い水でも盤の下の端に届くことがあります。",
-                "1階の盤の部屋。下の端の高さは未確認",
+                f"共用部の電気は、{place_word}の盤の部屋から来ています。床が通路より少し高いだけなら、浅い水でも盤の下の端に届くことがあります。",
+                f"{place_word}の盤の部屋。下の端の高さは未確認",
                 "管理会社から電気工事の業者に、盤の下の端の高さを測ってもらいます。",
                 "管理会社→電気工事の業者",
                 2,
@@ -137,36 +182,89 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
             )
         )
 
-    tr_floor = _room_on_floor(sample, "tr")
-    in_basement = tr_floor and "地下" in tr_floor
-    tr_risk = in_basement and drawing("tr") and location_risk
-    scope = "各戸と共用部の両方の電気" if not sample["has_chief_engineer"] else "各戸の電気"
-    place = "地下" if in_basement else "1階"
-    rows.append(
-        _item(
-            "tr",
-            "各戸の電気（東京電力の変圧器の部屋）",
-            RISK if tr_risk else UNCONFIRMED,
-            f"東京電力の変圧器の部屋は{place}にあると{'図面で確かめました' if drawing('tr') else ('聞いていますが、図面ではまだ確かめていません' if sample['id'] == 'a' else '見込まれますが、図面ではまだ確かめていません')}。浸かると{scope}が止まります。部屋の中の機器の高さは建物の側から分かりません。",
-            f"{place}。浸かると{scope}が止まる{'（図面で確認）' if drawing('tr') else '（図面は未確認）'}",
-            "管理会社が竣工図で部屋の有無と階を確かめ、部屋の中と穴・扉の分担は管理会社から東京電力パワーグリッドに問い合わせます。",
-            "管理会社→東京電力PG",
-            1,
-            always_confirm=True,
-            floor=tr_floor,
-            evidence=evidence("tr", QUESTION),
-            confirmed=drawing("tr"),
-            details=["確定するのは部屋まで水が来るおそれがあることまでです。"] if tr_risk else [],
+    if answers.get("tr") == "no":
+        rows.append(
+            _item(
+                "tr",
+                "各戸の電気（東京電力の設備の位置）",
+                UNCONFIRMED,
+                "東京電力の変圧器だけの部屋はないとの答えですが、図面で確かめるまで「なし」とはしません。" + ("各戸の電気がマンション側の受電設備から来るか、東京電力から直接来るかも分かっていません。" if answers.get("hv") == "yes" else "各戸へ電気を送る東京電力の設備がどこにあるかも分かっていません。"),
+                "部屋はないとの答え。図面と設備の位置は未確認",
+                "管理会社が竣工図と単線結線図で確かめ、各戸へ電気を送る設備の種類と位置を東京電力パワーグリッドに照会します。",
+                "管理会社→東京電力PG",
+                1,
+                evidence=QUESTION,
+            )
         )
-    )
+        tr_handled = True
+    elif answers.get("tr") == "unknown":
+        rows.append(
+            _item(
+                "tr",
+                "各戸の電気（東京電力の変圧器の部屋）",
+                UNCONFIRMED,
+                "東京電力の変圧器の部屋があるかどうかが分かっていません。あれば、そこが浸かると各戸の電気が止まります。",
+                "部屋があるか未確認",
+                "管理会社が竣工図の電気設備図と共用部の電気代の明細で、部屋の有無と階を確かめます。",
+                "管理会社（竣工図）",
+                1,
+            )
+        )
+        tr_handled = True
+    else:
+        tr_handled = False
+    if not tr_handled:
+        tr_floor = _room_on_floor(sample, "tr")
+        in_basement = tr_floor and "地下" in tr_floor
+        tr_risk = in_basement and drawing("tr") and location_risk
+        scope = "各戸と共用部の両方の電気" if not sample["has_chief_engineer"] else "各戸の電気"
+        place = "地下" if in_basement else "1階"
+        if sample.get("custom") and in_basement_known is None:
+            place = "階が未確認の場所"
+        rows.append(
+            _item(
+                "tr",
+                "各戸の電気（東京電力の変圧器の部屋）",
+                RISK if tr_risk else UNCONFIRMED,
+                f"東京電力の変圧器の部屋は{place}にあると{'図面で確かめました' if drawing('tr') else ('聞いていますが、図面ではまだ確かめていません' if sample['id'] == 'a' else '見込まれますが、図面ではまだ確かめていません')}。浸かると{scope}が止まります。部屋の中の機器の高さは建物の側から分かりません。",
+                f"{place}。浸かると{scope}が止まる{'（図面で確認）' if drawing('tr') else '（図面は未確認）'}",
+                "管理会社が竣工図で部屋の有無と階を確かめ、部屋の中と穴・扉の分担は管理会社から東京電力パワーグリッドに問い合わせます。",
+                "管理会社→東京電力PG",
+                1,
+                always_confirm=True,
+                floor=tr_floor,
+                evidence=evidence("tr", QUESTION),
+                confirmed=drawing("tr"),
+                details=["確定するのは部屋まで水が来るおそれがあることまでです。"] if tr_risk else [],
+            )
+        )
 
-    if sample["underground_feed"]:
+    built = sample.get("built")
+    before_guideline = ""
+    if built and built <= 2019:
+        before_guideline = f"{built}年築で、2020年6月の国のガイドラインより前の建物なので、ケーブルを通す壁の穴の止水処理は要確認です。"
+    elif built == 2020:
+        before_guideline = "2020年築で、2020年6月の国のガイドラインの前か後かは築年だけでは決まりません。壁の穴の止水処理を確かめます。"
+    if sample.get("feed_unknown"):
+        rows.append(
+            _item(
+                "entry",
+                "水の入り道（壁や床の穴）",
+                UNCONFIRMED,
+                "電気の引込みが地中か空中かが書類で分かっていません。マンション側の部屋のケーブルを通す穴と、給排水管などが通る穴の止水を確かめます。東京電力の変圧器の部屋の穴は、この行に含めません。" + before_guideline,
+                "引込みの形と穴の止水が未確認",
+                "管理会社が単線結線図で引込みの形を確かめ、防水・設備業者へ現地調査を依頼します。",
+                "管理会社→防水・設備業者",
+                2,
+            )
+        )
+    elif sample["underground_feed"]:
         rows.append(
             _item(
                 "entry",
                 "水の入り道（ケーブルを通す壁の穴）",
                 UNCONFIRMED,
-                "地下の電気の部屋のケーブルを通す壁の穴が止水されているか分かっていません。東京電力の変圧器の部屋の穴は、この行に含めません。",
+                "マンション側の電気の部屋のケーブルを通す壁の穴が止水されているか分かっていません。東京電力の変圧器の部屋の穴は、この行に含めません。" + before_guideline,
                 "マンション側の壁の穴の止水が未確認",
                 "管理会社から防水・設備業者へ現地調査を依頼します（部屋の中の確認は電気の月次点検の立会いに合わせます）。",
                 "管理会社→防水・設備業者",
@@ -187,7 +285,28 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
             )
         )
 
-    if sample["id"] == "a":
+    outside = []
+    if answers.get("slope") == "yes":
+        outside.append("地下へ降りるスロープか半地下の駐輪場")
+    if answers.get("vent") == "yes":
+        outside.append("1階の足元の換気口")
+    if answers.get("door_step") == "no":
+        outside.append("段差のない電気の部屋の扉")
+    if outside:
+        rows.append(
+            _item(
+                "outside",
+                "外から見える入口",
+                UNCONFIRMED,
+                "、".join(outside) + "があるとの答えです。道路の水がここから入ることがあります。",
+                "、".join(outside),
+                "管理会社が外から見える所を見て、部屋の中は竣工図で、入口の高さと止水板を置けるかを確かめます。冠水中は近づきません。",
+                "管理会社（外から）",
+                1,
+                evidence=QUESTION,
+            )
+        )
+    if sample["id"] == "a" and not sample.get("custom"):
         rows.append(
             _item(
                 "damp",
@@ -201,7 +320,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 evidence=DOCUMENT,
             )
         )
-    if sample["id"] == "c":
+    if sample["id"] == "c" and not sample.get("custom"):
         rows.append(
             _item(
                 "tank",
@@ -245,13 +364,26 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
             3,
         )
     )
+    if in_basement_known is not False:
+        rows.append(
+            _item(
+                "drain",
+                "トイレ・排水",
+                UNCONFIRMED,
+                "汚水を汲み上げるポンプがあるか、どの階にあるかが確かめられていません。止まるとトイレや生活排水が使えなくなり、低い階へ逆流することがあります。",
+                "汲み上げポンプの有無と階が未確認",
+                "管理会社が竣工図で確かめます。",
+                "管理会社（竣工図）",
+                1,
+            )
+        )
     if sample["archetype"] != "ground":
         rows.append(
             _item(
                 "park",
                 "機械式駐車場",
                 UNCONFIRMED,
-                "装置の下の掘り込みに水がたまると車が水没します。",
+                "装置の下の掘り込みに水がたまると車が水没します。" if not sample.get("custom") else "機械式駐車場があるか確かめられていません。あれば、装置の下の掘り込みに水がたまると車が水没します。",
                 "掘り込みの深さと排水ポンプが未確認",
                 "駐車場の保守会社に、掘り込みの深さと排水ポンプの有無を確認します。",
                 "駐車場の保守会社",
@@ -265,7 +397,7 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
     """最上段の一行は、決まった順に当てはめ、最初に当たった書き出しを出す。"""
     location_risk = any(row["verdict"] == "risk" for row in location_rows)
     location_clear = bool(location_rows) and all(row["verdict"] == "clear" for row in location_rows)
-    is_basement = sample["archetype"] in ("basement", "tower")
+    is_basement = rooms_in_basement(sample) is True
     notes = []
     if location_clear or all(item["verdict"] == "clear" for item in equipment):
         lead = "今の情報では、浸水で水が止まるおそれは小さい（または対策済み）。"
@@ -304,7 +436,7 @@ def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
     return rows
 
 
-def memos(sample: dict, equipment: List[dict], location_rows: List[dict]) -> List[dict]:
+def memos(sample: dict, equipment: List[dict], location_rows: List[dict], statements: Optional[List[str]] = None) -> List[dict]:
     """未確認を、確認する先ごとの依頼メモにする。"""
     sections = {
         1: {"key": 1, "label": "①", "title": "管理会社が書類・問い合わせで確かめること", "items": []},
@@ -318,6 +450,8 @@ def memos(sample: dict, equipment: List[dict], location_rows: List[dict]) -> Lis
         if item.get("confirm_by") and item.get("memo_section"):
             sections[item["memo_section"]]["items"].append({"from": item["label"], "text": item["confirm_by"]})
     first = sections[1]["items"]
+    for statement in statements or []:
+        first.append({"from": "聞き取り", "text": f"「{statement}」との話を、管理会社が竣工図で確かめます（図面で確かめるまで未確認です）。"})
     first.append({"from": "決める場", "text": "管理会社が規約・予算書・総会の議事録で、壁の穴の止水と置くだけの止水板を理事会で決められるかを確かめます。"})
     if sample["has_chief_engineer"]:
         first.append({"from": "電気を切る手段", "text": "主任技術者に、単線結線図で受電設備側の最初の開閉器の位置と、電気室に入らずに切れる手段があるかを確かめてもらいます。"})
@@ -330,6 +464,19 @@ def memos(sample: dict, equipment: List[dict], location_rows: List[dict]) -> Lis
 
 # 停電の連鎖の図の箱とつながり。
 def chain_nodes(sample: dict) -> dict:
+    result = _chain_nodes(sample)
+    if (sample.get("answers") or {}).get("tr") in ("no", "unknown"):
+        for node in result["nodes"]:
+            if node["key"] == "tr":
+                node["label"] = "東京電力の設備（位置は未確認）"
+    if sample.get("engineer_unsure"):
+        for node in result["nodes"]:
+            if node["key"] == "hv":
+                node["label"] = "マンション側の受電設備（有無は未確認）"
+    return result
+
+
+def _chain_nodes(sample: dict) -> dict:
     if sample["has_chief_engineer"]:
         nodes = [
             {"key": "line", "label": "外の電線"},
@@ -373,11 +520,16 @@ def measures_for_model(sample: dict) -> List[dict]:
 
 def scenario(sample: dict, water: int, measure: str) -> dict:
     """水の位置と対策の組合せごとに、浸かる想定、止まる想定、表のマス、固定の文を作る。"""
+    answers = sample.get("answers") or {}
+    tr_unseen = answers.get("tr") in ("no", "unknown")
     wet = set()
     if water >= 2:
         wet.add("ev")
+        if sample["panel_mount"] == "床置き" and measure != "raise":
+            wet.add("panel")
     if water >= 3:
-        wet.add("tr")
+        if not tr_unseen:
+            wet.add("tr")
         if measure != "hole":
             wet.add("hv")
         if measure != "raise":
@@ -400,6 +552,10 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
         notes.append(FIXED["raise"])
     if sample["archetype"] == "tower":
         notes.append(FIXED["tank_outside"])
+    if answers.get("panel_foot") == "unknown":
+        notes.append("盤の足元の形が分からないので、水の位置②で盤が浸かるかどうかは未確認です。")
+    if tr_unseen:
+        notes.append("東京電力の設備の位置は未確認です（東京電力パワーグリッドに確かめる）。")
     below = []
     gone = False
 
@@ -411,7 +567,7 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
     def mark(key):
         return "止まる想定" if key in stopped else "—"
 
-    checker = "主任技術者" if sample["has_chief_engineer"] else "電気工事の業者"
+    checker = "主任技術者か電気工事の業者" if sample.get("engineer_unsure") else "主任技術者" if sample["has_chief_engineer"] else "電気工事の業者"
     hv_name = "共用部の電気（受電の箱）" if sample["has_chief_engineer"] else "共用部の電気（おおもとのスイッチ盤）"
     guide_days = "排水開始から仮復旧まで4〜7日程度（受電設備・供給用変圧器が浸かった場合。経産省の検討会資料、一般的な目安）"
     table = [
@@ -447,7 +603,7 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
         },
         {
             "key": "tr",
-            "label": "各戸の電気（東京電力の変圧器の部屋）",
+            "label": "各戸の電気（東京電力の設備の位置は未確認）" if tr_unseen else "各戸の電気（東京電力の変圧器の部屋）",
             "cells": [
                 "—",
                 mark("tr") if tr_wet else "建物側から分からない",
@@ -470,7 +626,8 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
                 "stopped": False,
             }
         )
-    day = FIXED["no_stop"] if no_stop else (ACTIONS_DAY if sample["has_chief_engineer"] else ACTIONS_DAY_NO_ENGINEER)
+    day_text, morning_text = actions_for(sample)
+    day = FIXED["no_stop"] if no_stop else day_text
     before = ACTIONS_BEFORE
     if measure == "plate" and sample["underground_feed"]:
         before += "。止水板だけのときは、地中の壁の穴からの経路が残ります"
@@ -478,7 +635,7 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
         {
             "key": "actions",
             "label": "人がすること",
-            "cells": [before, day, ACTIONS_MORNING if sample["has_chief_engineer"] else ACTIONS_MORNING_NO_ENGINEER, "—", "—"],
+            "cells": [before, day, morning_text, "—", "—"],
             "stopped": False,
         }
     )
@@ -515,7 +672,30 @@ def scenarios(sample: dict) -> dict:
     }
 
 
-def building_payload(sample: dict, confirmed: List[str], location_rows: List[dict], document_read: bool = False) -> dict:
+def direction_line(directions: dict, low: List[str], sample: dict) -> str:
+    """土地の低い向きと建物の入口を掛け合わせる一文。向きは答えと地図の目安で、測ったものではない。"""
+    parts = []
+    if low:
+        parts.append(f"周囲より低い向きの目安は{'・'.join(low)}")
+    if directions.get("water"):
+        parts.append(f"水が来そうな側は{directions['water']}（指定）")
+    if directions.get("door"):
+        parts.append(f"電気室の扉の側は{directions['door']}（指定）")
+    if not parts:
+        return ""
+    entrances = "スロープ、扉、歩道ぎわの蓋" if sample["underground_feed"] else "坂の下の側の扉、足元の換気口"
+    return "、".join(parts) + f"。その向きに{entrances}があれば、先に確かめます。"
+
+
+def building_payload(
+    sample: dict,
+    confirmed: List[str],
+    location_rows: List[dict],
+    document_read: bool = False,
+    directions: Optional[dict] = None,
+    low_directions: Optional[List[str]] = None,
+    statements: Optional[List[str]] = None,
+) -> dict:
     location_risk = any(row["verdict"] == "risk" for row in location_rows)
     equipment = judge_equipment(sample, confirmed, location_risk, document_read)
     return {
@@ -526,7 +706,9 @@ def building_payload(sample: dict, confirmed: List[str], location_rows: List[dic
         "top_line": top_line(sample, equipment, location_rows, confirmed),
         "measures": visible_measures(sample, equipment),
         "subsidies": samples.SUBSIDIES,
-        "memos": memos(sample, equipment, location_rows),
+        "memos": memos(sample, equipment, location_rows, statements or []),
+        "direction_line": direction_line(directions or {}, low_directions or [], sample),
+        "statements": statements or [],
         "chain": chain_nodes(sample),
         "water_levels": WATER_LEVELS,
         "model_measures": measures_for_model(sample),

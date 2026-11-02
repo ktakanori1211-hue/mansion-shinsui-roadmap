@@ -1,9 +1,13 @@
 """設備の判定、水の位置の想定、囲い、検索の決まりを確かめる。ネットワークには出ない。"""
 
+import json
+import os
+import shutil
+import tempfile
 import unittest
 from unittest import mock
 
-from app import assistant, building, claude, guard, samples, search
+from app import assistant, building, claude, guard, samples, search, share
 from app.location import AddressError
 
 RISK_ROW = [{"verdict": "risk", "label": "記録", "confirm_by": None}]
@@ -88,6 +92,100 @@ class FixedTextTest(unittest.TestCase):
 
     def test_day_action_forbids_entering_to_operate(self):
         self.assertIn("扉を開けて中に入って操作しません", building.ACTIONS_DAY)
+
+
+class AnswersTest(unittest.TestCase):
+    def rows(self, answers, sample_id=None):
+        sample = samples.apply_answers(sample_id, answers, "東京都")
+        return sample, building.judge_equipment(sample, [], True, True)
+
+    def test_custom_building_borrows_a_near_shape(self):
+        self.assertEqual(self.rows({"floors": 30})[0]["id"], "c")
+        self.assertEqual(self.rows({"basement": "no"})[0]["id"], "b")
+        self.assertEqual(self.rows({"basement": "yes"})[0]["subsidy"], "tokyo")
+
+    def test_transformer_room_no_is_not_trusted_without_drawing(self):
+        _, rows = self.rows({"tr": "no", "hv": "yes", "basement": "yes"})
+        self.assertEqual(row(rows, "tr")["verdict"], "unconfirmed")
+        self.assertIn("図面で確かめるまで", row(rows, "tr")["headline"])
+
+    def test_unknown_receiving_box_is_not_risk(self):
+        _, rows = self.rows({"hv": "unknown", "basement": "yes"})
+        self.assertEqual(row(rows, "power")["verdict"], "unconfirmed")
+
+    def test_answer_alone_does_not_remove_the_engineer(self):
+        sample, rows = self.rows({"tr": "yes", "hv": "no"})
+        self.assertTrue(sample["engineer_unsure"])
+        self.assertEqual(row(rows, "power")["verdict"], "unconfirmed")
+        day, morning = building.actions_for(sample)
+        self.assertIn("いれば主任技術者", day)
+        self.assertIn("主任技術者（いない建物では電気工事の業者）", morning)
+        self.assertIn("選任していない", guard.fixed_answer("電気室に入っていい？", True, True)["text"])
+
+    def test_document_removes_the_engineer(self):
+        sample, rows = self.rows({"tr": "yes", "hv": "no", "hv_documented": True})
+        self.assertFalse(sample["has_chief_engineer"])
+        self.assertFalse(any("主任技術者" in (item["confirm_by"] or "") for item in rows))
+
+    def test_report_needs_both_statements(self):
+        self.assertEqual(assistant.read_report("受電設備なし")["answers"], {})
+        self.assertTrue(assistant.read_report(samples.REPORTS["b"])["answers"]["hv_documented"])
+
+    def test_fictional_word_is_not_read_as_overhead_feed(self):
+        self.assertEqual(assistant.read_report(samples.REPORTS["a"])["answers"]["feed"], "underground")
+        self.assertEqual(assistant.read_report(samples.REPORTS["b"])["answers"]["feed"], "overhead")
+
+    def test_unknown_rooms_do_not_say_basement(self):
+        sample, rows = self.rows({"basement": "unknown"})
+        lead = building.top_line(sample, rows, [{"verdict": "risk"}], [])["lead"]
+        self.assertEqual(lead, "まだ分からない。")
+        text = str([item["headline"] for item in rows])
+        self.assertNotIn("地下の電気の部屋", text)
+        self.assertNotIn("damp", [item["key"] for item in rows])
+
+    def test_tall_custom_building_gets_no_tank_row_without_answer(self):
+        _, rows = self.rows({"floors": 40})
+        keys = [item["key"] for item in rows]
+        self.assertNotIn("tank", keys)
+        self.assertNotIn("gen", keys)
+
+    def test_edited_sample_keeps_its_own_area(self):
+        sample = samples.apply_answers("a", {"basement": "no", "rooms_floor": "ground"}, "千葉市 幸町2丁目")
+        self.assertEqual(sample["subsidy"], "chiba")
+        self.assertEqual(sample["name"], "うみかぜコート（架空）")
+
+    def test_transformer_room_unseen_is_not_painted(self):
+        sample, _ = self.rows({"tr": "no", "basement": "yes", "rooms_floor": "basement"})
+        scenario = building.scenario(sample, 3, "plate")
+        self.assertNotIn("tr", scenario["stopped"])
+        self.assertTrue(any("位置は未確認" in line for line in scenario["notes"]))
+
+    def test_2020_building_is_not_called_before_the_guideline(self):
+        _, rows = self.rows({"built_year": 2020, "basement": "yes", "cover": "yes"})
+        self.assertNotIn("より前の建物", str(row(rows, "entry")["headline"]))
+
+    def test_floor_panel_is_wet_at_the_second_level(self):
+        sample, _ = self.rows({"panel_foot": "floor", "basement": "yes"})
+        self.assertIn("panel", building.scenario(sample, 2, "plate")["wet"])
+        self.assertNotIn("panel", building.scenario(samples.SAMPLES["a"], 2, "plate")["wet"])
+
+    def test_old_building_gets_the_guideline_note(self):
+        _, rows = self.rows({"built_year": 1999, "cover": "yes", "basement": "yes", "feed": "underground"})
+        self.assertIn("ガイドラインより前", row(rows, "entry")["headline"])
+
+    def test_outside_entrances_become_a_row(self):
+        _, rows = self.rows({"slope": "yes", "vent": "yes", "basement": "yes"})
+        self.assertIn("スロープ", row(rows, "outside")["headline"])
+
+    def test_direction_line_multiplies_land_and_entrances(self):
+        line = building.direction_line({"water": "南", "door": "北"}, ["南"], samples.SAMPLES["a"])
+        self.assertIn("周囲より低い向きの目安は南", line)
+        self.assertIn("電気室の扉の側は北", line)
+        self.assertIn("スロープ", line)
+
+    def test_statement_goes_to_memo_and_keeps_verdicts(self):
+        payload = building.building_payload(samples.SAMPLES["a"], [], OPEN_ROW, statements=["うちは1階に電気室"])
+        self.assertIn("うちは1階に電気室", str(payload["memos"][0]["items"]))
 
 
 class MeasureTest(unittest.TestCase):
@@ -331,6 +429,113 @@ class AssistantWithoutKeyTest(unittest.TestCase):
         self.assertIn("交付決定の前に契約したものは対象になりません", result["schedule"])
 
 
+class ExitsTest(unittest.TestCase):
+    def test_board_agenda_keeps_the_conditions(self):
+        sample = samples.SAMPLES["a"]
+        documents = assistant.exits(sample, "千葉市 幸町2丁目", building.building_payload(sample, [], RISK_ROW))
+        self.assertIn("理事会で決められる場合があります", documents["board"])
+        self.assertIn("規約・予算書・総会の議事録", documents["board"])
+        self.assertIn("工事着手・購入の前に交付決定", documents["procedure"])
+        self.assertIn("水が引いた翌朝", documents["procedure_fixed"])
+        self.assertIn("その年の予算", documents["board"])
+        self.assertIn("在宅で医療機器", documents["board"])
+        self.assertIn("費用は桁の目安", documents["procedure_fixed"])
+        self.assertNotIn("水が引いた翌朝", documents["procedure"])
+
+    def test_no_engineer_exit_changes_the_subject(self):
+        sample = samples.SAMPLES["b"]
+        documents = assistant.exits(sample, "横浜市", building.building_payload(sample, [], RISK_ROW))
+        self.assertIn("主任技術者はいません", documents["procedure_fixed"])
+
+
+class PolishTest(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_polish(self, rewritten):
+        reply = {"content": [{"type": "text", "text": json.dumps({"items": [{"key": "a", "text": rewritten}]}, ensure_ascii=False)}], "stop_reason": "end_turn"}
+        with mock.patch.object(claude, "create", return_value=reply):
+            return assistant.polish([{"key": "a", "text": "制御盤は製作に約2か月。高さは未確認です。"}], {})
+
+    def test_good_rewrite_is_used(self):
+        self.assertEqual(self.run_polish("制御盤の製作には約2か月かかります。高さは未確認です。")["items"][0]["text"], "制御盤の製作には約2か月かかります。高さは未確認です。")
+
+    def test_changed_number_is_rejected(self):
+        self.assertIn("約2か月。", self.run_polish("制御盤は製作に約3か月。高さは未確認です。")["items"][0]["text"])
+
+    def test_dropped_reservation_is_rejected(self):
+        self.assertIn("未確認", self.run_polish("制御盤は製作に約2か月かかります。")["items"][0]["text"])
+
+    def test_banned_word_is_rejected(self):
+        self.assertIn("製作に約2か月。", self.run_polish("制御盤は製作に約2か月で安全です。高さは未確認です。")["items"][0]["text"])
+
+    def test_changed_unit_is_rejected(self):
+        self.assertIn("約2か月", self.run_polish("制御盤は製作に約2日。高さは未確認です。")["items"][0]["text"])
+
+    def test_new_vague_period_is_rejected(self):
+        self.assertIn("製作に約2か月。", self.run_polish("制御盤は製作に約2か月、数日で戻ります。高さは未確認です。")["items"][0]["text"])
+
+    def test_swapped_actor_is_rejected(self):
+        reply = {"content": [{"type": "text", "text": json.dumps({"items": [{"key": "a", "text": "管理員が判断します。"}]}, ensure_ascii=False)}], "stop_reason": "end_turn"}
+        with mock.patch.object(claude, "create", return_value=reply):
+            result = assistant.polish([{"key": "a", "text": "主任技術者が判断します。"}], {})
+        self.assertEqual(result["items"][0]["text"], "主任技術者が判断します。")
+
+    def test_report_uses_claude_items(self):
+        parsed = {"items": [{"key": "q1_tr", "value": "あり", "word": "借室", "state": "yes"}, {"key": "contract", "value": "不明", "word": "", "state": "unknown"}]}
+        reply = {"content": [{"type": "text", "text": json.dumps(parsed, ensure_ascii=False)}], "stop_reason": "end_turn"}
+        with mock.patch.object(claude, "create", return_value=reply):
+            result = assistant.read_report("借室あり")
+        self.assertEqual(result["mode"], "claude")
+        self.assertEqual(result["answers"], {"tr": "yes"})
+
+
+class WithoutKeyPolishTest(unittest.TestCase):
+    def test_text_is_kept(self):
+        with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
+            result = assistant.polish([{"key": "a", "text": "もとの文"}], {})
+        self.assertEqual(result["items"][0]["text"], "もとの文")
+        self.assertEqual(result["source"], "program")
+
+    def test_statement_is_recorded_without_key(self):
+        with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
+            answer = assistant.chat("うちは1階に電気室があります", [], {"sample_id": "a"})
+        self.assertEqual(answer["actions"][0]["type"], "statement")
+
+
+class ShareTest(unittest.TestCase):
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.body = {"ciphertext": "QUJD", "iv": "QUJD", "salt": "QUJD", "days": 7}
+
+    def test_create_and_read_until_expiry(self):
+        created = share.create(self.body, self.base, now=1000)
+        self.assertEqual(share.read(created["id"], self.base, now=2000)["ciphertext"], "QUJD")
+
+    def test_expired_is_deleted_on_read(self):
+        created = share.create(self.body, self.base, now=1000)
+        self.assertIsNone(share.read(created["id"], self.base, now=1000 + 8 * 86400))
+        self.assertEqual(os.listdir(self.base), [])
+
+    def test_sweep_removes_old_files(self):
+        share.create(self.body, self.base, now=1000)
+        self.assertEqual(share.sweep(self.base, now=1000 + 8 * 86400), 1)
+
+    def test_only_three_periods_are_allowed(self):
+        with self.assertRaises(share.ShareError):
+            share.create({**self.body, "days": 365}, self.base)
+
+    def test_bad_id_cannot_escape_the_folder(self):
+        self.assertIsNone(share.read("../../secret", self.base))
+
+    def test_plain_text_is_rejected(self):
+        with self.assertRaises(share.ShareError):
+            share.create({**self.body, "ciphertext": "これは平文です"}, self.base)
+
+
 class ClaudeRequestTest(unittest.TestCase):
     def test_missing_key_raises(self):
         with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
@@ -372,7 +577,56 @@ class SearchTest(unittest.TestCase):
             search.search("  ")
 
     def test_address_part_is_taken_from_a_name_query(self):
-        self.assertEqual(search._address_part("千葉市幸町 〇〇マンション"), "千葉市幸町")
+        self.assertEqual(search.building_part_removed("千葉市幸町 〇〇マンション"), "千葉市幸町")
+        self.assertEqual(search.building_part_removed("エクセル市川"), "市川")
+
+    def test_numbers_become_kanji_addresses(self):
+        self.assertEqual(search.to_kanji_address("東京都江東区大島2-15"), "東京都江東区大島二丁目15")
+        self.assertEqual(search.to_kanji_address("千葉市幸町２丁目"), "千葉市幸町二丁目")
+        self.assertEqual(search.to_kanji_address("大島2丁目15番"), "大島二丁目15番")
+
+    def test_shops_and_other_towns_are_dropped(self):
+        results = [
+            {"display_name": "エクセル美容室, 横浜市", "lon": "139", "lat": "35", "category": "shop"},
+            {"display_name": "エクセル富士見, 狭山市", "lon": "139", "lat": "35", "category": "building"},
+            {"display_name": "エクセル市川, 市川市", "lon": "139", "lat": "35", "category": "building"},
+        ]
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(results).encode("utf-8")
+
+        with mock.patch("urllib.request.urlopen", return_value=Response()):
+            found = search._osm("エクセル市川", "市川")
+        self.assertEqual([c["label"] for c in found], ["エクセル市川, 市川市"])
+
+    def test_place_message_when_building_is_not_on_the_map(self):
+        with mock.patch.object(search, "_gsi_raw", return_value=[{"label": "千葉県市川市", "longitude": 1, "latitude": 1, "source": "国土地理院"}]), mock.patch.object(
+            search, "_osm", return_value=[]
+        ), mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
+            result = search.search("エクセル市川")
+        self.assertIn("建物名そのものは公開地図に載っていない", result["message"])
+        self.assertEqual(result["candidates"][0]["label"], "千葉県市川市")
+
+    def test_postal_code_uses_postal_lookup(self):
+        with mock.patch.object(search, "_postal", return_value=[{"label": "千葉県千葉市", "longitude": 1, "latitude": 1, "source": "x"}]) as postal:
+            search.search("261-0001")
+        postal.assert_called_once_with("2610001")
+
+    def test_claude_guess_is_marked(self):
+        guess = {"address": "千葉県市川市", "floors": 10, "built_year": 1999, "confident": False}
+        with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess), mock.patch.object(
+            search, "_gsi", return_value=[{"label": "千葉県市川市", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
+        ):
+            result = search.search("エクセル市川")
+        self.assertIn("Claude が所在地を推定", result["message"])
+        self.assertEqual(result["hints"], {"floors": 10, "built_year": 1999})
 
     def test_osm_is_only_used_when_address_search_fails(self):
         with mock.patch.object(search, "_gsi", return_value=[{"label": "x"}]) as gsi, mock.patch.object(search, "_osm") as osm:

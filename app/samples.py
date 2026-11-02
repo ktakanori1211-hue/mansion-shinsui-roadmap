@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Optional
 
 # 図面の座標。部屋の x, y, w, h は通り芯 X1〜X4, Y1〜Y3 の範囲を 0〜1 とした割合。
@@ -58,7 +59,7 @@ ROOM_NAMES = {
 MEASURES = [
     {"key": "hole", "tier": "今すぐ", "label": "ケーブルを通す壁の穴をふさぐ（マンション側の部屋の穴。施工は電気工事の業者が、主任技術者と停電の要否・離隔を決めてから。理事や管理員は部屋に入らない。東京電力の変圧器の部屋の穴には、だれも栓や止水材を入れない）", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "数万〜十数万円", "low": 4, "high": 5, "sample_yen": 100000, "tokyo": "with_plate", "chiba": "no"},
     {"key": "plate", "tier": "今すぐ", "label": "置くだけの止水板と吸水土のうを備える", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "数万〜数十万円", "low": 4, "high": 5, "sample_yen": 300000, "tokyo": "yes", "chiba": "yes"},
-    {"key": "procedure", "tier": "今すぐ", "label": "大雨の前とさなかの手順を決めておく", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "—", "range": "0円", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
+    {"key": "procedure", "tier": "今すぐ", "label": "大雨の前とさなかの手順を決めておく", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "—", "range": "—（契約による）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "tepco", "tier": "今すぐ", "label": "東京電力の変圧器の部屋の扉と穴の浸水対策を、東京電力パワーグリッドに照会し、申し入れて話し合う", "decision": "理事会で申し入れる。工事になるときの決め方は内容が分かってから", "account": "話し合いの結果による", "range": "—（確認が要る）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "panel", "tier": "工事が要る", "label": "ポンプのスイッチ盤を高い位置に付け替える（盤の下の端が低いと分かった場合）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜150万円", "low": 5, "high": 6, "sample_yen": 1000000, "tokyo": "unknown", "chiba": "no"},
     {"key": "pillar", "tier": "工事が要る", "label": "支柱式の止水板（アンカーで固定）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜200万円", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "yes", "chiba": "no"},
@@ -74,7 +75,9 @@ SUBSIDIES = {
         "label": "東京都（2/3・上限833万円）",
         "rate_label": "補助対象経費の2/3、調査・企画と改修の合計で1棟あたり上限833万円、千円未満切り捨て",
         "cautions": [
-            "交付決定の前に契約したものは対象になりません（東京都の手引き）。",
+            "交付決定の前に契約したものは対象になりません（東京都の手引き）。有料の現地調査の契約も、補助を使うなら交付決定の前にしません。",
+            "受付は2026年6月5日から2027年1月15日までで、予算がなくなり次第終了です。調査・企画と改修は別々に申請します。",
+            "壁の穴の止水、排気口のかさ上げ、逆流防止弁は、止水板などと併せる場合に限ります。壁の穴だけなら、それだけでは対象外になりえます。",
             "登録済みのマンション、浸水想定区域等にあること、非常用電源の条件があります。給水とエレベーターに必要な設備を守るもので、エントランスだけを守るものは対象外です。",
             "申請者は管理組合で、先に支払って事後に精算する形と読めます。都内各区の制度は確かめていません。",
         ],
@@ -83,7 +86,7 @@ SUBSIDIES = {
         "label": "千葉市（1/2・上限75万円）",
         "rate_label": "防水板の設置等の費用の1/2以内、一つの建物等につき75万円を限度、1回を限度、100円未満切り捨て",
         "cautions": [
-            "防水板の工事着手・購入の前に交付決定を受ける必要があります（千葉市の案内）。",
+            "防水板の工事着手・購入の前に交付決定を受ける必要があります（千葉市の案内）。対象になりうるのは、取り外しか移動ができる防水板です。",
             "「過去に浸水被害が発生した地域」が条件で、この町丁が当たるかは原文から分かりません。市の下水道営業課に確かめます。今年度の受付期間も確かめていません。",
             "共用部は理事長が申請者で、規約と理事会議事録の写しを付けると市の資料にあります。常設のものが対象かは市に確かめていません。",
         ],
@@ -133,7 +136,7 @@ SAMPLES = {
                     {"key": "stair", "label": "階段", "x": 0.89, "y": 0.5, "w": 0.11, "h": 0.5, "symbol": "stair"},
                 ],
                 "marks": [
-                    {"kind": "conduit_hole", "label": "管路口", "x": 0.1, "y": 1.0},
+                    {"kind": "conduit_hole", "label": "ケーブルを通す壁の穴", "x": 0.1, "y": 1.0},
                 ],
                 "wall_label": "外壁（地下）",
             },
@@ -249,7 +252,7 @@ SAMPLES = {
                     {"key": "stair", "label": "階段", "x": 0.89, "y": 0.42, "w": 0.11, "h": 0.58, "symbol": "stair"},
                 ],
                 "marks": [
-                    {"kind": "conduit_hole", "label": "管路口", "x": 0.09, "y": 1.0},
+                    {"kind": "conduit_hole", "label": "ケーブルを通す壁の穴", "x": 0.09, "y": 1.0},
                 ],
             },
             {
@@ -321,6 +324,71 @@ REPORTS = {
 }
 
 
+# 見本の設定を質問の答えの形にしたもの。見本を手直しするときの初めの値。
+DEFAULT_ANSWERS = {
+    "a": {"built_year": 1998, "floors": 11, "basement": "yes", "rooms_floor": "basement", "slope": "yes", "vent": "unknown", "cover": "yes", "panel_foot": "raised", "door_step": "unknown", "tr": "yes", "hv": "yes"},
+    "b": {"built_year": 2006, "floors": 5, "basement": "no", "rooms_floor": "ground", "slope": "no", "vent": "yes", "cover": "no", "panel_foot": "raised", "door_step": "yes", "tr": "yes", "hv": "no", "hv_documented": True},
+    "c": {"built_year": 2009, "floors": 38, "basement": "yes", "rooms_floor": "basement", "slope": "yes", "vent": "unknown", "cover": "yes", "panel_foot": "raised", "door_step": "unknown", "tr": "yes", "hv": "yes"},
+}
+EMPTY_ANSWERS = {"built_year": None, "floors": None, "basement": "unknown", "rooms_floor": "unknown", "slope": "unknown", "vent": "unknown", "cover": "unknown", "panel_foot": "unknown", "door_step": "unknown", "tr": "unknown", "hv": "unknown"}
+
+
+def base_for_answers(answers: dict, fallback: Optional[str] = None) -> str:
+    """答えに一番近い形の見本を選ぶ。模型と図面の形を借りるだけで、建物の事実にはしない。"""
+    if answers.get("rooms_floor") == "ground" or answers.get("basement") == "no":
+        return "b"
+    if (answers.get("floors") or 0) >= 20:
+        return "c"
+    return fallback if fallback in ("a", "c") else "a"
+
+
+def region_of(label: str) -> str:
+    for word, region in (("東京都", "tokyo"), ("千葉市", "chiba"), ("横浜市", "yokohama")):
+        if word in label:
+            return region
+    return "none"
+
+
+def apply_answers(sample_id: Optional[str], answers: Optional[dict], label: str = "") -> Optional[dict]:
+    """質問の答えを見本の形に重ねる。見本の id がないときは、自分の建物として近い形を借りる。"""
+    custom = not sample_id
+    if custom and not answers:
+        return None
+    answers = {**EMPTY_ANSWERS, **DEFAULT_ANSWERS.get(sample_id or "", {}), **(answers or {})}
+    original = get(sample_id)
+    base = get(base_for_answers(answers, sample_id))
+    sample = copy.deepcopy(base)
+    sample["answers"] = answers
+    sample["custom"] = custom
+    if custom:
+        sample["name"] = "あなたの建物（見本の形を借りて説明）"
+        sample["subsidy"] = region_of(label)
+        sample["units"] = None
+        sample["kind"] = "質問の答えから、近い形の見本を借りています"
+    else:
+        # 見本を手直ししても、名前と住所の地域は元の見本のまま。借りるのは設備の形だけ。
+        sample["name"] = original["name"]
+        sample["subsidy"] = original["subsidy"]
+        sample["units"] = original["units"]
+    sample["floors"] = answers.get("floors") or sample["floors"]
+    sample["built"] = answers.get("built_year") or (None if custom else sample["built"])
+    # 受電設備の「なし」は、書類に明記があるときだけ読む。答えだけなら主任技術者の有無は未確認。
+    documented_none = answers.get("hv") == "no" and answers.get("hv_documented")
+    sample["has_chief_engineer"] = not documented_none
+    sample["engineer_unsure"] = answers.get("hv") in ("no", "unknown") and not documented_none
+    sample["hv_unknown"] = sample["engineer_unsure"]
+    # 引込みは書類で分かったときだけ決める。蓋の答えは代理の手がかりにとどめる。
+    feed = answers.get("feed")
+    sample["feed_unknown"] = False
+    if feed in ("underground", "overhead"):
+        sample["underground_feed"] = feed == "underground"
+    elif custom:
+        sample["feed_unknown"] = True
+        sample["underground_feed"] = answers.get("cover") == "yes" or base["underground_feed"]
+    sample["panel_mount"] = {"floor": "床置き", "raised": base["panel_mount"], "unknown": "形は未確認"}[answers.get("panel_foot", "raised")]
+    return sample
+
+
 def get(sample_id: Optional[str]) -> Optional[dict]:
     return SAMPLES.get(sample_id or "")
 
@@ -336,6 +404,9 @@ def client_view(sample: dict) -> dict:
     }
     return {
         **{k: sample[k] for k in ("id", "name", "button", "kind", "archetype", "subsidy", "floors", "units", "built", "has_chief_engineer", "panel_mount", "underground_feed", "plan", "report", "title")},
+        "answers": sample.get("answers") or DEFAULT_ANSWERS.get(sample["id"], {}),
+        "custom": bool(sample.get("custom")),
+        "engineer_unsure": bool(sample.get("engineer_unsure")),
         "pins": pins,
         "rooms": sorted(keys),
         "views": sample["views"],

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>共有された資料｜マンション浸水ロードマップ</title>
+  <style>
+    :root { --ink: #1a1a1c; --muted: #5a5a60; --line: #d4d4d8; --page: #f2f2f4; --accent: #0b4fa8;
+            --risk: #a3201a; --risk-bg: #fbe9e7; --un: #7a5200; --un-bg: #fdf3d7; --clear: #1c6b3a; --clear-bg: #e5f4ea; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--ink); font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif; font-size: 16px; line-height: 1.7; }
+    main { max-width: 720px; margin: 0 auto; padding: 16px; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    h2 { margin: 18px 0 6px; font-size: 16px; border-bottom: 2px solid var(--ink); padding-bottom: 2px; }
+    h3 { margin: 12px 0 4px; font-size: 15px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+    .card p { margin: 4px 0; }
+    .tag { display: inline-block; padding: 1px 8px; border: 1px solid; border-radius: 4px; font-size: 13px; font-weight: 600; }
+    .risk { background: var(--risk-bg); color: var(--risk); }
+    .unconfirmed { background: var(--un-bg); color: var(--un); }
+    .clear { background: var(--clear-bg); color: var(--clear); }
+    .muted { color: var(--muted); font-size: 14px; }
+    .lead { font-size: 18px; font-weight: 700; }
+    ul { margin: 4px 0; padding-left: 20px; }
+    pre { white-space: pre-wrap; font: inherit; margin: 0; }
+    label { display: block; margin-bottom: 4px; font-weight: 600; }
+    input { width: 100%; padding: 12px; border: 1px solid var(--muted); border-radius: 6px; font: inherit; }
+    button { margin-top: 8px; width: 100%; padding: 12px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; }
+    .error { color: var(--risk); }
+  </style>
+</head>
+<body>
+  <main id="main">
+    <h1>共有された資料</h1>
+    <form class="card" id="unlock">
+      <label for="password">パスワード</label>
+      <input id="password" type="password" autocomplete="off">
+      <button type="submit">開く</button>
+      <p class="error" id="message" role="alert"></p>
+      <p class="muted">中身はこの画面の中で元に戻します。サーバーは中身を読めません。</p>
+    </form>
+  </main>
+  <script src="share-crypto.js"></script>
+  <script>
+    "use strict";
+    const params = new URLSearchParams(location.hash.slice(1));
+    const main = document.getElementById("main");
+    const message = document.getElementById("message");
+
+    function el(tag, text, className) {
+      const node = document.createElement(tag);
+      if (text !== undefined && text !== null) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    }
+
+    function card(item) {
+      const box = el("article", undefined, "card");
+      box.append(el("span", item.verdict_label, `tag ${item.verdict}`), el("h3", item.label), el("p", item.text));
+      if (item.confirm) box.append(el("p", `誰が確かめるか：${item.confirm}`, "muted"));
+      return box;
+    }
+
+    function render(data) {
+      main.replaceChildren(el("h1", data.name), el("p", data.address, "muted"));
+      const top = el("section", undefined, "card");
+      top.append(el("p", data.question), el("p", data.lead, "lead"), el("p", data.notes, "muted"));
+      if (data.direction) top.append(el("p", data.direction));
+      main.append(top);
+      main.append(el("h2", "どこから水が来るか"), ...data.location.map(card));
+      main.append(el("h2", "何が止まるか"), ...data.equipment.map(card));
+      main.append(el("h2", "いくらで、誰が決めるか"));
+      data.measures.forEach((item) => {
+        const box = el("article", undefined, "card");
+        box.append(el("p", `${item.tier}：${item.label}`), el("p", `${item.decision}／${item.account}／${item.range}`, "muted"));
+        main.append(box);
+      });
+      main.append(el("p", data.measure_note, "muted"));
+      main.append(el("h2", "大雨が近づいたら"));
+      const rain = el("ul");
+      data.rain.forEach((line) => rain.append(el("li", line)));
+      main.append(rain);
+      main.append(el("h2", "水が来ている間と、水が引いた翌朝"));
+      const during = el("ul");
+      data.during.forEach((line) => during.append(el("li", line)));
+      main.append(during);
+      main.append(el("h2", "何日で戻るか"), el("p", data.days_top), el("p", data.days));
+      main.append(el("h2", "依頼メモ"));
+      data.memos.forEach((section) => {
+        main.append(el("h3", `依頼メモ${section.label}　${section.title}`));
+        const list = el("ul");
+        section.items.forEach((item) => list.append(el("li", `${item.from}：${item.text}`)));
+        main.append(list);
+      });
+      main.append(el("h2", "理事会の議題のたたき台"), Object.assign(el("div", undefined, "card"), { innerHTML: "" }));
+      main.lastChild.append(el("pre", data.board));
+      main.append(el("h2", "補助と手続きの順番のメモ"), Object.assign(el("div", undefined, "card"), { innerHTML: "" }));
+      main.lastChild.append(el("pre", data.procedure));
+      main.append(el("h2", "この資料について"));
+      const notes = el("ul");
+      data.disclaimers.forEach((line) => notes.append(el("li", line)));
+      main.append(notes);
+      main.append(el("p", `この資料は ${data.expires} まで開けます。`, "muted"));
+    }
+
+    document.getElementById("unlock").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "";
+      const id = params.get("id");
+      const linkKey = params.get("k");
+      if (!id || !linkKey) {
+        message.textContent = "リンクが欠けています。もう一度受け取ってください。";
+        return;
+      }
+      if (!ShareCrypto.available()) {
+        message.textContent = "暗号の機能が使えない接続です。localhost か HTTPS で開いてください。";
+        return;
+      }
+      const response = await fetch(`/api/share/${encodeURIComponent(id)}`);
+      const stored = await response.json();
+      if (!response.ok) {
+        message.textContent = stored.error;
+        return;
+      }
+      try {
+        const data = await ShareCrypto.decrypt(stored, document.getElementById("password").value, linkKey);
+        data.expires = new Date(stored.expires_at * 1000).toLocaleDateString("ja-JP");
+        render(data);
+      } catch (error) {
+        message.textContent = "パスワードが違うか、リンクが正しくありません。";
+      }
+    });
+  </script>
+</body>
+</html>

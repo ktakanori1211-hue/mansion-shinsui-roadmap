@@ -50,10 +50,10 @@ def _touches_safety(message: str) -> bool:
     return False
 
 
-def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict]:
+def fixed_answer(message: str, has_chief_engineer: bool = True, unsure: bool = False) -> Optional[dict]:
     """固定の文を返す。当たらなければ None で、AI に回してよい。"""
     message = unicodedata.normalize("NFKC", message)
-    notice = disclaimer(has_chief_engineer)
+    notice = disclaimer(has_chief_engineer and not unsure)
     if _EMERGENCY.search(message):
         return {
             "kind": "emergency",
@@ -65,7 +65,9 @@ def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict
             "text": "濡れた分電盤やコンセント、家電には触らず、使わないでください。東京電力パワーグリッドか電気工事の業者に相談してください。ご自宅の中の判断は、この道具の範囲の外です。\n\n" + notice,
         }
     if _touches_safety(message):
-        if has_chief_engineer:
+        if unsure:
+            contact = "連絡は管理員か理事長が、東京電力パワーグリッドと管理会社と、いれば主任技術者へします。"
+        elif has_chief_engineer:
             contact = "連絡は管理員か理事長が、主任技術者と東京電力パワーグリッドへします。電気を切っても、東京電力の設備の側や太陽光・蓄電池・発電機の側には電気が残ることがあります。"
         else:
             contact = "連絡は管理員か理事長が、東京電力パワーグリッドと管理会社へします。この建物に主任技術者はいません。"
@@ -80,7 +82,7 @@ def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict
                 + "\n\n"
                 + (
                     "排水を始める前に、東京電力パワーグリッドの切り離しと、主任技術者の開放を確かめます。"
-                    if has_chief_engineer
+                    if has_chief_engineer and not unsure
                     else "排水を始める前に、東京電力パワーグリッドに電話で切り離しを確かめ、電気工事の業者が始めてよいと答えてから始めます。"
                 )
                 + "水の位置は、立ち入ってよい高さではありません。水が引いても、主任技術者（主任技術者がいない建物では東京電力パワーグリッドや電気工事業者）が安全を確かめるまで入りません。"
@@ -94,13 +96,18 @@ def fixed_answer(message: str, has_chief_engineer: bool = True) -> Optional[dict
     return None
 
 
-_BANNED = re.compile(r"安全です|安全だと|安心です|浸水しません|大丈夫です|問題ありません|構いません|入って大丈夫|入ってください|入れます|使えます|触って|触れて|開けて|開けても|切ってください|入れてください|戻して|確認してきて|近づいて|ブレーカーを入れ|復電して|MΩ|メガオーム|世界初|唯一")
+_BANNED = re.compile(r"入ってよい|入っても|入室でき|開けてよい|操作してよい|安心|心配ありません|大丈夫でしょう|すぐ使え|安全です|安全だと|浸水しません|大丈夫です|問題ありません|構いません|入って大丈夫|入ってください|入れます|使えます|触って|触れて|開けて|開けても|切ってください|入れてください|戻して|確認してきて|近づいて|ブレーカーを入れ|復電して|MΩ|メガオーム|世界初|唯一")
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _WITH_UNIT = re.compile(r"(\d+(?:\.\d+)?)\s*(cm|mm|m|メートル|センチ|ミリ|日|時間|週間|か月|ヶ月|カ月|万円|円|kV|V|A)")
 
 
 def numbers_in(text: str) -> List[str]:
     return _NUMBER.findall(text.replace(",", ""))
+
+
+def numbers_with_units(text: str) -> List[str]:
+    """数字と単位を組にする。「約2か月」と「約2日」を別のものとして比べるため。"""
+    return [f"{number}{unit}" for number, unit in _WITH_UNIT.findall(text.replace(",", ""))]
 
 
 def check_text(text: str, allowed_sources: Iterable[str]) -> Optional[str]:

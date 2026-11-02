@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.parse
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from . import assistant, building, claude, judge, location, records, samples, search, state
+from . import assistant, building, claude, judge, location, records, samples, search, share, state
 
 MAX_BODY_BYTES = 45 * 1024 * 1024  # 32MB の PDF を base64 にした大きさ
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
@@ -45,6 +46,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
+    def log_message(self, format, *args):
+        # 共有の番号と検索の言葉を記録に残さない。
+        if args and re.search(r"/api/(share|search|reverse)", str(args[0])):
+            return
+        super().log_message(format, *args)
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/location":
@@ -61,6 +68,14 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(200, {"claude": claude.available()})
         elif parsed.path == "/api/search":
             self._search(urllib.parse.parse_qs(parsed.query))
+        elif parsed.path == "/api/reverse":
+            self._reverse(urllib.parse.parse_qs(parsed.query))
+        elif parsed.path.startswith("/api/share/"):
+            data = share.read(parsed.path.rsplit("/", 1)[-1])
+            if data:
+                self._send_json(200, data)
+            else:
+                self._send_json(410, {"error": "このリンクは期限が過ぎたか、見つかりません。"})
         else:
             super().do_GET()
 
@@ -90,6 +105,14 @@ class Handler(SimpleHTTPRequestHandler):
         except location.AddressError as error:
             self._send_json(422, {"error": str(error)})
 
+    def _reverse(self, query: dict):
+        try:
+            point = parse_pin(query)
+        except location.AddressError as error:
+            self._send_json(422, {"error": str(error)})
+            return
+        self._send_json(200, {"label": search.reverse(point["longitude"], point["latitude"])})
+
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
@@ -102,11 +125,31 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(400, {"error": "送られた内容を読めませんでした。"})
             return
         if path == "/api/building":
-            sample = samples.get(body.get("sample_id"))
+            label = body.get("label", "")
+            sample = samples.apply_answers(body.get("sample_id"), body.get("answers"), label)
             if not sample:
                 self._send_json(404, {"error": "見本が見つかりません。"})
                 return
-            self._send_json(200, building.building_payload(sample, body.get("confirmed") or [], body.get("location_rows") or [], bool(body.get("document_read"))))
+            payload = building.building_payload(
+                sample,
+                body.get("confirmed") or [],
+                body.get("location_rows") or [],
+                bool(body.get("document_read")),
+                body.get("directions") or {},
+                body.get("low_directions") or [],
+                body.get("statements") or [],
+            )
+            payload["exits"] = assistant.exits(sample, label, payload)
+            self._send_json(200, payload)
+        elif path == "/api/share":
+            try:
+                self._send_json(200, share.create(body))
+            except share.ShareError as error:
+                self._send_json(422, {"error": str(error)})
+        elif path == "/api/polish":
+            self._send_json(200, assistant.polish(body.get("items") or [], body.get("context") or {}))
+        elif path == "/api/pins":
+            self._send_json(200, assistant.rephrase_pins(body.get("pins") or [], body.get("context") or {}))
         elif path == "/api/plan":
             self._send_json(200, assistant.read_plan(body))
         elif path == "/api/report":
@@ -129,6 +172,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", "8000"))
+    share.sweep()
     server = ThreadingHTTPServer(("127.0.0.1", port), partial(Handler, directory=WEB_DIR))
     print(f"http://localhost:{port}", flush=True)
     server.serve_forever()

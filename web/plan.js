@@ -175,18 +175,35 @@ const PlanPanel = (() => {
       if (!response.ok) throw new Error(result.error);
       message.textContent = result.message;
       pins = result.pins.map((pin) => ({ ...pin }));
+      await rephrasePins(result.rooms);
       renderPins();
       renderRooms(result);
-      App.afterPlanRead(pins);
     } catch (error) {
       message.textContent = `図面を読めませんでした：${error.message}`;
+    }
+  }
+
+  // 階や部屋の名前に合わせて説明を言い直す。キーがないときは階を添えるだけ。
+  async function rephrasePins(rooms) {
+    const floors = Object.fromEntries(rooms.map((room) => [room.kind, room.floor]));
+    try {
+      const response = await fetch("/api/pins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pins, context: { rooms: floors } }),
+      });
+      const result = await response.json();
+      const byKey = Object.fromEntries(result.items.map((item) => [item.key, item.text]));
+      pins = pins.map((pin) => ({ ...pin, how_water: byKey[pin.key] || pin.how_water }));
+    } catch (error) {
+      // 言い直せなくても、もとの説明で出す。
     }
   }
 
   function offerSample() {
     const sample = App.building.sample;
     actions.replaceChildren();
-    const pdf = element("button", `${sample.name} の図面（PDF）を読み込む`, "primary");
+    const pdf = element("button", `${sample.custom ? "近い形の見本" : sample.name} の図面（PDF）を読み込む`, "primary");
     pdf.type = "button";
     pdf.addEventListener("click", async () => {
       const response = await fetch(sample.plan.pdf);

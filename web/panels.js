@@ -88,7 +88,7 @@ const ModelPanel = (() => {
 
   function renderChain(scenario) {
     const box = document.getElementById("chain");
-    box.replaceChildren(element("h3", "停電の連鎖"));
+    box.replaceChildren(element("h3", "停電の連鎖（止まる想定はオレンジ。文を読まなくても、どこまで止まるかが見えます）"));
     chainPaths(App.building.chain).forEach((path) => box.append(chainRow(path, scenario)));
     box.append(element("p", App.building.fixed.chain, "fixed-note"));
     box.append(element("p", `東京電力の変圧器の部屋：${App.building.fixed.tr_box}`, "fixed-note"));
@@ -139,6 +139,7 @@ const ModelPanel = (() => {
 
 // 紙のおもて、裏、依頼メモ。
 const SheetPanel = (() => {
+  const last = {};
   const SHEET_LABELS = {
     tepco: "東京電力の変圧器の部屋の扉と穴の浸水対策を東京電力パワーグリッドに照会し、申し入れる",
     hole: "マンション側の壁の穴をふさぐ（施工は電気工事の業者。理事や管理員は部屋に入らない。変圧器の部屋の穴には、だれも栓や止水材を入れない）",
@@ -167,7 +168,7 @@ const SheetPanel = (() => {
   function render() {
     const building = App.building;
     const { sample } = building;
-    const label = `住所：${sample.name}／${App.locationState.site.label}（建物は架空）`;
+    const label = `住所：${sample.name}／${App.locationState.site.label}${sample.custom ? "（図と設備の形は見本から借りています）" : "（建物は架空）"}`;
     document.getElementById("sheet-address").textContent = label;
     document.getElementById("sheet-basis-address").textContent = label;
     document.getElementById("sheet-memo-address").textContent = label;
@@ -178,7 +179,12 @@ const SheetPanel = (() => {
 
     const top = document.getElementById("sheet-top");
     top.replaceChildren(element("p", building.top_line.lead, "top-lead"));
-    if (building.top_line.notes.length) top.append(element("p", building.top_line.notes.join(""), "top-notes"));
+    if (building.top_line.notes.length) {
+      const notes = element("p", building.top_line.notes.join(""), "top-notes");
+      notes.dataset.polish = "top";
+      top.append(notes);
+    }
+    if (building.direction_line) top.append(element("p", building.direction_line, "top-notes strong"));
 
     document.getElementById("sheet-equipment").replaceChildren(
       slim(
@@ -196,7 +202,7 @@ const SheetPanel = (() => {
       ...(building.equipment.find((item) => item.key === "tr").verdict !== "risk"
         ? [element("p", "東京電力の変圧器の部屋が地下にあり、そこまで水が来るおそれがあると図面と立地で確かめられたら、扉と穴の浸水対策を東京電力パワーグリッドに申し入れます。", "sheet-pointer")]
         : []),
-      element("p", "＊建物の規約と予算による。総会から任されている、規約に定めがある、その年の予算に入っている、のどれかに当たるときのことで、予算だけで足りるかは規約の書き方により確かめていません。当たるかは管理会社に規約・予算書・議事録で確かめてもらい、当たらなければ総会で決めるか任せてもらいます。屋上移設（数千万〜1億円超）と枠ごとの防水扉（300万円〜）は総会の特別決議です。", "sheet-pointer"),
+      element("p", "＊建物の規約と予算による。総会から任されている、規約に定めがある、その年の予算に入っている、のどれかに当たるときのことで、予算だけで足りるかは規約の書き方により確かめていません。当たるかは管理会社に規約・予算書・議事録で確かめてもらい、当たらなければ総会で決めるか任せてもらいます。管理費か修繕積立金かも確かめます。屋上移設（数千万〜1億円超）と枠ごとの防水扉（300万円〜）は総会の特別決議です。", "sheet-pointer"),
     );
 
     const reading = App.locationState.location.reading;
@@ -207,23 +213,27 @@ const SheetPanel = (() => {
     const rain = [
       "警戒レベル3：車を上へ。決議は要らず、住民が今日からできる対策です。",
       `警戒レベル4：止水板と土のうを出します。誰が出すかを先に決めます。${tide ? "低い土地か高潮の色がかかる地点なので（建物の位置では未確認）、満潮の2時間前までに出します（仮の目安。満潮と重なると排水が遅れると考えられ、時刻は潮位表で確かめます）。" : ""}`,
-      hasEngineer
+      sample.engineer_unsure
+        ? "電気の部屋や変圧器の部屋に水が来そうになったら：管理員か理事長が東京電力パワーグリッドと管理会社と、いれば主任技術者に連絡します。部屋に入りません。在宅で医療機器を使う人へ先に知らせ、全戸へ排水しないよう放送します。"
+        : hasEngineer
         ? "電気の部屋に水が来そうになったら：管理員か理事長が主任技術者に連絡します。操作は主任技術者の指示で行い、電気の部屋には、水が来る前も後も、主任技術者の同行なしに入りません。在宅で医療機器を使う人へ先に知らせ、止めると同時に全戸へ排水しないよう放送します。"
         : "盤の部屋や変圧器の部屋に水が来そうになったら：管理員か理事長が東京電力パワーグリッドと管理会社に連絡します。部屋に入りません。在宅で医療機器を使う人へ先に知らせ、全戸へ排水しないよう放送します。",
     ];
+    last.rain = rain;
     const list = element("ul", undefined, "sheet-list");
     rain.forEach((line) => list.append(element("li", line)));
     document.getElementById("sheet-rain").replaceChildren(list, element("p", "合図は自治体や気象庁が出す警戒レベルです。予報ではありません。", "sheet-pointer"));
 
     const scenario = building.scenarios["3:plate"];
     const during = element("ul", undefined, "sheet-list");
-    during.append(element("li", `水が来た当日：${scenario.table[scenario.table.length - 1].cells[1]}`));
-    during.append(element("li", `水が引いた翌朝：${scenario.table[scenario.table.length - 1].cells[2]}`));
+    last.during = [`水が来た当日：${scenario.table[scenario.table.length - 1].cells[1]}`, `水が引いた翌朝：${scenario.table[scenario.table.length - 1].cells[2]}`];
+    last.during.forEach((line) => during.append(element("li", line)));
     document.getElementById("sheet-during").replaceChildren(during);
 
+    last.days = `給水・排水の制御盤は製作に約2か月（建築設備技術者協会の報告書）。供給用変圧器${hasEngineer ? "・受電設備" : ""}が浸かった場合、排水開始から仮復旧まで4〜7日程度（経産省の検討会資料、一般的な目安）。${hasEngineer ? "受変電の特注品は復旧に1年以上の場合も（同協会の報告書）。" : ""}武蔵小杉は停電5日・断水8日・トイレ11日、本復旧6〜8か月（建築設備技術者協会の調査など。ほかの建物の例）。`;
     document.getElementById("sheet-days").replaceChildren(
       element("p", building.fixed.timeline_top, "sheet-text strong"),
-      element("p", `給水・排水の制御盤は製作に約2か月（建築設備技術者協会の報告書）。供給用変圧器${hasEngineer ? "・受電設備" : ""}が浸かった場合、排水開始から仮復旧まで4〜7日程度（経産省の検討会資料、一般的な目安）。${hasEngineer ? "受変電の特注品は復旧に1年以上の場合も（同協会の報告書）。" : ""}武蔵小杉は停電5日・断水8日・トイレ11日、本復旧6〜8か月（建築設備技術者協会の調査など。ほかの建物の例）。`, "sheet-text"),
+      element("p", last.days, "sheet-text"),
     );
 
     const engineerLines = hasEngineer
@@ -241,6 +251,7 @@ const SheetPanel = (() => {
           "盤の部屋の現地調査は電気工事業者が立ち会い、防水業者は目で見るだけとします。穴をふさぐ前に、停電の要否、盤との離隔、止水材を電気工事業者と決めます。",
           "借室の穴や管路には、だれも栓や非硬化の止水材を入れません。",
         ];
+    if (sample.engineer_unsure) engineerLines.unshift("マンション側の受電設備と電気主任技術者の有無を、点検報告書か保安規程で確かめてください（まだ書類で確かめていません）。");
     const engineerList = element("ul", undefined, "sheet-list");
     engineerLines.filter(Boolean).forEach((line) => engineerList.append(element("li", line)));
     document.getElementById("sheet-engineer").replaceChildren(engineerList);
@@ -250,9 +261,11 @@ const SheetPanel = (() => {
     building.memos.forEach((section) => {
       memo.append(element("h3", `依頼メモ${section.label}　${section.title}`));
       const items = element("ul", undefined, "sheet-list");
-      section.items.forEach((item) => {
+      section.items.forEach((item, i) => {
         const line = element("li");
-        line.append(element("strong", `${item.from}：`), item.text);
+        const textNode = element("span", item.text);
+        textNode.dataset.polish = `memo-${building.memos.indexOf(section)}-${i}`;
+        line.append(element("strong", `${item.from}：`), textNode);
         items.append(line);
       });
       if (!section.items.length) items.append(element("li", "今はありません。"));
@@ -262,5 +275,38 @@ const SheetPanel = (() => {
     document.getElementById("sheet-memo").hidden = false;
   }
 
-  return { render };
+  function shareData() {
+    const building = App.building;
+    const { sample } = building;
+    const toCard = (row) => ({ verdict: row.verdict, verdict_label: row.verdict_label, label: row.label, text: row.headline, confirm: row.confirm_by });
+    return {
+      name: sample.name,
+      address: `${App.locationState.site.label}${sample.custom ? "" : "（建物は架空）"}`,
+      question: "水が引いた翌朝、この建物は何日で水が出るか",
+      lead: building.top_line.lead,
+      notes: building.top_line.notes.join(""),
+      direction: building.direction_line,
+      location: App.locationState.location.rows.map(toCard),
+      equipment: building.equipment.map(toCard),
+      measures: building.measures.map((m) => ({ tier: m.tier, label: m.label, decision: m.decision, account: m.account, range: m.range })),
+      measure_note: "「理事会で決められる場合がある」は、総会から任されている、規約に定めがある、その年の予算に入っている、のどれかに当たるときのことです。予算だけで足りるかは規約の書き方により確かめていません。管理会社に規約・予算書・総会の議事録で確かめてもらい、当たらなければ総会で決めるか任せてもらいます。",
+      rain: last.rain,
+      during: last.during,
+      days_top: building.fixed.timeline_top,
+      days: last.days,
+      memos: building.memos,
+      board: `${building.exits.board}\n${building.exits.board_fixed}`,
+      procedure: `${building.exits.procedure}\n\n${building.exits.procedure_fixed}`,
+      disclaimers: [App.disclaimerText(), ...FIXED_NOTES, "費用は桁の目安で、保安法人・工事業者の見積りに置き換えること"],
+    };
+  }
+
+  function applyPolish(polished) {
+    document.querySelectorAll("[data-polish]").forEach((node) => {
+      const text = polished[node.dataset.polish];
+      if (text) node.textContent = text;
+    });
+  }
+
+  return { render, shareData, applyPolish };
 })();

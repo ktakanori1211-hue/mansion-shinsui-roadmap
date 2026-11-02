@@ -211,7 +211,8 @@ const SimPanel = (() => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sample_id: App.building.sample.id,
+        sample_id: App.sampleId,
+        answers: App.answers,
         label: App.locationState.site.label,
         confirmed: App.confirmed,
         document_read: App.documentRead,

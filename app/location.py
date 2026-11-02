@@ -26,6 +26,8 @@ HAZARD_ZOOM = 17
 LANDFORM_ZOOM = 16
 # 「すぐ近く（数m先）」として見る範囲。ズーム 17 の 1 ピクセルは東京付近で約 1m。仮の値。
 NEARBY_PIXELS = 8
+PROFILE_STEP_M = 50
+LOW_MARGIN_M = 0.1  # 標高データの細かな差を向きの目安にしないための仮の値
 TIMEOUT_SECONDS = 15
 USER_AGENT = "mansion-shinsui-roadmap"
 
@@ -255,13 +257,29 @@ def _read_elevation(longitude: float, latitude: float) -> dict:
     }
 
 
+def low_directions(points: list) -> list:
+    """周囲より低い向きの目安。どの道路かまでは分からない。"""
+    center = points[0]["elevation_m"]
+    if center is None:
+        return []
+    return [point["label"] for point in points[1:] if point["elevation_m"] is not None and point["elevation_m"] < center - LOW_MARGIN_M]
+
+
 def read_location(longitude: float, latitude: float, distance_m: float = 50) -> dict:
     """代表点の値を読む。周囲の点の距離は仮の値で、判定の段階で決める。"""
     points = [("center", "中心", longitude, latitude)]
     for key, label, north, east in DIRECTIONS:
         points.append((key, label, *offset_point(longitude, latitude, north * distance_m, east * distance_m)))
 
+    profile_axes = {"ns": (1, 0), "ew": (0, 1)}
     with ThreadPoolExecutor(max_workers=8) as pool:
+        profile_jobs = {
+            axis: [
+                (step * PROFILE_STEP_M, pool.submit(_read_elevation, *offset_point(longitude, latitude, north * step * PROFILE_STEP_M, east * step * PROFILE_STEP_M)))
+                for step in (2, -2)
+            ]
+            for axis, (north, east) in profile_axes.items()
+        }
         elevations = [
             (key, label, pool.submit(_read_elevation, lon, lat)) for key, label, lon, lat in points
         ]
@@ -273,12 +291,24 @@ def read_location(longitude: float, latitude: float, distance_m: float = 50) -> 
             pool.submit(_read_landform, key, label, layer, longitude, latitude)
             for key, label, layer in LANDFORM_LAYERS
         ]
+        points = [{"key": k, "label": l, **future.result()} for k, l, future in elevations]
+        by_key = {point["key"]: point["elevation_m"] for point in points}
+        profile = {
+            "ns": sorted(
+                [(d, f.result()["elevation_m"]) for d, f in profile_jobs["ns"]]
+                + [(distance_m, by_key["north"]), (0, by_key["center"]), (-distance_m, by_key["south"])],
+                reverse=True,
+            ),
+            "ew": sorted(
+                [(d, f.result()["elevation_m"]) for d, f in profile_jobs["ew"]]
+                + [(distance_m, by_key["east"]), (0, by_key["center"]), (-distance_m, by_key["west"])]
+            ),
+        }
         return {
             "point": {"longitude": longitude, "latitude": latitude},
-            "elevation": {
-                "distance_m": distance_m,
-                "points": [{"key": k, "label": l, **future.result()} for k, l, future in elevations],
-            },
+            "elevation": {"distance_m": distance_m, "points": points},
+            "profile": profile,
+            "low_directions": low_directions(points),
             "hazards": [future.result() for future in hazards],
             "hazard_legend": [
                 {"color": "#%02x%02x%02x" % rgb, "label": label} for rgb, label in HAZARD_LEGEND.items()

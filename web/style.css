@@ -356,3 +356,110 @@ textarea { width: 100%; padding: 8px; border: 1px solid var(--ink-muted); border
 @media print {
   .card, .chat, .chat-toggle { display: none !important; }
 }
+
+/* 全幅のレイアウト。A4 のプレビュー以外は横幅いっぱいに使う。 */
+.app-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; align-items: flex-end; }
+.stage-tabs { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 24px; background: var(--surface); border-bottom: 2px solid var(--line); }
+.stage-tabs span { color: var(--ink-muted); }
+.stage-tabs button { flex: 1 1 200px; padding: 8px 10px; font-size: 13px; font-weight: 600; line-height: 1.35; }
+.stage-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.stage-tabs .tab-all { flex: 0 1 130px; font-weight: 400; }
+.is-hidden { display: none !important; }
+.why-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 1400px; margin: 14px auto 0; padding: 0 24px; }
+.why-card { padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 4px; }
+.why-card h2 { margin: 0 0 4px; font-size: 15px; }
+.why-card p { margin: 0; font-size: 13px; line-height: 1.6; }
+.stages { max-width: 1400px; margin: 0 auto; padding: 14px 24px 60px; }
+.stages .card { width: auto; max-width: none; }
+.stage1-grid { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.stage2-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.stage-empty { margin: 20px 0; font-size: 15px; }
+.stage-next { margin: 8px 0 24px; text-align: right; }
+.button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-message { margin: 8px 0 0; padding: 8px 10px; background: var(--unconfirmed-bg); border: 1px solid var(--unconfirmed); border-radius: 4px; font-size: 13px; }
+.map-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+.map-tools button { padding: 5px 10px; font-size: 13px; }
+.control-inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 400; font-size: 13px; }
+.tap-status { color: var(--accent); font-weight: 600; }
+.map { height: 500px; }
+.map-tapping { cursor: crosshair !important; outline: 3px solid var(--stopped); }
+.elevation-tag span, .tap-tag span { display: inline-block; padding: 0 5px; background: rgba(255,255,255,.92); border: 1px solid var(--ink-muted); border-radius: 3px; font-size: 11px; white-space: nowrap; }
+.elevation-tag, .tap-tag, .low-arrow { background: none; border: 0; }
+.low-arrow span { display: block; color: #0b4fa8; font-size: 15px; line-height: 18px; text-align: center; }
+.terrain { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.terrain h3 { margin: 0 0 4px; font-size: 14px; }
+.terrain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.terrain-chart { margin: 0; }
+.terrain-chart figcaption { font-size: 12.5px; font-weight: 600; }
+.terrain-chart svg { display: block; width: 100%; height: auto; }
+.terrain-note { margin: 6px 0 0; font-size: 14px; }
+.result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 18px; }
+.top-banner { margin-bottom: 14px; padding: 14px 18px; background: #12263f; color: #fff; border-radius: 6px; }
+.top-banner-question { margin: 0; font-size: 14px; opacity: .85; }
+.top-banner-lead { margin: 2px 0 4px; font-size: 26px; font-weight: 700; line-height: 1.35; }
+.top-banner-notes, .top-banner-dir { margin: 0; font-size: 13.5px; line-height: 1.6; }
+.top-banner-dir { margin-top: 4px; font-weight: 600; }
+.top-banner-dir:empty { display: none; }
+details.card > summary { font-size: 15px; font-weight: 600; cursor: pointer; }
+.q-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 8px 0; }
+.q-section { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.q-section h3 { margin: 0 0 4px; font-size: 14px; }
+.q-report { margin-top: 10px; }
+.q-report button { margin: 6px 6px 0 0; }
+.q-group { margin: 6px 0; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; }
+.q-group legend { padding: 0 3px; font-size: 12.5px; font-weight: 600; }
+.q-choice { display: inline-flex; gap: 4px; align-items: center; margin: 0 10px 0 0; font-weight: 400; font-size: 13px; cursor: pointer; }
+.q-card { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; width: 84px; margin: 2px 4px 2px 0; padding: 4px; border: 1px solid var(--line); border-radius: 4px; font-weight: 400; font-size: 12px; cursor: pointer; }
+.q-card svg { width: 60px; height: 40px; }
+.q-card:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.q-number { display: inline-flex; flex-direction: column; margin: 0 10px 4px 0; font-weight: 400; font-size: 12.5px; }
+.q-number input { width: 90px; padding: 4px 6px; font: inherit; }
+.model-view { height: 560px; }
+.model-label { font-size: 12px; font-weight: 600; }
+.model-label-small { font-weight: 400; font-size: 10.5px; }
+.chain { margin: 8px 0 12px; font-size: 12.5px; }
+.chain h3 { font-size: 14px; }
+.chain-row { flex-wrap: nowrap; overflow-x: auto; }
+.chain-box { white-space: nowrap; }
+.exit-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.exit-doc { margin-top: 8px; padding: 10px 12px; background: var(--page); border-radius: 6px; }
+.exit-doc pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: 13.5px; line-height: 1.7; }
+.print-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; }
+.print-row .hint { margin: 0; }
+.share-form { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.share-form label { margin: 0; }
+.share-form input, .share-form select { padding: 7px 9px; font: inherit; font-size: 14px; }
+.share-result { margin-top: 8px; }
+#share-link { width: min(100%, 640px); padding: 6px 8px; font-size: 13px; }
+.share-result a { margin-left: 10px; }
+.share-result button { margin-left: 6px; }
+.sheets { overflow-x: auto; }
+.sheets .sheet { margin-left: auto; margin-right: auto; }
+.is-hidden-screen { display: none; }
+
+@media (max-width: 1000px) {
+  .stage1-grid, .stage2-grid, .why-bar { grid-template-columns: 1fr; }
+  .stages, .why-bar { padding-left: 16px; padding-right: 16px; }
+  .stage-tabs { padding: 8px 16px; position: static; }
+  .stage-tabs span { display: none; }
+  .stage-tabs button { flex: 1 1 100%; }
+  .terrain-grid { grid-template-columns: 1fr; }
+  .map { height: 380px; }
+  .model-view { height: 380px; }
+  .top-banner-lead { font-size: 21px; }
+}
+
+@media print {
+  .stage-tabs, .why-bar, .stage-next, .stage-empty, .top-banner, .chat, .chat-toggle, .stages > .stage > .card, .stage1-grid, .stage2-grid { display: none !important; }
+  .stage { display: block !important; }
+  .stage[data-stage="1"], .stage[data-stage="2"], .stage[data-stage="4"] { display: none !important; }
+  .stages { max-width: none; margin: 0; padding: 0; }
+  .sheets { display: block !important; overflow: visible; }
+  .sheets .sheet { margin: 0; }
+}
+
+/* A4 おもての立地と設備の表は、ラベルを折り返さず行を詰める */
+#sheet-front div:not(#sheet-measures) > .slim-table { width: 100%; }
+#sheet-front div:not(#sheet-measures) > .slim-table td:first-child,
+#sheet-front div:not(#sheet-measures) > .slim-table td:nth-child(2),
+#sheet-front div:not(#sheet-measures) > .slim-table td:last-child { width: auto; white-space: nowrap; }

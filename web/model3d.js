@@ -27,6 +27,7 @@ let meshes = {};
 let waters = [];
 let focusPoints = {};
 let detailLabels = [];
+let directionGroup = null;
 let targetCam = null;
 let targetLook = null;
 let raf = null;
@@ -104,11 +105,12 @@ function buildRooms(sample) {
       meshes[room.key] = mesh;
       focusPoints[room.key] = { look: place.center.clone(), from: place.center.clone().add(new THREE.Vector3(7, 5, 14)) };
       if (["elec", "tr", "pump", "panel_room", "tank", "gen"].includes(room.key)) {
-        const name = room.key === "tr" ? "東京電力の変圧器の部屋" : window.App.roomName(room.key);
+        const trUnseen = room.key === "tr" && ["no", "unknown"].includes(sample.answers?.tr);
+        const name = trUnseen ? "東京電力の設備\n位置は未確認" : room.key === "tr" ? "東京電力の変圧器の部屋" : window.App.roomName(room.key);
         const note = sample.confirmedRooms.includes(room.key) ? name : `${name}\n位置は図面で未確認`;
-        label(note, place.center.clone().add(new THREE.Vector3(0, place.h / 2 + 0.25, 0)), "model-label model-label-small");
+        label(note, place.center.clone().add(new THREE.Vector3(0, place.h / 2 + 0.25, 0)), "model-label");
       }
-      if (room.key === "tr") {
+      if (room.key === "tr" && !["no", "unknown"].includes(sample.answers?.tr)) {
         const hidden = sample.confirmedRooms.includes("tr") ? "中は建物側から分からない" : "中は建物側から分からない\n位置は図面で未確認";
         label(hidden, place.center.clone(), "model-label model-label-small", "tr");
       }
@@ -270,6 +272,7 @@ function clear() {
   waters = [];
   focusPoints = {};
   detailLabels = [];
+  directionGroup = null;
 }
 
 function waterTarget(item, level, measure, sample) {
@@ -367,7 +370,7 @@ window.Model3D = {
     buildOutside(sample);
     buildUpper(sample);
     buildPins(sample);
-    focusPoints.overview = { look: new THREE.Vector3(0, sample.archetype === "ground" ? 2 : -0.5, 0), from: new THREE.Vector3(22, sample.archetype === "tower" ? 11 : 9, 33) };
+    focusPoints.overview = { look: new THREE.Vector3(0, sample.archetype === "ground" ? 2 : -0.5, 0), from: new THREE.Vector3(15, sample.archetype === "ground" ? 8 : 6, 24) };
     camera.position.copy(focusPoints.overview.from);
     controls.target.copy(focusPoints.overview.look);
     this.sample = sample;
@@ -400,6 +403,34 @@ window.Model3D = {
       meshes.panel.position.y = room.position.y + (raised ? room.geometry.parameters.height / 2 - 0.65 : 0);
     }
     if (meshes.hole) setColor(meshes.hole, measure === "hole" ? 0x3a7d44 : 0xd9534f);
+  },
+  // 2 タップで指定した向きを矢印で出す。模型の向きは説明用で、実際の方位ではない。
+  setDirections(directions) {
+    if (!group) return;
+    if (directionGroup) {
+      directionGroup.traverse((child) => {
+        if (child.isCSS2DObject) child.element.remove();
+      });
+      group.remove(directionGroup);
+    }
+    directionGroup = new THREE.Group();
+    const angles = { 北: 0, 北東: 45, 東: 90, 南東: 135, 南: 180, 南西: 225, 西: 270, 北西: 315 };
+    [["water", 0xc8611f, "水が来そうな側"], ["door", 0x5b3f9e, "扉の側"]].forEach(([key, color, name]) => {
+      const direction = directions[key];
+      if (!direction) return;
+      const radians = (angles[direction] * Math.PI) / 180;
+      const unit = new THREE.Vector3(Math.sin(radians), 0, -Math.cos(radians));
+      const edge = unit.clone().multiplyScalar(WIDTH * 0.7).add(new THREE.Vector3(0, 0.6, 0));
+      const arrow = new THREE.ArrowHelper(unit.clone().negate(), edge, 4, color, 1.2, 0.8);
+      directionGroup.add(arrow);
+      const node = document.createElement("div");
+      node.className = "model-label model-label-small";
+      node.textContent = `${name}：${direction}（模型の向きは説明用）`;
+      const tag = new CSS2DObject(node);
+      tag.position.copy(edge).add(new THREE.Vector3(0, 0.8, 0));
+      directionGroup.add(tag);
+    });
+    group.add(directionGroup);
   },
   // 動きの確認用。画面が裏にあって描画が止まっているときに、指定の回数だけ進める。
   advance(frames) {
