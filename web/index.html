@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>マンション浸水ロードマップ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>マンション浸水ロードマップ</h1>
+    <p>浸水のあとに住み続けられるマンションか。住所と手元の情報から、理事会に出せるA4一枚を作ります。</p>
+  </header>
+
+  <main class="workspace">
+    <section class="steps" aria-label="入力">
+      <ol class="step-list">
+        <li class="step" id="step-address" data-state="current">
+          <h2><span class="step-number">1</span>住所</h2>
+          <div class="step-body">
+            <form id="address-form">
+              <label for="address">マンションの住所(町丁まで)</label>
+              <input id="address" name="address" type="text" autocomplete="off"
+                     placeholder="例：東京都江東区大島2丁目">
+              <p class="hint">都道府県、市区町村(区を含む)、町丁まで入れてください。</p>
+              <button type="submit" class="primary">立地を調べる</button>
+            </form>
+            <div class="demo" id="demo-points" hidden>
+              <p class="hint">デモの地点(設備は架空の設定です)</p>
+              <div class="demo-buttons" id="demo-buttons"></div>
+            </div>
+            <p class="error" id="address-error" role="alert" hidden></p>
+          </div>
+        </li>
+
+        <li class="step" id="step-location" data-state="waiting">
+          <h2><span class="step-number">2</span>立地の結果</h2>
+          <div class="step-body" id="location-body" aria-live="polite">
+            <p class="hint">住所を入れると、ここに公開データの値が出ます。</p>
+          </div>
+        </li>
+
+        <li class="step" data-state="waiting">
+          <h2><span class="step-number">3</span>建物の質問と書類</h2>
+          <div class="step-body"><p class="hint">この段はこれから作ります。</p></div>
+        </li>
+
+        <li class="step" data-state="waiting">
+          <h2><span class="step-number">4</span>確認</h2>
+          <div class="step-body"><p class="hint">この段はこれから作ります。</p></div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="preview" aria-label="A4一枚の表示">
+      <div class="preview-bar">
+        <span>A4一枚(作成中)</span>
+        <button type="button" id="print-button">印刷</button>
+      </div>
+
+      <article class="sheet">
+        <p class="sheet-face">おもて(事前)</p>
+        <p class="sheet-address" id="sheet-address">住所：まだ入っていません</p>
+        <h2 class="sheet-headline">水が引いた翌朝、この建物は何日で水が出るか</h2>
+        <p class="placeholder">建物の情報が入ると、ここに一行目が出ます。</p>
+
+        <h3>どこから水が来るか</h3>
+        <div id="sheet-location"><p class="placeholder">住所を入れると、公開データの値が出ます。</p></div>
+
+        <h3>何が止まるか</h3>
+        <p class="placeholder">建物の質問と書類から埋まります。</p>
+
+        <h3>いくらで、誰が決めるか</h3>
+        <p class="placeholder">確かめた内容に応じて、費用の桁と決める場が並びます。</p>
+
+        <h3>大雨が近づいたら</h3>
+        <p class="placeholder">どの合図で誰が何をするかが出ます。</p>
+      </article>
+
+      <article class="sheet">
+        <p class="sheet-face">裏(事後)</p>
+
+        <h3>水が来ている間と、水が引いた翌朝</h3>
+        <p class="placeholder">誰がどの順で何をし、誰に連絡するかが出ます。</p>
+
+        <h3>何日で戻るか</h3>
+        <p class="placeholder">ほかの建物の例と一般的な目安を、出典つきで出します。</p>
+
+        <h3>電気主任技術者の方へ</h3>
+        <p class="placeholder">確認していただく項目が出ます。</p>
+
+        <section class="disclaimer" aria-label="この一枚について">
+          <h3>この一枚について</h3>
+          <ul>
+            <li>本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する</li>
+            <li>浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない</li>
+            <li>本シートは予報ではなく、現時点の静的な整理である</li>
+            <li>費用は桁の目安で、保安法人・工事業者の見積りに置き換えること</li>
+          </ul>
+        </section>
+      </article>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
