@@ -213,6 +213,7 @@ const App = {
     document.getElementById("type-chooser").hidden = this.shapeChosen;
     this.fitStage2();
     window.dispatchEvent(new Event("resize"));
+    window.dispatchEvent(new Event("building-shown"));
   },
 
   async chooseShape(type) {

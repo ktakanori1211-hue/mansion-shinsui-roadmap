@@ -89,6 +89,49 @@ const Scenes = (() => {
     return input;
   })();
 
+  // 「地図の横に断面図を並べる」の切り替え（F-044）。既定は並べない（2026-11-03 の決定：図面は②のタブ）。
+  // 入れると、周りの低い向き（地図）から建物への水の入り方（断面図）までを一続きで見られる（11/2 以前のノートの見せ方）。
+  (() => {
+    const label = document.createElement("label");
+    label.className = "control-inline scene-dem-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.id = "scene-pair-section";
+    label.append(input, " 地図の横に、建物の断面図（水の入り道）を並べる（②で形を選ぶか見本を開くと出ます）");
+    const map = document.getElementById("map");
+    map.before(label);
+    const figure = document.createElement("figure");
+    figure.className = "map-pair-section";
+    figure.hidden = true;
+    const image = document.createElement("img");
+    image.alt = "断面図（水の入り道）";
+    const caption = document.createElement("figcaption");
+    figure.append(image, caption);
+    let pair = null;
+    const refresh = () => {
+      const plan = App.building && App.shapeChosen !== false ? App.building.sample.plan : null;
+      const on = input.checked && plan && plan.section_png;
+      if (on && !pair) {
+        pair = document.createElement("div");
+        pair.className = "map-pair";
+        map.before(pair);
+        pair.append(map, figure);
+      }
+      if (pair) pair.classList.toggle("is-paired", Boolean(on));
+      figure.hidden = !on;
+      if (on) {
+        image.src = plan.section_png;
+        caption.textContent = "断面図（説明用の見本の図。あなたの建物の図面ではありません）。地図で周りの低い向きを見てから、道路から建物の中へ水が入る道をたどれます。";
+      } else if (input.checked) {
+        caption.textContent = "";
+      }
+      HazardMap.refresh();
+    };
+    input.addEventListener("change", refresh);
+    window.addEventListener("building-shown", refresh);
+    document.getElementById("stage-tabs").addEventListener("click", () => setTimeout(refresh, 0));
+  })();
+
   function colored(reading, key) {
     const hazard = reading.hazards.find((item) => item.key === key);
     return Boolean(hazard && (hazard.status === "color" || hazard.nearby_legend));
