@@ -38,6 +38,7 @@
     <button type="button" data-tab="3"><b>3</b>資料<small>AI相談・A4・共有</small></button>
     <button type="button" data-tab="4"><b>4</b>費用と相談<small>補助・専門家へ</small></button>
     <button type="button" data-tab="all" class="tab-all">すべて縦に並べて見る</button>
+    <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   </nav>
 
   <section class="why-bar" id="why-bar" aria-label="なぜこの道具が要るか">
@@ -121,32 +122,39 @@
         <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
         <p class="top-banner-lead" id="top-banner-lead"></p>
         <p class="top-banner-dir" id="top-banner-dir"></p>
-        <p class="top-banner-notes" id="top-banner-notes"></p>
+        <details class="top-banner-more"><summary>根拠と補足</summary><p class="top-banner-notes" id="top-banner-notes"></p></details>
       </div>
       <p class="hint stage-empty" id="stage2-empty">①で場所を選ぶと、ここが出ます。</p>
 
       <div class="stage2-grid">
         <section class="card" id="plan-card" aria-label="平面図" hidden>
-          <h2>平面図と確かめる場所</h2>
-          <div class="plan-stage" id="plan-stage" hidden>
-            <img id="plan-image" alt="平面図">
-            <div class="plan-pins" id="plan-pins"></div>
+          <div class="card-head">
+            <h2>平面図と確かめる場所</h2>
+            <p class="plan-message" id="plan-message"></p>
           </div>
-          <p class="plan-message" id="plan-message"></p>
+          <div class="plan-stage" id="plan-stage" hidden>
+            <div class="plan-fit" id="plan-fit">
+              <img id="plan-image" alt="平面図">
+              <div class="plan-pins" id="plan-pins"></div>
+            </div>
+          </div>
           <div class="pin-card" id="pin-card" hidden></div>
           <div class="plan-actions" id="plan-actions"></div>
           <div id="plan-rooms"></div>
         </section>
 
         <section class="card" id="model-card" aria-label="3Dの模型" hidden>
-          <h2>もしこの位置まで水が来たら</h2>
-          <p class="model-fixed strong" id="model-fixed-top"></p>
+          <div class="card-head">
+            <h2>もしこの位置まで水が来たら</h2>
+            <p class="model-fixed strong" id="model-fixed-top"></p>
+          </div>
+          <div class="model-controls">
+            <div class="control-group" role="radiogroup" aria-label="水の位置"><span class="control-name">水の位置</span><div class="pills" id="water-controls"></div></div>
+            <div class="control-group" role="radiogroup" aria-label="対策"><span class="control-name">対策</span><div class="pills" id="measure-controls"></div></div>
+          </div>
+          <p class="control-caption" id="control-caption"></p>
           <div class="model-view" id="model-view"><p class="hint model-fail" id="model-fail" hidden></p></div>
           <div class="model-focus-buttons" id="focus-buttons"></div>
-          <div class="model-controls">
-            <fieldset class="control-group"><legend>水の位置</legend><div id="water-controls"></div></fieldset>
-            <fieldset class="control-group"><legend>対策</legend><div id="measure-controls"></div></fieldset>
-          </div>
           <p class="tr-note" id="tr-note"></p>
         </section>
       </div>
@@ -172,6 +180,7 @@
     </section>
 
     <section class="stage" data-stage="3" aria-label="第3段階">
+      <div class="stage3-top">
       <div class="card" id="exits-card">
         <h2>出す資料</h2>
         <div class="button-row exit-tabs" id="exit-tabs">
@@ -181,10 +190,9 @@
           <button type="button" id="polish-button">Claude で読みやすく整える</button>
         </div>
         <p class="hint" id="polish-note"></p>
-        <div class="exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
         <div class="print-row">
           <button type="button" class="primary" id="print-button">印刷（PDFに保存もできます）</button>
-          <p class="hint">プリンターがなければ、PDFに保存して、コンビニのネットプリントで印刷できます。両面なら長辺とじで。</p>
+          <details class="fold"><summary>プリンターがないとき</summary><p>PDFに保存して、コンビニのネットプリントで印刷できます。両面なら長辺とじで。</p></details>
         </div>
       </div>
 
@@ -201,10 +209,12 @@
           </select>
           <button type="button" class="primary" id="share-button">共有リンクを発行</button>
         </div>
-        <p class="hint">パスワードを忘れると元に戻せません。</p>
-        <details class="fold"><summary>条件を開く</summary><p>ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
+        <details class="fold"><summary>条件を開く</summary><p>パスワードを忘れると元に戻せません。ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
         <div class="share-result" id="share-result" hidden></div>
       </div>
+      </div>
+
+      <div class="card exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
 
       <div class="sheets">
         <article class="sheet" id="sheet-front">
@@ -279,7 +289,6 @@
     <p id="legal-basis-box" hidden><b>この値</b><span id="legal-basis"></span></p>
   </footer>
 
-  <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   <aside class="chat" id="chat" aria-label="AIに相談" hidden>
     <div class="chat-head">
       <strong>AIに相談する</strong>

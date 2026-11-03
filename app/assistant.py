@@ -768,6 +768,7 @@ def exits(sample: dict, label: str, payload: dict) -> dict:
         "board": "\n".join(lines),
         "procedure": "\n".join(procedure),
         "procedure_fixed": "\n".join(actions + notes),
+        "procedure_actions": "\n".join(actions),
         "board_fixed": "\n".join(notes),
     }
 

@@ -519,6 +519,10 @@ class ExitsTest(unittest.TestCase):
         self.assertIn("在宅で医療機器", documents["board"])
         self.assertIn("費用は桁の目安", documents["procedure_fixed"])
         self.assertNotIn("水が引いた翌朝", documents["procedure"])
+        # 共有ページは注意書きを一番下に一度だけ出すので、手順だけの文を別に持つ。
+        self.assertIn("水が引いた翌朝", documents["procedure_actions"])
+        self.assertNotIn("費用は桁の目安", documents["procedure_actions"])
+        self.assertNotIn("公式証明ではない", documents["procedure_actions"])
 
     def test_no_engineer_exit_changes_the_subject(self):
         sample = samples.SAMPLES["b"]

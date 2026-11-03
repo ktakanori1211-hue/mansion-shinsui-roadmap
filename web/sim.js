@@ -44,6 +44,34 @@ const SimPanel = (() => {
 
   const yen = (value) => `${value.toLocaleString("ja-JP")}円`;
 
+  // 末尾の括弧書きを、太字の名前と小さな補足に分ける。
+  function splitLabel(label) {
+    const found = label.match(/^(.+)（([^（）]+)）$/);
+    return found ? { name: found[1], note: found[2] } : { name: label, note: "" };
+  }
+
+  function namedCell(label) {
+    const { name, note } = splitLabel(label);
+    const cell = element("td");
+    cell.append(element("strong", name, "sim-name"));
+    if (note) cell.append(element("small", note, "sim-note"));
+    return cell;
+  }
+
+  function renderCautions(box, cautions) {
+    if (!cautions.length) return;
+    box.append(element("p", cautions[0], "fixed-note strong"));
+    if (cautions.length === 1) return;
+    const more = element("details", undefined, "fold");
+    more.open = Boolean(state.cautionsOpen);
+    more.addEventListener("toggle", () => {
+      state.cautionsOpen = more.open;
+    });
+    more.append(element("summary", "補助の条件をすべて開く"));
+    cautions.slice(1).forEach((line) => more.append(element("p", line)));
+    box.append(more);
+  }
+
   function renderResult(box) {
     const building = App.building;
     const measures = building.measures.filter((m) => state.checked.has(m.key));
@@ -52,16 +80,19 @@ const SimPanel = (() => {
     box.replaceChildren();
 
     const band = bandText(measures);
-    const message = band ? `選んだ手の合計の桁：${band}` : measures.length ? "選んだ手に、足せる桁はありません。" : "手を選ぶと、合計の桁が出ます。";
-    box.append(element("p", message, "sim-band"));
+    box.append(element("p", "選んだ手の合計の桁", "sim-kicker"));
+    box.append(element("p", band || (measures.length ? "足せる桁はありません" : "手を選ぶと出ます"), band ? "sim-band" : "sim-band sim-band-empty"));
     measures
       .filter((m) => m.open_ended)
-      .forEach((m) => box.append(element("p", `上限のない手：${m.label}（${m.range}）。合計の桁には入れていません。`, "hint")));
-    box.append(element("p", "費用は桁の目安で、保安法人・工事業者の見積りに置き換えること", "fixed-note strong"));
-    box.append(element("p", "調査費用：見積りで確かめる", "sim-survey"));
+      .forEach((m) => box.append(element("p", `上限のない手：${splitLabel(m.label).name}（${m.range}）。合計の桁には入れていません。`, "hint")));
 
     const decisions = [...new Set(measures.map((m) => m.decision))];
-    if (decisions.length) box.append(element("p", `決める場：${decisions.join("／")}`));
+    if (decisions.length) {
+      box.append(element("p", "決める場", "sim-kicker"));
+      const list = element("ul", undefined, "sim-decisions");
+      decisions.forEach((line) => list.append(element("li", line)));
+      box.append(list);
+    }
 
     const amountOf = (m) => Math.max(0, Number(state.estimates[m.key]) || 0);
     const total = measures.reduce((sum, m) => sum + amountOf(m), 0);
@@ -69,6 +100,7 @@ const SimPanel = (() => {
       (sum, m) => sum + (markFor(m, region, measures)[1] ? amountOf(m) : 0),
       0,
     );
+    box.append(element("p", "補助の計算の例", "sim-kicker"));
     if (total > 0) {
       const amount = subsidyAmount(eligible, region, Number(state.used) || 0);
       const table = element("table", undefined, "slim-table sim-table");
@@ -87,15 +119,18 @@ const SimPanel = (() => {
         table,
         element("p", "計算の例で、交付額ではありません。見積り額が補助対象経費と同じとは限らず、消費税の扱いは確かめていません。", "fixed-note strong"),
       );
-    } else if (measures.length) {
-      box.append(element("p", "見積り額を入れるか、見本の金額のボタンを押すと、補助の計算の例が出ます。", "hint"));
+    } else {
+      box.append(element("p", "手を選んで見積り額を入れるか、見本の金額のボタンを押すと出ます。", "hint"));
     }
+    box.append(element("p", "費用は桁の目安で、保安法人・工事業者の見積りに置き換えること", "fixed-note strong"));
+    box.append(element("p", "調査費用：見積りで確かめる", "sim-survey"));
+    box.append(element("p", "補助の条件", "sim-kicker"));
     box.append(element("p", subsidy.rate_label, "sheet-text"));
-    subsidy.cautions.forEach((line) => box.append(element("p", line, "fixed-note strong")));
     if (region !== building.sample.subsidy && region !== "none") {
       const name = subsidy.label.replace(/（.*$/, "");
       box.append(element("p", `この住所の制度ではありません（${name}の計算例）`, "fixed-note emphasis"));
     }
+    renderCautions(box, subsidy.cautions);
     box.append(element("p", "申請を勧めるものではありません。使うかどうかは管理組合が決めます。", "hint"));
   }
 
@@ -132,16 +167,26 @@ const SimPanel = (() => {
       });
       controls.append(usedLabel, used);
     }
-    root.append(controls);
+    const left = element("div", undefined, "sim-left");
+    left.append(controls);
 
     const table = element("table", undefined, "slim-table sim-table");
     const header = table.createTHead().insertRow();
-    ["選ぶ", "いつ", "何をするか", "決め方", "お金の出どころ", "桁", "補助", "見積り額（円）"].forEach((name) => header.append(element("th", name)));
+    ["選ぶ", "何をするか", "決め方とお金", "桁", "補助", "見積り額（円）"].forEach((name) => header.append(element("th", name)));
     const body = table.createTBody();
     const result = element("div", undefined, "sim-result");
 
     const rows = [];
+    let tier = null;
     building.measures.forEach((measure) => {
+      if (measure.tier !== tier) {
+        tier = measure.tier;
+        const heading = element("th", tier);
+        heading.colSpan = 6;
+        const line = body.insertRow();
+        line.className = "sim-tier";
+        line.append(heading);
+      }
       const row = body.insertRow();
       const check = document.createElement("input");
       check.type = "checkbox";
@@ -149,13 +194,9 @@ const SimPanel = (() => {
       check.setAttribute("aria-label", measure.label);
       check.checked = state.checked.has(measure.key);
       row.insertCell().append(check);
-      row.append(
-        element("td", measure.tier),
-        element("td", measure.label),
-        element("td", measure.decision),
-        element("td", measure.account),
-        element("td", measure.range),
-      );
+      const decision = element("td");
+      decision.append(element("span", measure.decision), element("small", measure.account, "sim-note"));
+      row.append(namedCell(measure.label), decision, element("td", measure.range, "sim-range"));
       const markCell = row.insertCell();
       const estimateCell = row.insertCell();
       const estimate = document.createElement("input");
@@ -200,7 +241,10 @@ const SimPanel = (() => {
 
     const scroll = element("div", undefined, "table-scroll");
     scroll.append(table);
-    root.append(scroll, result);
+    left.append(scroll);
+    const grid = element("div", undefined, "sim-grid");
+    grid.append(left, result);
+    root.append(grid);
     refresh();
   }
 
@@ -230,6 +274,8 @@ const SimPanel = (() => {
         documents.source === "claude" ? "hint" : "notice",
       ),
     );
+    body.append(element("h3", "管理組合から各窓口へ送る3文書（コピー・メール作成）", "consult-title"));
+    const sets = element("div", undefined, "consult-docs");
     [
       ["① 現地調査・見積もり仕様カルテ", documents.karte],
       ["② 交付決定前に守るべき手続きの段取り", documents.schedule],
@@ -239,18 +285,17 @@ const SimPanel = (() => {
       const copy = element("button", "コピー");
       copy.type = "button";
       copy.addEventListener("click", () => navigator.clipboard?.writeText(text));
-      section.append(element("h3", title), element("pre", text), copy);
-      body.append(section);
+      section.append(element("h3", title), copy, element("pre", text));
+      sets.append(section);
     });
-    body.append(renderRecipients(documents.letter));
+    body.append(sets, renderRecipients(documents.letter));
     body.append(
       element("p", "依頼文ができました。送るのは管理組合です。この道具から外へは送っていません。業者の紹介はしません。", "fixed-note strong"),
     );
-    const future = element("section", undefined, "future");
+    const future = element("details", undefined, "fold");
     future.append(
-      element("h3", "将来の形：手続きも含めて相談できる窓口（デモ画面：実際には送信していません。紹介料は取りません）"),
-      element("p", "ここから先は将来の姿のイメージです。動いていません。"),
-      element("p", "相談を受け付けました。担当から手続きの順番と現地調査の進め方をご案内します。", "future-done"),
+      element("summary", "補足：将来の窓口"),
+      element("p", "手続きも含めて相談できる窓口は、将来の構想です。今は送信の機能を持たず、紹介料も取りません。"),
     );
     body.append(future);
   }

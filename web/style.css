@@ -302,10 +302,6 @@ textarea { width: 100%; padding: 8px; border: 1px solid var(--ink-muted); border
 .doc h3 { margin: 0 0 4px; font-size: 14px; }
 .doc pre { margin: 0 0 6px; white-space: pre-wrap; font: inherit; font-size: 12.5px; line-height: 1.55; }
 .recipients { margin: 0; padding-left: 18px; font-size: 13px; }
-.future { margin-top: 14px; padding: 10px 12px; border: 2px dashed var(--ink-muted); border-radius: 6px; background: #f7f7f8; }
-.future h3 { margin: 0 0 4px; font-size: 14px; }
-.future p { margin: 4px 0; font-size: 13px; }
-.future-done { color: var(--ink-muted); }
 
 .chat-toggle { position: fixed; right: 18px; bottom: 18px; z-index: 1100; padding: 12px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
 .chat-toggle[hidden] { display: none; }
@@ -651,7 +647,106 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 .legal-footer p:first-child { padding-left: 0; border-left: 0; flex-grow: 1.35; }
 .legal-footer p[hidden] { display: none; }
 .legal-footer b { flex: none; color: var(--navy); font-size: 10.5px; }
-.chat-toggle { bottom: 74px; }
+.stage-tabs .chat-toggle { position: static; z-index: auto; flex: 0 0 auto; padding: 7px 14px; box-shadow: none; font-size: 13px; }
+
+/* 第2段階の結論の帯を低くし、平面図と模型に高さを回す */
+.top-banner { padding: 8px 18px; }
+.top-banner-question { font-size: 12.5px; }
+.top-banner-lead { margin: 0; font-size: 27px; }
+.top-banner-dir { display: inline; margin: 0 10px 0 0; font-size: 13.5px; }
+.top-banner-more { display: inline; }
+.top-banner-more summary { display: inline; color: #cdd5e0; font-size: 12px; cursor: pointer; }
+.top-banner-more[open] summary { display: block; }
+
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-bottom: 4px; }
+.stage2-grid .card .card-head h2 { margin: 0; }
+.card-head .plan-message, .card-head #model-fixed-top { margin: 0; font-size: 11.5px; line-height: 1.5; }
+.plan-fit { position: relative; }
+.plan-fit img { display: block; width: 100%; height: auto; }
+
+.model-controls { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 2px; }
+.control-group { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; }
+.control-name { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pills { display: flex; flex-wrap: wrap; gap: 3px; }
+.pills .control { position: relative; margin: 0; padding: 3px 11px; border: 1px solid #c5c9d2; border-radius: 999px; background: var(--surface); font-size: 13px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.pills .control input { position: absolute; opacity: 0; pointer-events: none; }
+.pills .control:hover { border-color: var(--accent); }
+.pills .control:has(input:checked) { background: var(--navy); border-color: var(--navy); color: #fff; }
+.pills .control:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.control-caption { margin: 0 0 4px; color: var(--ink-muted); font-size: 11.5px; line-height: 1.45; }
+.control-caption span { display: block; }
+.model-focus-buttons { gap: 3px; margin: 4px 0 2px; }
+.model-focus-buttons button { padding: 2px 6px; font-size: 10.5px; white-space: nowrap; }
+.tr-note { margin: 0; font-size: 11.5px; line-height: 1.45; }
+.pin-card { position: relative; }
+.pin-close { position: absolute; top: 6px; right: 6px; padding: 1px 8px; font-size: 11.5px; }
+
+@media screen and (min-width: 1101px) {
+  .stage2-grid { height: var(--stage2-room, 560px); align-items: stretch; }
+  .stage2-grid .card:not([hidden]) { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+  .stage2-grid .card > * { flex: none; }
+  .stage2-grid .plan-stage { flex: 1 1 0; min-height: 200px; display: flex; align-items: center; justify-content: center; container-type: size; border: 0; }
+  .stage2-grid .plan-stage[hidden] { display: none; }
+  .plan-fit { width: min(100cqw, calc(100cqh * var(--plan-ratio, 1.41))); aspect-ratio: var(--plan-ratio, 1.41); border: 1px solid var(--line); }
+  .plan-fit img { height: 100%; }
+  .stage2-grid .pin-card { max-height: 50%; margin-top: 6px; overflow-y: auto; font-size: 12px; line-height: 1.45; }
+  .stage2-grid .pin-card .fixed-note { font-size: 11.5px; }
+  .stage2-grid .pin-card[hidden] { display: none; }
+  .stage2-grid .pin-card p { margin: 2px 0; }
+  .stage2-grid .plan-actions { margin-top: 4px; }
+  .stage2-grid .model-view { flex: 1 1 0; height: auto; min-height: 220px; }
+}
+
+/* 第3段階：資料と共有を上に並べ、すぐ下に A4 を出す */
+.stage3-top { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 10px; align-items: stretch; margin-bottom: 10px; }
+.stage3-top .card { margin-bottom: 0; padding: 10px 14px; }
+.exit-tabs { gap: 5px; }
+.exit-tabs button { padding: 4px 10px; font-size: 12.5px; }
+#polish-note:empty { display: none; }
+.print-row { gap: 4px 12px; margin-top: 8px; }
+.print-row button { padding: 5px 12px; font-size: 13px; }
+.print-row .fold { flex: 1 1 200px; margin: 0; }
+.share-form { gap: 5px 8px; }
+.share-form label { font-size: 12.5px; }
+.share-form input, .share-form select { width: auto; min-width: 0; padding: 4px 7px; font-size: 13px; }
+#share-password { flex: 1 1 110px; }
+.share-form button { padding: 5px 12px; font-size: 13px; }
+.exit-doc { margin-top: 0; background: var(--surface); }
+@media screen and (min-width: 1200px) {
+  .sheets { display: grid; grid-template-columns: repeat(2, max-content); justify-content: center; align-items: start; gap: 12px; overflow: visible; }
+  .sheets.is-hidden-screen { display: none; }
+  .sheets .sheet { margin: 0; zoom: .7; }
+}
+@media screen and (min-width: 1400px) {
+  .sheets .sheet { zoom: .83; }
+}
+
+/* 第4段階：左で手を選び、右で桁と決める場と補助を見る */
+.sim-grid { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 14px; align-items: start; }
+.sim-left { min-width: 0; }
+.sim-table { font-size: 12.5px; line-height: 1.4; }
+.sim-table th, .sim-table td { padding: 4px 6px; }
+.sim-tier th { background: var(--navy); color: #fff; font-size: 12px; }
+.sim-name { display: block; font-size: 13px; line-height: 1.4; }
+.sim-note { display: block; color: var(--ink-muted); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.sim-range { font-weight: 700; white-space: nowrap; }
+.sim-result { position: sticky; top: 60px; max-height: calc(100vh - 130px); padding: 10px 14px; overflow-y: auto; background: #f6f7fb; border: 1px solid var(--line); border-radius: 10px; }
+.sim-result .fixed-note { font-size: 12px; }
+.sim-result .sheet-text { font-size: 12px; }
+.sim-result .slim-table { max-width: none; font-size: 12.5px; }
+.sim-result .slim-table th { white-space: normal; }
+.sim-result .slim-table td { font-weight: 700; white-space: nowrap; }
+.sim-result .hint { font-size: 12px; }
+.sim-kicker { margin: 8px 0 1px; color: var(--ink-muted); font-size: 11.5px; font-weight: 700; }
+.sim-kicker:first-child { margin-top: 0; }
+.sim-band { margin: 0 0 2px; color: var(--hot); font-size: 26px; font-weight: 800; line-height: 1.25; }
+.sim-band-empty { color: #8a8d96; font-size: 16px; }
+.sim-decisions { margin: 0; padding-left: 16px; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.sim-survey { font-size: 12px; }
+.consult-title { margin: 12px 0 4px; font-size: 15px; }
+.consult-docs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.consult-docs .doc { margin-top: 0; }
+.consult-docs .doc > button { padding: 2px 10px; font-size: 12px; }
 
 @media (max-width: 1280px) {
   .stage1-grid { grid-template-columns: 290px minmax(0, 1fr) 300px; }
@@ -667,11 +762,12 @@ button:hover:not(:disabled) { border-color: var(--accent); }
   .map { min-height: 380px; }
   .terrain-card .terrain-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .layer-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stage2-grid { grid-template-columns: 1fr; }
+  .stage2-grid { grid-template-columns: minmax(0, 1fr); }
   .top-banner-lead { font-size: 26px; }
+  .stage3-top, .sim-grid, .consult-docs { grid-template-columns: 1fr; }
+  .sim-result { position: static; max-height: none; }
   .legal-footer { position: static; flex-direction: column; gap: 6px; padding: 8px 16px; }
   .legal-footer p { padding: 0; border: 0; }
-  .chat-toggle { bottom: 18px; }
 }
 
 @media (max-width: 600px) {
@@ -683,5 +779,7 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 
 @media print {
   .legal-footer { display: none !important; }
+  .stage3-top, .exit-doc { display: none !important; }
+  .sheets .sheet { zoom: 1 !important; }
   body { padding: 0; background: #fff; }
 }

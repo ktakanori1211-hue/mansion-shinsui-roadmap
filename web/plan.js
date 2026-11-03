@@ -4,6 +4,7 @@
 const PlanPanel = (() => {
   const message = document.getElementById("plan-message");
   const stage = document.getElementById("plan-stage");
+  const fit = document.getElementById("plan-fit");
   const image = document.getElementById("plan-image");
   const pinsLayer = document.getElementById("plan-pins");
   const pinCard = document.getElementById("pin-card");
@@ -19,6 +20,11 @@ const PlanPanel = (() => {
 
   let pins = [];
   let fromReading = false;
+
+  // 図面の縦横比で、平面図のカードに収まる大きさを決める。
+  image.addEventListener("load", () => {
+    if (image.naturalHeight) fit.style.setProperty("--plan-ratio", image.naturalWidth / image.naturalHeight);
+  });
 
   // 読み取りを待たずに、見本の図面とピンを出す。API は呼ばない。
   function showSamplePlan(sample) {
@@ -51,7 +57,7 @@ const PlanPanel = (() => {
 
   function startDrag(event, button, pin) {
     const start = { x: event.clientX, y: event.clientY };
-    const rect = stage.getBoundingClientRect();
+    const rect = fit.getBoundingClientRect();
     const move = (moved) => {
       if (Math.abs(moved.clientX - start.x) + Math.abs(moved.clientY - start.y) < 4) return;
       button.dataset.dragged = "1";
@@ -72,10 +78,17 @@ const PlanPanel = (() => {
     pinCard.hidden = false;
     pinCard.replaceChildren();
     const title = element("h3", `${pin.key}　${pin.title}`);
+    const close = element("button", "閉じる", "pin-close");
+    close.type = "button";
+    close.addEventListener("click", () => {
+      pinCard.hidden = true;
+      pinsLayer.querySelectorAll(".plan-pin").forEach((node) => node.classList.remove("selected"));
+    });
     const verdict = App.verdictForPin(pin);
     const head = element("p", undefined, "pin-who");
     head.append(verdictTag(verdict.verdict, verdict.label), ` ${WHO_LABELS[pin.who_kind]}`);
     pinCard.append(
+      close,
       title,
       head,
       element("p", `水の入り道：${pin.how_water}`),

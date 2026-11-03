@@ -16,7 +16,8 @@ const ModelPanel = (() => {
         input.value = level.key;
         input.checked = level.key === App.water;
         input.addEventListener("change", () => App.setWater(level.key));
-        label.append(input, element("span", `${level.label} ${level.text}`));
+        label.title = level.text;
+        label.append(input, element("span", level.label));
         return label;
       }),
     );
@@ -30,7 +31,8 @@ const ModelPanel = (() => {
         input.value = item.key;
         input.checked = item.key === App.measure;
         input.addEventListener("change", () => App.setMeasure(item.key));
-        label.append(input, element("span", item.label));
+        label.title = item.label;
+        label.append(input, element("span", item.short));
         return label;
       }),
     );
@@ -45,6 +47,7 @@ const ModelPanel = (() => {
       ...building.sample.pins.map((pin) => {
         const button = element("button", `${pin.key} ${pin.title}`, `who-border-${pin.who_kind}`);
         button.type = "button";
+        button.title = pin.title;
         button.addEventListener("click", () => App.selectPin(pin.key));
         return button;
       }),
@@ -117,8 +120,19 @@ const ModelPanel = (() => {
     );
   }
 
+  function renderCaption() {
+    const { water_levels: levels, model_measures: measures } = App.building;
+    const level = levels.find((item) => item.key === App.water);
+    const measure = measures.find((item) => item.key === App.measure);
+    document.getElementById("control-caption").replaceChildren(
+      element("span", `${level.label} ${level.text}`),
+      element("span", `対策：${measure.label}`),
+    );
+  }
+
   function render(scenario) {
     const fixed = App.building.fixed;
+    renderCaption();
     document.getElementById("model-fixed").replaceChildren(
       ...scenario.notes.map((line) => element("p", line, "fixed-note strong")),
       element("p", fixed.water_not_entry, "fixed-note strong"),
@@ -295,8 +309,9 @@ const SheetPanel = (() => {
       days_top: building.fixed.timeline_top,
       days: last.days,
       memos: building.memos,
-      board: `${building.exits.board}\n${building.exits.board_fixed}`,
-      procedure: `${building.exits.procedure}\n\n${building.exits.procedure_fixed}`,
+      // 免責と注意書きは、ページの一番下の disclaimers に一度だけ出す。
+      board: building.exits.board,
+      procedure: `${building.exits.procedure}\n\n${building.exits.procedure_actions}`,
       disclaimers: [
         App.disclaimerText(),
         "浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない",

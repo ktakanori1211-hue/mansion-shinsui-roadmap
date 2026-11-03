@@ -512,9 +512,9 @@ def measures_for_model(sample: dict) -> List[dict]:
         else "マンション側の盤の部屋の、壁や床の穴を塞ぐ（借室の穴は含めない）"
     )
     return [
-        {"key": "plate", "label": "玄関の止水板だけ（地中の壁の穴からの経路は残る）" if sample["underground_feed"] else "玄関の止水板だけ（壁や床の穴からの経路は残る）"},
-        {"key": "hole", "label": hole},
-        {"key": "raise", "label": raised},
+        {"key": "plate", "short": "止水板だけ", "label": "玄関の止水板だけ（地中の壁の穴からの経路は残る）" if sample["underground_feed"] else "玄関の止水板だけ（壁や床の穴からの経路は残る）"},
+        {"key": "hole", "short": "壁の穴を塞ぐ" if sample["underground_feed"] else "穴を塞ぐ", "label": hole},
+        {"key": "raise", "short": "盤を高くする", "label": raised},
     ]
 
 

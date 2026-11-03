@@ -108,7 +108,9 @@ function buildRooms(sample) {
         const trUnseen = room.key === "tr" && ["no", "unknown"].includes(sample.answers?.tr);
         const name = trUnseen ? "東京電力の設備\n位置は未確認" : room.key === "tr" ? "東京電力の変圧器の部屋" : window.App.roomName(room.key);
         const note = sample.confirmedRooms.includes(room.key) ? name : `${name}\n位置は図面で未確認`;
-        label(note, place.center.clone().add(new THREE.Vector3(0, place.h / 2 + 0.25, 0)), "model-label");
+        // 隣り合う部屋の札が重ならないよう、借室は上へ、電気室は左へずらす。
+        const shift = { tr: [0, 2.4], elec: [-3.8, 0.25] }[room.key] || [0, 0.25];
+        label(note, place.center.clone().add(new THREE.Vector3(shift[0], place.h / 2 + shift[1], 0)), "model-label");
       }
       if (room.key === "tr" && !["no", "unknown"].includes(sample.answers?.tr)) {
         const hidden = sample.confirmedRooms.includes("tr") ? "中は建物側から分からない" : "中は建物側から分からない\n位置は図面で未確認";
@@ -344,6 +346,7 @@ function init() {
   controls.minDistance = 4;
   controls.maxDistance = 90;
   window.addEventListener("resize", resize);
+  new ResizeObserver(resize).observe(container);
   resize();
   loop();
 }

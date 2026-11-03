@@ -345,7 +345,16 @@ const App = {
     });
     document.getElementById("why-bar").classList.toggle("is-hidden", this.stage !== "1" && this.stage !== "all");
     HazardMap.refresh();
+    this.fitStage2();
     window.dispatchEvent(new Event("resize"));
+  },
+
+  // 第2段階の平面図と模型を、スクロールなしで押しながら見られる高さにそろえる。
+  fitStage2() {
+    if (this.stage !== "2") return;
+    const top = document.querySelector(".stage2-grid").getBoundingClientRect().top + window.scrollY;
+    const footer = document.getElementById("legal-footer").offsetHeight;
+    document.documentElement.style.setProperty("--stage2-room", `${Math.max(440, window.innerHeight - top - footer - 10)}px`);
   },
 };
 window.App = App;
@@ -853,6 +862,11 @@ HazardMap.init(mapElements.map, {
   picked: pickPoint,
   tap: (mode, direction) => App.setDirection(mode, direction),
 });
+const refit = () => App.fitStage2();
+window.addEventListener("resize", refit);
+const refitObserver = new ResizeObserver(refit);
+refitObserver.observe(document.getElementById("top-banner"));
+refitObserver.observe(document.getElementById("legal-footer"));
 App.showStage("1");
 showClaudeStatus();
 loadDemoPoints();
