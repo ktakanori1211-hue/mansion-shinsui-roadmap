@@ -291,6 +291,12 @@ word は図面に書かれている語をそのまま写します。floor は図
 _PIN_ORDER = ["tr", "elec", "panel_room", "pump", "slope", "door", "tank"]
 
 
+def _heading_of(word: dict, headings: List[dict]) -> dict:
+    """図の題名は図の下にある。下の題名のうち一番近いものを選ぶ。図が縦に並んでも横に並んでも同じ。"""
+    below = [h for h in headings if h["y"] >= word["y"]] or headings
+    return min(below, key=lambda h: abs(h["x"] - word["x"]) + abs(h["y"] - word["y"]))
+
+
 def _text_rooms(words: List[dict]) -> List[dict]:
     """PDF の文字の位置から部屋を拾う。語の位置はプログラムのほうが正確。"""
     # 図面枠の題名（「竣工図 地下1階・1階平面図」）は階の見出しにしない。
@@ -304,8 +310,7 @@ def _text_rooms(words: List[dict]) -> List[dict]:
             if any(name in text for name in names):
                 floor = ""
                 if headings:
-                    nearest = min(headings, key=lambda h: abs(h["x"] - word["x"]))
-                    floor = re.sub(r"平面図.*", "", nearest["str"]).strip()
+                    floor = re.sub(r"平面図.*", "", _heading_of(word, headings)["str"]).strip()
                 found[kind] = {"kind": kind, "word": text, "floor": floor, "x": word["x"], "y": word["y"], "source": "text"}
     return list(found.values())
 
@@ -384,7 +389,7 @@ def _sample_rooms(sample: dict) -> List[dict]:
         floor = view["name"].replace("平面図", "")
         for room in view["rooms"]:
             if room["key"] in samples.ROOM_WORDS:
-                x, y = samples.plan_point(index, room["x"] + room["w"] / 2, room["y"] + room["h"] / 2)
+                x, y = samples.plan_point(sample, index, room["x"] + room["w"] / 2, room["y"] + room["h"] / 2)
                 rooms.append({"kind": room["key"], "word": room["label"].replace("\n", ""), "floor": floor, "x": x, "y": y, "source": "sample"})
     return rooms
 

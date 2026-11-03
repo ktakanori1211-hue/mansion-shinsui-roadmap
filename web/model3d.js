@@ -95,6 +95,7 @@ function buildRooms(sample) {
     const baseY = basement ? BASE_Y : 0;
     const height = basement ? -BASE_Y - 0.2 : FLOOR_H - 0.2;
     view.rooms.forEach((room) => {
+      if (room.key === "soil" || room.key === "garden") return;
       const place = placeRoom(room, baseY, height);
       const closed = room.key === "tr";
       const opacity = closed ? 0.9 : isGround && sample.archetype !== "ground" ? 0.12 : 0.28;

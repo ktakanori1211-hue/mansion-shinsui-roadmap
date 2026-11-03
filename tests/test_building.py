@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -484,6 +485,16 @@ class AssistantWithoutKeyTest(unittest.TestCase):
         self.assertEqual(kinds["elec"]["floor"], "地下1階")
         self.assertEqual(result["pins"][0]["key"], "ア")
 
+    def test_floor_follows_the_title_under_the_drawing(self):
+        titles = [{"str": "地下1階平面図 S=1/100", "x": 0.3, "y": 0.45}, {"str": "1階平面図 S=1/100", "x": 0.3, "y": 0.94}]
+        stacked = titles + [{"str": "電気室", "x": 0.2, "y": 0.35}, {"str": "車路スロープ", "x": 0.4, "y": 0.6}]
+        kinds = {room["kind"]: room["floor"] for room in assistant._text_rooms(stacked)}
+        self.assertEqual(kinds, {"elec": "地下1階", "slope": "1階"})
+        titles = [{"str": "地下1階平面図 S=1/100", "x": 0.25, "y": 0.67}, {"str": "1階平面図 S=1/100", "x": 0.65, "y": 0.74}]
+        side_by_side = titles + [{"str": "受変電室", "x": 0.14, "y": 0.53}, {"str": "車路スロープ", "x": 0.68, "y": 0.21}]
+        kinds = {room["kind"]: room["floor"] for room in assistant._text_rooms(side_by_side)}
+        self.assertEqual(kinds, {"elec": "地下1階", "slope": "1階"})
+
     def test_image_sample_says_it_is_not_a_reading(self):
         result = assistant.read_plan({"sample_id": "b", "media_type": "image/png"})
         self.assertEqual(result["mode"], "sample")
@@ -799,6 +810,57 @@ class SearchTest(unittest.TestCase):
             result = search.search("千葉市幸町 〇〇マンション")
         osm.assert_called_once()
         self.assertEqual(result["candidates"], [{"label": "y"}])
+
+
+class DrawingTest(unittest.TestCase):
+    """図面のデータと、書き出した CAD のファイルを、通信なしで確かめる。"""
+
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_rooms_stay_inside_and_do_not_overlap(self):
+        for sample in samples.SAMPLES.values():
+            for view in sample["views"]:
+                rooms = [room for room in view["rooms"] if room["key"] not in ("garden",)]
+                for room in rooms:
+                    x0, y0, x1, y1 = room["mm"]
+                    self.assertLessEqual(x1, sample["plan_size"][0], room["key"])
+                    self.assertLessEqual(y1, sample["plan_size"][1], room["key"])
+                    self.assertAlmostEqual(room["x"] + room["w"], x1 / sample["plan_size"][0])
+                for i, a in enumerate(rooms):
+                    for b in rooms[i + 1:]:
+                        overlap = a["mm"][0] < b["mm"][2] and b["mm"][0] < a["mm"][2] and a["mm"][1] < b["mm"][3] and b["mm"][1] < a["mm"][3]
+                        self.assertFalse(overlap, f"{sample['id']} {view['name']} {a['key']} {b['key']}")
+
+    def test_pins_are_on_the_sheet(self):
+        for sample in samples.SAMPLES.values():
+            for pin in samples.client_view(sample)["pins"]:
+                self.assertTrue(0 < pin["px"] < 1 and 0 < pin["py"] < 1, pin["key"])
+
+    def test_reader_words_are_on_the_plan_sheet(self):
+        """読み取りが頼る語が、平面図の用紙に残っている。"""
+        needed = {"a": ["電気室", "借室", "給水ポンプ室", "車路スロープ", "HH"], "b": ["共用分電盤室", "借室", "給水ポンプ室", "坂下側出入口"], "c": ["受変電室", "借室", "給水ポンプ室", "雨水貯留槽", "雨水ます", "HH"]}
+        for sid, words in needed.items():
+            with open(os.path.join(self.ROOT, "web", "samples", f"plan_{sid}.svg"), encoding="utf-8") as file:
+                body = file.read()
+            for word in words:
+                self.assertIn(word, body, f"{sid} {word}")
+
+    def test_dxf_is_written_for_each_type(self):
+        for sid in samples.SAMPLES:
+            with open(os.path.join(self.ROOT, "web", "samples", f"drawings_{sid}.dxf"), "rb") as file:
+                body = file.read().decode("cp932")
+            self.assertTrue(body.startswith("0\nSECTION"))
+            self.assertTrue(body.rstrip().endswith("EOF"))
+            for word in ("AC1009", "ANSI_932", "水の入り道", "引込" if sid != "b" else "借室", "模式断面図（水の入り道）", "架空の見本"):
+                self.assertIn(word, body, f"{sid} {word}")
+
+    def test_water_section_shows_no_height_values(self):
+        """断面の水の位置は模式で、cm や m の値を書かない。"""
+        for sid in samples.SAMPLES:
+            with open(os.path.join(self.ROOT, "web", "samples", f"section_{sid}.svg"), encoding="utf-8") as file:
+                texts = re.findall(r"<text[^>]*>([^<]*)</text>", file.read())
+            for text in texts:
+                self.assertNotRegex(text, r"\d\s*(cm|センチ|メートル)", f"{sid} {text}")
 
 
 class LiveFindingsTest(unittest.TestCase):

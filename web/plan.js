@@ -20,6 +20,8 @@ const PlanPanel = (() => {
 
   let pins = [];
   let fromReading = false;
+  let shownPlan = "";
+  const tabs = document.getElementById("plan-tabs");
 
   // 図面の縦横比で、平面図のカードに収まる大きさを決める。
   image.addEventListener("load", () => {
@@ -189,7 +191,9 @@ const PlanPanel = (() => {
       } else {
         shown = URL.createObjectURL(new Blob([buffer], { type: mediaType }));
       }
+      shownPlan = shown;
       image.src = shown;
+      pinsLayer.hidden = false;
       stage.hidden = false;
       const response = await fetch("/api/plan", {
         method: "POST",
@@ -213,10 +217,42 @@ const PlanPanel = (() => {
     return found.map((pin) => ({ ...pin, how_water: floors[pin.target] ? `（${floors[pin.target]}）${pin.how_water}` : pin.how_water }));
   }
 
+  // 平面図と、水の入り道の断面図を切り替える。ピンは平面図にだけ立てる。
+  function showDrawing(sample, kind) {
+    const section = kind === "section";
+    image.src = section ? sample.plan.section_png : shownPlan || sample.plan.png;
+    pinsLayer.hidden = section;
+    if (section) pinCard.hidden = true;
+    tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.drawing === kind));
+    tabs.querySelector(".plan-open").href = section ? sample.plan.section_pdf : sample.plan.pdf;
+  }
+
+  function offerDrawings(sample) {
+    const named = (label, kind) => {
+      const button = element("button", label);
+      button.type = "button";
+      button.dataset.drawing = kind;
+      button.addEventListener("click", () => showDrawing(sample, kind));
+      return button;
+    };
+    const cad = element("a", "CADデータ（DXF）", "plan-cad");
+    cad.href = sample.plan.dxf;
+    cad.download = "";
+    const full = element("a", "PDFで拡大", "plan-open");
+    full.target = "_blank";
+    full.rel = "noopener";
+    tabs.replaceChildren(named("平面図", "plan"), named("断面図（水の入り道）", "section"), full, cad);
+    showDrawing(sample, "plan");
+  }
+
   function offerSample() {
     const sample = App.building.sample;
     actions.replaceChildren();
-    if (!fromReading || stage.hidden) showSamplePlan(sample);
+    if (!fromReading || stage.hidden) {
+      shownPlan = "";
+      showSamplePlan(sample);
+    }
+    offerDrawings(sample);
     const pdf = element("button", "この図面を読み取る（PDF）");
     pdf.type = "button";
     pdf.addEventListener("click", async () => {

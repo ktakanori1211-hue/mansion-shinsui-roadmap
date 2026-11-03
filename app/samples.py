@@ -8,20 +8,33 @@ from __future__ import annotations
 import copy
 from typing import Optional
 
-# 図面の座標。部屋の x, y, w, h は通り芯 X1〜X4, Y1〜Y3 の範囲を 0〜1 とした割合。
+# 図面の用紙。部屋の x, y, w, h は、図の外周を 0〜1 とした割合で、3D の模型とピンも同じ値を使う。
 PLAN_WIDTH = 1400
 PLAN_HEIGHT = 990
-VIEW_ORIGINS = [(120, 190), (770, 190)]
-VIEW_SIZE = (500, 500)
 
 
-def plan_point(view: int, x: float, y: float) -> tuple:
-    """図面の割合の座標を、図面全体に対する 0〜1 の位置にする。"""
-    left, top = VIEW_ORIGINS[view]
+def plan_point(sample: dict, view: int, x: float, y: float) -> tuple:
+    """図の割合の座標を、用紙全体に対する 0〜1 の位置にする。"""
+    left, top, width = sample["plan_frames"][view]
+    height = width * sample["plan_size"][1] / sample["plan_size"][0]
     return (
-        round((left + x * VIEW_SIZE[0]) / PLAN_WIDTH, 4),
-        round((top + y * VIEW_SIZE[1]) / PLAN_HEIGHT, 4),
+        round((left + x * width) / PLAN_WIDTH, 4),
+        round((top + y * height) / PLAN_HEIGHT, 4),
     )
+
+
+def _rooms(size: tuple, *rows: tuple) -> list:
+    """mm で書いた部屋を、割合にする。(種類, 名前, x0, y0, x1, y1, ほかの項目)"""
+    rooms = []
+    for row in rows:
+        key, label, x0, y0, x1, y1 = row[:6]
+        extra = row[6] if len(row) > 6 else {}
+        rooms.append({"key": key, "label": label, "x": x0 / size[0], "y": y0 / size[1], "w": (x1 - x0) / size[0], "h": (y1 - y0) / size[1], "mm": [x0, y0, x1, y1], **extra})
+    return rooms
+
+
+def _door(side: str, at: float, kind: str = "door", width: int = 900) -> dict:
+    return {"side": side, "at": at, "kind": kind, "w": width}
 
 
 # 図面の語と部屋の種類の対応。語のゆれはここで吸収する。
@@ -120,49 +133,76 @@ SAMPLES = {
         "has_chief_engineer": True,
         "panel_mount": "壁掛け",
         "underground_feed": True,
-        "plan": {"pdf": "samples/plan_a.pdf", "png": "samples/plan_a.png"},
+        "plan": {"pdf": "samples/plan_a.pdf", "png": "samples/plan_a.png", "section_png": "samples/section_a.png", "section_pdf": "samples/section_a.pdf", "dxf": "samples/drawings_a.dxf"},
         "report": "samples/report_a.txt",
         "title": "竣工図 地下1階・1階平面図 ※架空の見本",
+        "plan_size": (42000, 15000),
+        "plan_frames": {0: (130, 126, 840), 1: (130, 541, 840)},
+        "grid": {"x": [0, 6000, 12000, 18000, 24000, 30000, 36000, 42000], "y": [0, 7200, 15000]},
         "views": [
             {
                 "name": "地下1階平面図",
-                "rooms": [
-                    {"key": "park", "label": "機械式駐車場ピット", "x": 0, "y": 0, "w": 0.62, "h": 0.5},
-                    {"key": "aisle", "label": "車路", "x": 0.62, "y": 0, "w": 0.38, "h": 0.5},
-                    {"key": "elec", "label": "電気室", "x": 0, "y": 0.5, "w": 0.3, "h": 0.5, "door": "top"},
-                    {"key": "tr", "label": "借室（東京電力\n供給用変圧器室）", "x": 0.3, "y": 0.5, "w": 0.24, "h": 0.5, "door": "top"},
-                    {"key": "pump", "label": "給水ポンプ室", "x": 0.54, "y": 0.5, "w": 0.24, "h": 0.5, "door": "top"},
-                    {"key": "ev", "label": "EV", "x": 0.78, "y": 0.5, "w": 0.11, "h": 0.25, "symbol": "ev"},
-                    {"key": "stair", "label": "階段", "x": 0.89, "y": 0.5, "w": 0.11, "h": 0.5, "symbol": "stair"},
-                ],
+                "rooms": _rooms(
+                    (42000, 15000),
+                    ("park", "機械式駐車場ピット", 0, 0, 18000, 7200, {"symbol": "pit"}),
+                    ("aisle", "車路", 18000, 0, 25200, 7200, {"openings": [_door("bottom", 21000, "open", 1800)]}),
+                    ("water_tank", "受水槽室", 25200, 0, 33000, 7200, {"symbol": "water_tank", "openings": [_door("bottom", 27000)]}),
+                    ("store", "倉庫", 33000, 0, 42000, 7200),
+                    ("corridor_b", "地下廊下", 0, 7200, 30000, 9000),
+                    ("elec", "電気室", 0, 9000, 9000, 15000, {"symbol": "cubicle", "openings": [_door("top", 7200, "double", 1800)]}),
+                    ("tr", "借室（東京電力\n供給用変圧器室）", 9000, 9000, 15000, 15000, {"symbol": "transformer", "openings": [_door("top", 13200, "double", 1500)]}),
+                    ("pump", "給水ポンプ室", 15000, 9000, 24000, 15000, {"symbol": "pump", "openings": [_door("top", 22800)]}),
+                    ("ev", "EV", 24000, 9000, 27000, 12000, {"symbol": "ev", "openings": [_door("top", 25500, "open", 1000)]}),
+                    ("stair", "階段", 27000, 9000, 30000, 15000, {"symbol": "stair", "openings": [_door("top", 28500)]}),
+                    ("ev_pit_room", "PS", 24000, 12000, 27000, 15000),
+                    ("soil", "（土の中）", 30000, 7200, 42000, 15000, {"hatch": True}),
+                ),
                 "marks": [
-                    {"kind": "conduit_hole", "label": "ケーブルを通す壁の穴", "x": 0.1, "y": 1.0},
+                    {"kind": "conduit_hole", "label": "ケーブルを通す壁の穴", "x": 3000 / 42000, "y": 1.0},
                 ],
-                "wall_label": "外壁（地下）",
             },
             {
                 "name": "1階平面図",
-                "rooms": [
-                    {"key": "park_1f", "label": "機械式駐車場", "x": 0, "y": 0, "w": 0.62, "h": 0.5},
-                    {"key": "slope", "label": "車路スロープ", "x": 0.62, "y": 0, "w": 0.38, "h": 0.5, "symbol": "slope"},
-                    {"key": "bike", "label": "駐輪場", "x": 0, "y": 0.5, "w": 0.3, "h": 0.5},
-                    {"key": "office", "label": "管理員室", "x": 0.3, "y": 0.5, "w": 0.24, "h": 0.5, "door": "bottom"},
-                    {"key": "hall", "label": "エントランス", "x": 0.54, "y": 0.5, "w": 0.24, "h": 0.5, "door": "bottom"},
-                    {"key": "ev_1f", "label": "EV", "x": 0.78, "y": 0.5, "w": 0.11, "h": 0.25, "symbol": "ev"},
-                    {"key": "stair_1f", "label": "階段", "x": 0.89, "y": 0.5, "w": 0.11, "h": 0.5, "symbol": "stair"},
-                ],
+                "rooms": _rooms(
+                    (42000, 15000),
+                    ("park_1f", "機械式駐車場", 0, 0, 18000, 7200, {"symbol": "parking", "openings": [_door("right", 3600, "shutter", 3000)]}),
+                    ("slope", "車路スロープ", 18000, 0, 25200, 7200, {"symbol": "slope", "openings": [_door("top", 21600, "shutter", 4500)]}),
+                    ("garbage", "ごみ置場", 25200, 0, 29400, 7200, {"openings": [_door("top", 27300, "double", 1500)]}),
+                    ("bike", "駐輪場", 29400, 0, 42000, 7200, {"symbol": "bike", "openings": [_door("top", 36000, "double", 1800)]}),
+                    ("trunk", "トランクルーム", 0, 7200, 9000, 15000, {"openings": [_door("bottom", 4500)]}),
+                    ("office", "管理員室", 9000, 7200, 15000, 15000, {"openings": [_door("right", 10800), _door("bottom", 12000, "window", 2400)]}),
+                    ("hall", "エントランスホール", 15000, 7200, 24000, 12600, {"openings": [_door("bottom", 19500, "sliding", 2400)]}),
+                    ("wind", "風除室", 15000, 12600, 24000, 15000, {"openings": [_door("bottom", 19500, "sliding", 2400)]}),
+                    ("ev_1f", "EV", 24000, 7200, 27000, 10200, {"symbol": "ev", "openings": [_door("left", 8700, "open", 1000)]}),
+                    ("stair_1f", "階段", 27000, 7200, 30000, 15000, {"symbol": "stair"}),
+                    ("mail", "メールコーナー", 24000, 10200, 27000, 15000),
+                    ("assembly", "集会室", 30000, 7200, 42000, 15000, {"openings": [_door("left", 12600), _door("bottom", 36000, "window", 3600)]}),
+                ),
                 "marks": [
-                    {"kind": "hh", "label": "HH（東電・高圧）", "x": 0.14, "y": 1.13},
-                    {"kind": "conduit", "label": "引込管路", "x": 0.14, "y": 1.13, "x2": 0.14, "y2": 1.0},
-                    {"kind": "sidewalk", "label": "歩道"},
+                    {"kind": "road"},
+                    {"kind": "hh", "label": "HH（東電・高圧）", "x": 3000 / 42000, "y": 1.145},
+                    {"kind": "conduit", "label": "引込管路", "x": 3000 / 42000, "y": 1.145, "x2": 3000 / 42000, "y2": 1.0},
                 ],
+            },
+            {
+                "name": "基準階平面図",
+                "rooms": _rooms(
+                    (42000, 15000),
+                    ("corridor", "共用廊下（外廊下）", 0, 0, 42000, 2400, {"outdoor": True}),
+                    *[(f"unit_{i}", f"{name} type", x, 2400, x + 6000, 13200, {"unit": True}) for i, (name, x) in enumerate(zip("ABCD", (0, 6000, 12000, 18000)))],
+                    ("ev_u", "EV", 24000, 2400, 27000, 5400, {"symbol": "ev", "openings": [_door("top", 25500, "open", 1000)]}),
+                    ("stair_u", "階段", 27000, 2400, 30000, 8400, {"symbol": "stair", "openings": [_door("top", 28500)]}),
+                    ("ps_u", "PS", 24000, 5400, 27000, 8400),
+                    ("void_u", "EPS・吹抜け", 24000, 8400, 30000, 13200),
+                    *[(f"unit_{i}", f"{name} type", x, 2400, x + 6000, 13200, {"unit": True}) for i, (name, x) in enumerate(zip("EF", (30000, 36000)), 4)],
+                ),
             },
         ],
         "pins": [
-            {"key": "ア", "target": "elec", "view": 0, "x": 0.1, "y": 0.96, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、電気室の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は電気の月次点検の立会いに合わせる）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
-            {"key": "イ", "target": "pump", "view": 0, "x": 0.66, "y": 0.75, "title": "ポンプのスイッチ盤", "how_water": "盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。受電が生きていても水は止まります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さ（外の地面と比べて）を測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
-            {"key": "ウ", "target": "slope", "view": 1, "x": 0.81, "y": 0.25, "title": "地下へ降りる車路スロープ", "how_water": "前の道路の水が、スロープを伝って地下へ流れ込みます。", "check": "スロープの入口の高さと、止水板を置けるか。外から見てかまいません。冠水中は近づかず、水に入りません。", "who": "外から見てよい（住民、管理会社）", "who_kind": "outside", "memo": 1, "focus": "slope"},
-            {"key": "エ", "target": "tr", "view": 0, "x": 0.42, "y": 0.75, "title": "東京電力の変圧器の部屋", "how_water": "ここが浸かると各戸の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。扉と穴の分担は管理会社から東京電力パワーグリッドへ照会します。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
+            {"key": "ア", "target": "elec", "view": 0, "x": 0.0714, "y": 0.95, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、電気室の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は電気の月次点検の立会いに合わせる）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
+            {"key": "イ", "target": "pump", "view": 0, "x": 0.46, "y": 0.8, "title": "ポンプのスイッチ盤", "how_water": "盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。受電が生きていても水は止まります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さ（外の地面と比べて）を測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
+            {"key": "ウ", "target": "slope", "view": 1, "x": 0.5143, "y": 0.24, "title": "地下へ降りる車路スロープ", "how_water": "前の道路の水が、スロープを伝って地下へ流れ込みます。", "check": "スロープの入口の高さと、止水板を置けるか。外から見てかまいません。冠水中は近づかず、水に入りません。", "who": "外から見てよい（住民、管理会社）", "who_kind": "outside", "memo": 1, "focus": "slope"},
+            {"key": "エ", "target": "tr", "view": 0, "x": 0.2857, "y": 0.8, "title": "東京電力の変圧器の部屋", "how_water": "ここが浸かると各戸の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。扉と穴の分担は管理会社から東京電力パワーグリッドへ照会します。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
         ],
     },
     "b": {
@@ -179,45 +219,52 @@ SAMPLES = {
         "has_chief_engineer": False,
         "panel_mount": "架台の上",
         "underground_feed": False,
-        "plan": {"pdf": "samples/plan_b.pdf", "png": "samples/plan_b.png"},
+        "plan": {"pdf": "samples/plan_b.pdf", "png": "samples/plan_b.png", "section_png": "samples/section_b.png", "section_pdf": "samples/section_b.pdf", "dxf": "samples/drawings_b.dxf"},
         "report": "samples/report_b.txt",
         "title": "竣工図 1階・基準階平面図 ※架空の見本",
+        "plan_size": (30000, 13200),
+        "plan_frames": {0: (160, 110, 720), 1: (160, 622, 720)},
+        "grid": {"x": [0, 6000, 12000, 18000, 24000, 30000], "y": [0, 5400, 13200]},
         "views": [
             {
                 "name": "1階平面図",
-                "rooms": [
-                    {"key": "parking_flat", "label": "平置き駐車場", "x": 0, "y": 0, "w": 0.5, "h": 0.42},
-                    {"key": "bike", "label": "駐輪場", "x": 0.5, "y": 0, "w": 0.28, "h": 0.42},
-                    {"key": "ev", "label": "EV", "x": 0.78, "y": 0, "w": 0.11, "h": 0.21, "symbol": "ev"},
-                    {"key": "stair", "label": "階段", "x": 0.89, "y": 0, "w": 0.11, "h": 0.42, "symbol": "stair"},
-                    {"key": "panel_room", "label": "共用分電盤室", "x": 0, "y": 0.42, "w": 0.26, "h": 0.58, "door": "bottom"},
-                    {"key": "tr", "label": "借室（東京電力\n供給用変圧器室）", "x": 0.26, "y": 0.42, "w": 0.26, "h": 0.58, "door": "bottom"},
-                    {"key": "pump", "label": "給水ポンプ室", "x": 0.52, "y": 0.42, "w": 0.22, "h": 0.58, "door": "bottom"},
-                    {"key": "hall", "label": "エントランス", "x": 0.74, "y": 0.42, "w": 0.26, "h": 0.58, "door": "bottom"},
-                ],
+                "rooms": _rooms(
+                    (30000, 13200),
+                    ("parking_flat", "平置き駐車場", 0, 0, 15000, 5400, {"symbol": "parking_flat", "openings": [_door("top", 7500, "open", 6000)]}),
+                    ("bike", "駐輪場", 15000, 0, 24000, 5400, {"symbol": "bike", "openings": [_door("top", 19500, "double", 1800)]}),
+                    ("ev", "EV", 24000, 0, 27000, 2700, {"symbol": "ev", "openings": [_door("bottom", 25500, "open", 1000)]}),
+                    ("stair", "階段", 27000, 0, 30000, 5400, {"symbol": "stair"}),
+                    ("hall_back", "ホール", 24000, 2700, 27000, 5400, {"openings": [_door("right", 4900)]}),
+                    ("panel_room", "共用分電盤室", 0, 5400, 8100, 13200, {"symbol": "panel_stand", "openings": [_door("bottom", 4050, "double", 1500)]}),
+                    ("tr", "借室（東京電力\n供給用変圧器室）", 8100, 5400, 15600, 13200, {"symbol": "transformer", "openings": [_door("bottom", 11850, "double", 1500)]}),
+                    ("pump", "給水ポンプ室", 15600, 5400, 22200, 13200, {"symbol": "pump_stand", "openings": [_door("bottom", 18900)]}),
+                    ("hall", "エントランス", 22200, 5400, 30000, 13200, {"openings": [_door("bottom", 26100, "sliding", 2100), _door("top", 25500, "open", 2400)]}),
+                ),
                 "marks": [
-                    {"kind": "door_low", "label": "坂下側出入口・足元換気口", "x": 0.13, "y": 1.0},
-                    {"kind": "sidewalk", "label": "敷地内通路"},
+                    {"kind": "door_low", "label": "坂下側出入口・足元換気口", "x": 4050 / 30000, "y": 1.0},
+                    {"kind": "road", "label": "敷地内通路（坂の下の側）", "slope": True},
+                    {"kind": "pole", "label": "電柱", "x": -0.022, "y": 1.1, "x2": 0, "y2": 0.86},
                 ],
             },
             {
                 "name": "基準階平面図",
-                "rooms": [
-                    {"key": "unit_1", "label": "住戸", "x": 0, "y": 0.2, "w": 0.26, "h": 0.8},
-                    {"key": "unit_2", "label": "住戸", "x": 0.26, "y": 0.2, "w": 0.26, "h": 0.8},
-                    {"key": "unit_3", "label": "住戸", "x": 0.52, "y": 0.2, "w": 0.26, "h": 0.8},
-                    {"key": "corridor", "label": "共用廊下", "x": 0, "y": 0, "w": 0.78, "h": 0.2},
-                    {"key": "ev_u", "label": "EV", "x": 0.78, "y": 0, "w": 0.11, "h": 0.21, "symbol": "ev"},
-                    {"key": "stair_u", "label": "階段", "x": 0.89, "y": 0, "w": 0.11, "h": 0.42, "symbol": "stair"},
-                ],
-                "marks": [],
+                "rooms": _rooms(
+                    (30000, 13200),
+                    ("unit_1", "A type", 0, 2400, 6000, 11400, {"unit": True}),
+                    ("unit_2", "B type", 6000, 2400, 12000, 11400, {"unit": True}),
+                    ("unit_3", "C type", 12000, 2400, 18000, 11400, {"unit": True}),
+                    ("unit_4", "D type", 18000, 2400, 24000, 11400, {"unit": True}),
+                    ("corridor", "共用廊下（外廊下）", 0, 0, 24000, 2400, {"outdoor": True}),
+                    ("ev_u", "EV", 24000, 0, 27000, 2700, {"symbol": "ev", "openings": [_door("left", 1350, "open", 1000)]}),
+                    ("stair_u", "階段", 27000, 0, 30000, 5400, {"symbol": "stair"}),
+                ),
             },
         ],
         "pins": [
-            {"key": "ア", "target": "panel_room", "view": 0, "x": 0.13, "y": 0.72, "title": "共用部のおおもとのスイッチ盤", "how_water": "地下はありませんが、床が通路より少し高いだけなら、浅い水でも盤の下の端に届くことがあります。", "check": "盤の下の端の高さを測ってもらいます。盤の扉を開けずに測ります。開ける必要があるかは電気工事の業者が判断します。防水業者や管理会社は扉を開けず、盤や電線に触れません。住民、理事、管理員は部屋に入りません。", "who": "管理会社から電気工事の業者へ（主任技術者はいない建物です）", "who_kind": "contractor", "memo": 2, "focus": "panel_room"},
-            {"key": "イ", "target": "pump", "view": 0, "x": 0.63, "y": 0.72, "title": "ポンプのスイッチ盤", "how_water": "架台の上の盤でも、下の端より水が上がると、ポンプが止まり断水につながります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さを測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
-            {"key": "ウ", "target": "door", "view": 0, "x": 0.13, "y": 1.0, "title": "坂の下の側の扉と足元の換気口", "how_water": "丘と谷が入り組んだ土地では、坂の下の側に水が集まり、扉の下や足元の換気口から入ることがあります。", "check": "扉の下の段差と換気口の高さ。外から見てかまいません。冠水中は近づかず、水に入りません。", "who": "外から見てよい（住民、管理会社）", "who_kind": "outside", "memo": 1, "focus": "door"},
-            {"key": "エ", "target": "tr", "view": 0, "x": 0.39, "y": 0.72, "title": "東京電力の変圧器の部屋", "how_water": "この建物では、ここが浸かると各戸と共用部の両方の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。扉と穴の分担は管理会社から東京電力パワーグリッドへ照会します。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
+            {"key": "ア", "target": "panel_room", "view": 0, "x": 0.135, "y": 0.8, "title": "共用部のおおもとのスイッチ盤", "how_water": "地下はありませんが、床が通路より少し高いだけなら、浅い水でも盤の下の端に届くことがあります。", "check": "盤の下の端の高さを測ってもらいます。盤の扉を開けずに測ります。開ける必要があるかは電気工事の業者が判断します。防水業者や管理会社は扉を開けず、盤や電線に触れません。住民、理事、管理員は部屋に入りません。", "who": "管理会社から電気工事の業者へ（主任技術者はいない建物です）", "who_kind": "contractor", "memo": 2, "focus": "panel_room"},
+            {"key": "イ", "target": "pump", "view": 0, "x": 0.63, "y": 0.8, "title": "ポンプのスイッチ盤", "how_water": "架台の上の盤でも、下の端より水が上がると、ポンプが止まり断水につながります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さを測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
+            {"key": "ウ", "target": "door", "view": 0, "x": 0.135, "y": 1.0, "title": "坂の下の側の扉と足元の換気口", "how_water": "丘と谷が入り組んだ土地では、坂の下の側に水が集まり、扉の下や足元の換気口から入ることがあります。", "check": "扉の下の段差と換気口の高さ。外から見てかまいません。冠水中は近づかず、水に入りません。", "who": "外から見てよい（住民、管理会社）", "who_kind": "outside", "memo": 1, "focus": "door"},
+            {"key": "エ", "target": "tr", "view": 0, "x": 0.395, "y": 0.8, "title": "東京電力の変圧器の部屋", "how_water": "この建物では、ここが浸かると各戸と共用部の両方の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。扉と穴の分担は管理会社から東京電力パワーグリッドへ照会します。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
         ],
     },
     "c": {
@@ -234,51 +281,88 @@ SAMPLES = {
         "has_chief_engineer": True,
         "panel_mount": "壁掛け",
         "underground_feed": True,
-        "plan": {"pdf": "samples/plan_c.pdf", "png": "samples/plan_c.png"},
+        "plan": {"pdf": "samples/plan_c.pdf", "png": "samples/plan_c.png", "section_png": "samples/section_c.png", "section_pdf": "samples/section_c.pdf", "dxf": "samples/drawings_c.dxf"},
         "report": "samples/report_c.txt",
         "title": "竣工図 地下1階・1階平面図 ※架空の見本",
+        "plan_size": (36000, 36000),
+        "plan_frames": {0: (125, 170, 470), 1: (695, 170, 470)},
+        "grid": {"x": [0, 12000, 24000, 36000], "y": [0, 12000, 24000, 36000]},
         "views": [
             {
                 "name": "地下1階平面図",
-                "rooms": [
-                    {"key": "park", "label": "機械式駐車場ピット", "x": 0, "y": 0, "w": 0.46, "h": 0.42},
-                    {"key": "aisle", "label": "車路", "x": 0.46, "y": 0, "w": 0.26, "h": 0.42},
-                    {"key": "tank", "label": "雨水貯留槽（地下）", "x": 0.72, "y": 0, "w": 0.28, "h": 0.42, "hatch": True},
-                    {"key": "elec", "label": "受変電室", "x": 0, "y": 0.42, "w": 0.26, "h": 0.58, "door": "top"},
-                    {"key": "tr", "label": "借室（東京電力\n供給用変圧器室）", "x": 0.26, "y": 0.42, "w": 0.2, "h": 0.58, "door": "top"},
-                    {"key": "gen", "label": "非常用\n発電機室", "x": 0.46, "y": 0.42, "w": 0.14, "h": 0.58, "door": "top"},
-                    {"key": "pump", "label": "給水ポンプ室", "x": 0.6, "y": 0.42, "w": 0.18, "h": 0.58, "door": "top"},
-                    {"key": "ev", "label": "EV", "x": 0.78, "y": 0.42, "w": 0.11, "h": 0.29, "symbol": "ev"},
-                    {"key": "stair", "label": "階段", "x": 0.89, "y": 0.42, "w": 0.11, "h": 0.58, "symbol": "stair"},
-                ],
+                "rooms": _rooms(
+                    (36000, 36000),
+                    ("park", "機械式駐車場ピット", 0, 0, 16000, 12000, {"symbol": "pit"}),
+                    ("aisle", "車路", 16000, 0, 25000, 12000, {"openings": [_door("bottom", 20500, "open", 1800)]}),
+                    ("tank", "雨水貯留槽（地下）", 25000, 0, 36000, 12000, {"hatch": True}),
+                    ("store", "倉庫", 0, 12000, 12000, 21000, {"openings": [_door("bottom", 6000)]}),
+                    ("ev", "EV", 12000, 12000, 18000, 21000, {"symbol": "ev_bank", "openings": [_door("bottom", 15000, "open", 2400)]}),
+                    ("stair", "階段", 18000, 12000, 24000, 21000, {"symbol": "stair", "openings": [_door("bottom", 21000)]}),
+                    ("water_tank", "受水槽室", 24000, 12000, 36000, 21000, {"symbol": "water_tank", "openings": [_door("bottom", 30000)]}),
+                    ("corridor_b", "地下廊下", 0, 21000, 36000, 24000),
+                    ("elec", "受変電室", 0, 24000, 11000, 36000, {"symbol": "cubicle", "openings": [_door("top", 8500, "double", 1800)]}),
+                    ("tr", "借室（東京電力\n供給用変圧器室）", 11000, 24000, 18000, 36000, {"symbol": "transformer", "openings": [_door("top", 14500, "double", 1500)]}),
+                    ("gen", "非常用\n発電機室", 18000, 24000, 25000, 36000, {"symbol": "generator", "openings": [_door("top", 21500, "double", 1500)]}),
+                    ("pump", "給水ポンプ室", 25000, 24000, 36000, 36000, {"symbol": "pump", "openings": [_door("top", 30500)]}),
+                ),
                 "marks": [
-                    {"kind": "conduit_hole", "label": "ケーブルを通す壁の穴", "x": 0.09, "y": 1.0},
+                    {"kind": "conduit_hole", "label": "ケーブルを通す壁の穴", "x": 3000 / 36000, "y": 1.0},
                 ],
             },
             {
                 "name": "1階平面図",
-                "rooms": [
-                    {"key": "park_1f", "label": "機械式駐車場", "x": 0, "y": 0, "w": 0.46, "h": 0.42},
-                    {"key": "slope", "label": "車路スロープ", "x": 0.46, "y": 0, "w": 0.26, "h": 0.42, "symbol": "slope"},
-                    {"key": "garden", "label": "公開空地", "x": 0.72, "y": 0, "w": 0.28, "h": 0.42},
-                    {"key": "office", "label": "防災センター", "x": 0, "y": 0.42, "w": 0.26, "h": 0.58, "door": "bottom"},
-                    {"key": "lobby", "label": "エントランスホール", "x": 0.26, "y": 0.42, "w": 0.52, "h": 0.58, "door": "bottom"},
-                    {"key": "ev_1f", "label": "EV", "x": 0.78, "y": 0.42, "w": 0.11, "h": 0.29, "symbol": "ev"},
-                    {"key": "stair_1f", "label": "階段", "x": 0.89, "y": 0.42, "w": 0.11, "h": 0.58, "symbol": "stair"},
-                ],
+                "rooms": _rooms(
+                    (36000, 36000),
+                    ("park_1f", "機械式駐車場", 0, 0, 16000, 12000, {"symbol": "parking"}),
+                    ("slope", "車路スロープ", 16000, 0, 25000, 12000, {"symbol": "slope", "openings": [_door("top", 20500, "shutter", 5400)]}),
+                    ("garden", "公開空地", 25000, 0, 36000, 12000),
+                    ("bike", "駐輪場", 0, 12000, 12000, 24000, {"symbol": "bike", "openings": [_door("left", 18000, "double", 1800)]}),
+                    ("ev_1f", "EV", 12000, 12000, 18000, 21000, {"symbol": "ev_bank", "openings": [_door("bottom", 15000, "open", 2400)]}),
+                    ("stair_1f", "階段", 18000, 12000, 24000, 21000, {"symbol": "stair", "openings": [_door("bottom", 21000)]}),
+                    ("lounge", "ラウンジ", 24000, 12000, 36000, 24000, {"openings": [_door("left", 22500, "open", 2400)]}),
+                    ("office", "防災センター", 0, 24000, 12000, 36000, {"openings": [_door("right", 26000), _door("bottom", 6000)]}),
+                    ("lobby", "エントランスホール", 12000, 21000, 24000, 32000),
+                    ("wind", "風除室", 12000, 32000, 24000, 36000, {"openings": [_door("top", 18000, "sliding", 3000), _door("bottom", 18000, "sliding", 3000)]}),
+                    ("mail", "メールコーナー", 24000, 24000, 36000, 36000, {"openings": [_door("left", 27000, "open", 2400)]}),
+                ),
                 "marks": [
-                    {"kind": "basin", "label": "雨水ます", "x": 0.92, "y": 0.33},
-                    {"kind": "hh", "label": "HH（東電・高圧）", "x": 0.1, "y": 1.13},
-                    {"kind": "conduit", "label": "引込管路", "x": 0.1, "y": 1.13, "x2": 0.1, "y2": 1.0},
-                    {"kind": "sidewalk", "label": "歩道"},
+                    {"kind": "basin", "label": "雨水ます", "x": 0.86, "y": 0.2},
+                    {"kind": "road"},
+                    {"kind": "hh", "label": "HH（東電・高圧）", "x": 3000 / 36000, "y": 1.055},
+                    {"kind": "conduit", "label": "引込管路", "x": 3000 / 36000, "y": 1.055, "x2": 3000 / 36000, "y2": 1.0},
                 ],
+            },
+            {
+                "name": "基準階平面図",
+                "balcony_ring": True,
+                "rooms": _rooms(
+                    (36000, 36000),
+                    ("unit_1", "A type", 1800, 1800, 13800, 9000, {"unit": True, "unit_door": _door("bottom", 11500)}),
+                    ("unit_2", "B type", 13800, 1800, 22200, 9000, {"unit": True, "unit_door": _door("bottom", 18000)}),
+                    ("unit_3", "C type", 22200, 1800, 34200, 9000, {"unit": True, "unit_door": _door("bottom", 24500)}),
+                    ("unit_4", "D type", 1800, 27000, 13800, 34200, {"unit": True, "unit_door": _door("top", 11500)}),
+                    ("unit_5", "E type", 13800, 27000, 22200, 34200, {"unit": True, "unit_door": _door("top", 18000)}),
+                    ("unit_6", "F type", 22200, 27000, 34200, 34200, {"unit": True, "unit_door": _door("top", 24500)}),
+                    ("unit_7", "G type", 1800, 9000, 9000, 15000, {"unit": True, "unit_door": _door("right", 12000)}),
+                    ("unit_8", "H type", 1800, 15000, 9000, 21000, {"unit": True, "unit_door": _door("right", 18000)}),
+                    ("unit_9", "I type", 1800, 21000, 9000, 27000, {"unit": True, "unit_door": _door("right", 24000)}),
+                    ("unit_10", "J type", 27000, 9000, 34200, 15000, {"unit": True, "unit_door": _door("left", 12000)}),
+                    ("unit_11", "K type", 27000, 15000, 34200, 21000, {"unit": True, "unit_door": _door("left", 18000)}),
+                    ("unit_12", "L type", 27000, 21000, 34200, 27000, {"unit": True, "unit_door": _door("left", 24000)}),
+                    ("corridor_n", "内廊下", 9000, 9000, 27000, 13000),
+                    ("corridor_s", "内廊下", 9000, 23000, 27000, 27000),
+                    ("corridor_w", "", 9000, 13000, 12000, 23000),
+                    ("corridor_e", "", 24000, 13000, 27000, 23000),
+                    ("ev_u", "EV", 12000, 13000, 18000, 23000, {"symbol": "ev_bank", "openings": [_door("top", 15000, "open", 2400)]}),
+                    ("stair_u", "階段", 18000, 13000, 24000, 23000, {"symbol": "stair", "openings": [_door("top", 21000)]}),
+                ),
             },
         ],
         "pins": [
-            {"key": "ア", "target": "elec", "view": 0, "x": 0.09, "y": 0.96, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、受電の箱の部屋の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は電気の月次点検の立会いに合わせる）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
-            {"key": "イ", "target": "pump", "view": 0, "x": 0.69, "y": 0.71, "title": "ポンプのスイッチ盤", "how_water": "盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。高層階ほど階段で水を運ぶのが難しくなります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さを測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
-            {"key": "ウ", "target": "tank", "view": 0, "x": 0.86, "y": 0.21, "title": "雨水ますと地下の貯留タンク", "how_water": "敷地の水が雨水ますからタンクへ流れ込み、満水になると地下の蓋からあふれることがあります（武蔵小杉の例。建築設備技術者協会の調査など）。", "check": "蓋は開けません。導入管に止水バルブがあるか、タンクの蓋に耐水圧のロックがあるかを、竣工図で確かめ、現地は業者に見てもらいます。", "who": "管理会社が竣工図で確かめ、設備業者へ現地調査を依頼", "who_kind": "contractor", "memo": 2, "focus": "tank"},
-            {"key": "エ", "target": "tr", "view": 0, "x": 0.36, "y": 0.71, "title": "東京電力の変圧器の部屋", "how_water": "ここが浸かると各戸の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。水防ラインの協議は管理組合と管理会社が東京電力パワーグリッドと行います。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
+            {"key": "ア", "target": "elec", "view": 0, "x": 0.0833, "y": 0.975, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、受電の箱の部屋の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は電気の月次点検の立会いに合わせる）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
+            {"key": "イ", "target": "pump", "view": 0, "x": 0.85, "y": 0.85, "title": "ポンプのスイッチ盤", "how_water": "盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。高層階ほど階段で水を運ぶのが難しくなります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さを測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
+            {"key": "ウ", "target": "tank", "view": 0, "x": 0.85, "y": 0.2, "title": "雨水ますと地下の貯留タンク", "how_water": "敷地の水が雨水ますからタンクへ流れ込み、満水になると地下の蓋からあふれることがあります（武蔵小杉の例。建築設備技術者協会の調査など）。", "check": "蓋は開けません。導入管に止水バルブがあるか、タンクの蓋に耐水圧のロックがあるかを、竣工図で確かめ、現地は業者に見てもらいます。", "who": "管理会社が竣工図で確かめ、設備業者へ現地調査を依頼", "who_kind": "contractor", "memo": 2, "focus": "tank"},
+            {"key": "エ", "target": "tr", "view": 0, "x": 0.4028, "y": 0.85, "title": "東京電力の変圧器の部屋", "how_water": "ここが浸かると各戸の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。水防ラインの協議は管理組合と管理会社が東京電力パワーグリッドと行います。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
         ],
     },
 }
@@ -397,7 +481,7 @@ def client_view(sample: dict) -> dict:
     """画面へ渡す形。ピンに図面全体に対する位置を添える。"""
     pins = []
     for pin in sample["pins"]:
-        px, py = plan_point(pin["view"], pin["x"], pin["y"])
+        px, py = plan_point(sample, pin["view"], pin["x"], pin["y"])
         pins.append({**pin, "px": px, "py": py})
     keys = {
         room["key"] for view in sample["views"] for room in view["rooms"]
