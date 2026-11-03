@@ -22,7 +22,7 @@ FEATURE_STATES = {"実装済み", "今回追加", "未実装", "未実装（後�
 # 公開側に出さない語。実在の特定（本人の現場・勤め先・区名）と、使わないと決めた言い方。
 BANNED = ["HEXSTRATA", "東国分", "美浜", "キムさん", "2-22", "世界初", "唯一", "泉区", "千葉市中央区", "stationforest", "mihama"]
 # 住民も読む面に出さない値（ノートの決まり）。要件定義には残す。
-BANNED_ON_SCREEN = ["MΩ", "1,000万"]
+BANNED_ON_SCREEN = ["MΩ", "1,000万", "水トリー"]
 
 # 出典の数字ではなく、この道具の設計の値・日付・番号として書いたもの。
 DESIGN_VALUES = {
@@ -64,8 +64,12 @@ class KnowledgeShapeTest(unittest.TestCase):
                 self.assertTrue(feature.get("reason"), feature["title"])
 
     def test_requirements_file_matches_the_screen(self):
+        # 画面の全文は、主任技術者向けの行だけを省いた同じ文。項目番号はすべて残る。
         text = (ROOT / "docs" / "REQUIREMENTS.md").read_text(encoding="utf-8")
-        self.assertEqual(text, KNOWLEDGE["requirements"])
+        screen = KNOWLEDGE["requirements"]
+        self.assertEqual(text.count("\n"), screen.count("\n"))
+        self.assertEqual(set(re.findall(r"［[^］]*］", text)), set(re.findall(r"［[^］]*］", screen)))
+        self.assertNotIn("1,000万", text)
 
 
 class KnowledgeWordsTest(unittest.TestCase):
@@ -82,6 +86,7 @@ class KnowledgeWordsTest(unittest.TestCase):
 
     def test_screen_does_not_show_values_kept_for_engineers(self):
         screen = json.dumps(KNOWLEDGE["entries"], ensure_ascii=False) + json.dumps(KNOWLEDGE["features"], ensure_ascii=False)
+        screen += KNOWLEDGE["requirements"]
         for word in BANNED_ON_SCREEN:
             self.assertNotIn(word, screen)
 
