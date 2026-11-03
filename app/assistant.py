@@ -809,7 +809,7 @@ def exits(sample: dict, label: str, payload: dict) -> dict:
         "",
         "水が引いた翌朝：",
         morning,
-        "水が引いても、主任技術者（いない建物では電気工事業者）が安全を確かめ、入ってよいと指示するまで、住民、理事、管理員は入りません。",
+        "水が引いても、借室（東京電力の変圧器の部屋）は東京電力パワーグリッド、マンション側の部屋は主任技術者（いない建物では電気工事業者）が安全を確かめて入ってよいと指示するまで、住民、理事、管理員は入りません。",
     ]
     no_engineer = not sample["has_chief_engineer"] or sample.get("engineer_unsure")
     notes = [

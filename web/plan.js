@@ -12,7 +12,7 @@ const PlanPanel = (() => {
   const actions = document.getElementById("plan-actions");
 
   const WHO_LABELS = {
-    engineer: "◆ 主任技術者の立会いに合わせる",
+    engineer: "◆ 月次点検のときに合わせて頼む",
     contractor: "■ 管理会社から業者へ",
     tepco: "▲ 管理会社から東京電力パワーグリッドへ",
     outside: "● 外から見てよい",

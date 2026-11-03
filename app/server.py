@@ -18,7 +18,7 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 DEMO_POINTS = {
     "saiwaicho": {"label": "千葉市 幸町2丁目", "longitude": 140.091583, "latitude": 35.621826, "sample": "a"},
     "ryokuen": {"label": "横浜市 緑園3丁目", "longitude": 139.519836, "latitude": 35.441181, "sample": "b"},
-    "oshima": {"label": "東京都 江東区大島2丁目", "longitude": 139.822372, "latitude": 35.691696, "sample": "c"},
+    "oshima": {"label": "東京都 大島2丁目", "longitude": 139.822372, "latitude": 35.691696, "sample": "c"},
 }
 
 LOOPBACK_CLIENTS = ("127.0.0.1", "::1")

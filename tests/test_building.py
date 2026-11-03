@@ -80,8 +80,11 @@ class FixedTextTest(unittest.TestCase):
         body = building.FIXED["disclaimer_1"]
         self.assertTrue(building.FIXED["disclaimer_1_no_engineer"].startswith(body))
         self.assertIn("電気主任技術者を選任していない建物では", building.FIXED["disclaimer_1_no_engineer"])
-        self.assertIn("管理組合が判断し、東京電力パワーグリッドに連絡する", building.FIXED["disclaimer_1_no_engineer"])
-        self.assertIn("管理組合が判断し、東京電力パワーグリッドに連絡する", guard.disclaimer(False))
+        # 借室は東京電力パワーグリッド、マンション側は業者の書面を見て管理組合。両方が済むまで戻さない（2026-11-04 本人決定）。
+        for text in (building.FIXED["disclaimer_1_no_engineer"], guard.disclaimer(False)):
+            self.assertIn("借室は東京電力パワーグリッドの確認を待ち", text)
+            self.assertIn("書面で受けて管理組合が判断する", text)
+            self.assertIn("どちらも済むまで電気を戻さない", text)
         self.assertEqual(guard.disclaimer(False), building.FIXED["disclaimer_1_no_engineer"])
         self.assertEqual(guard.disclaimer(True), body)
 
