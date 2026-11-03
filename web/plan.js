@@ -297,6 +297,8 @@ const PlanPanel = (() => {
     tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.drawing === kind));
     tabs.querySelector(".plan-open").href = plan ? sample.plan.pdf : sample.plan[`${kind}_pdf`];
     tabs.querySelector(".plan-cad").href = sample.plan.dxf[kind];
+    // 断面図のときだけ、時間の再生の重ね絵（水の面と入り道の矢印）を出す（web/section-anim.js）。
+    if (typeof SectionAnim !== "undefined") SectionAnim.showDrawing(kind, sample);
   }
 
   function offerDrawings(sample) {

@@ -337,7 +337,16 @@ const HazardMap = (() => {
   const DEM5_URL ="https://cyberjapandata.gsi.go.jp/xyz/dem5a_png/{z}/{x}/{y}.png";
   const DEM10_URL = "https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png";
   const SIM_RADIUS_M = 700;
-  const SIM_SECONDS = 3.2;
+  // 時間の再生（スライダーと再生／一時停止）。進み具合は一つの値 t（0〜1）で、塗り方は progress = t / SPREAD_END で決める。
+  // t が SPREAD_END を過ぎたら広げ終えた形のまま止め、ピンの点が濡れたあとの段階3を見られるようにする。
+  // 段階は時刻ではなく順番の名前。速さや時間の予測ではない。
+  const PLAY_SECONDS = 8;
+  const SPREAD_END = 0.85;
+  // 段階1（窪地・深い所）と段階2（低い所から広がる）の境目は、ピンの点が濡れるまでの道のりの最初の4割にする（仮の分け方）。
+  const STAGE1_SHARE = 0.4;
+  const STAGE_NAMES = ["窪地・深い所にたまる", "低い所から広がる（道路も冠水しうる）", "建物の前に迫る"];
+  const STAGE_NOT_REACHED = "ピンの点には届かない（安全という意味ではない）";
+  const TIMELINE_NOTE = "時刻や速さの予測ではなく、水が広がる順番の模式です。";
   let sim = null;
 
   function tileUrl(template, coords, layer) {
@@ -415,10 +424,154 @@ const HazardMap = (() => {
     if (!sim) return;
     cancelAnimationFrame(sim.frame);
     map.removeLayer(sim.layer);
+    if (sim.control) map.removeControl(sim.control);
     sim = null;
   }
 
-  // scene: { layers, useDem }。終わると onDone({ hadColor, hadDem }) を呼ぶ。
+  // ピンの点が、何番目の進み具合で塗られるか。地図の色なら区分が塗られる所、標高の模式なら水位がピンの点の標高に届く所。
+  // どちらでも塗られないときは null。
+  function pinWetProgress() {
+    const found = sim.pin;
+    let best = null;
+    const take = (value) => {
+      if (value === null || Number.isNaN(value)) return;
+      best = best === null ? value : Math.min(best, value);
+    };
+    if (found && found.rank) take(sim.maxRank <= 1 ? 0 : Math.min(1, Math.max(0, (sim.maxRank - found.rank) / (sim.maxRank - 1))));
+    if (sim.useDem) {
+      // 水位はピンの標高（sim.high）まで上げるので、遅くとも広げ終えた所で届く。タイルの画素がそれより低ければ、その分早く届く。
+      const height = found && !Number.isNaN(found.elevation) ? Math.min(found.elevation, sim.high) : sim.high;
+      if (sim.high <= sim.low || height <= sim.low) take(0);
+      else take((height - sim.low) / (sim.high - sim.low));
+    }
+    return best;
+  }
+
+  // 段階の境目（t の値）。段階3はピンの点が濡れる所から。届かないときは広げ終えた所から「届かない」にする。
+  function stageBounds() {
+    const wetAt = sim.pinWet === null ? null : sim.pinWet * SPREAD_END;
+    const first = STAGE1_SHARE * (wetAt === null ? SPREAD_END : wetAt);
+    return { first, wetAt, last: wetAt === null ? SPREAD_END : wetAt };
+  }
+
+  function stageAt(t) {
+    const { first, last } = stageBounds();
+    if (t >= last) return 3;
+    return t >= first ? 2 : 1;
+  }
+
+  function buildTimeline() {
+    const box = document.createElement("div");
+    box.className = "map-timeline timeline-bar";
+    const row = document.createElement("div");
+    row.className = "timeline-row";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "timeline-play";
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = "0";
+    range.max = "1000";
+    range.step = "1";
+    range.className = "timeline-range";
+    range.setAttribute("aria-label", "水が広がる順番");
+    row.append(button, range);
+    const strip = document.createElement("div");
+    strip.className = "timeline-strip";
+    const note = document.createElement("p");
+    note.className = "timeline-note";
+    note.textContent = TIMELINE_NOTE;
+    box.append(row, strip, note);
+    button.addEventListener("click", () => (sim && sim.playing ? pauseTimeline() : playTimeline()));
+    range.addEventListener("input", () => {
+      pauseTimeline();
+      setTimeline(Number(range.value) / 1000);
+    });
+    L.DomEvent.disableClickPropagation(box);
+    L.DomEvent.disableScrollPropagation(box);
+    return { box, button, range, strip };
+  }
+
+  // 段階の帯。幅は段階の長さ（進み具合の割合）で、今の段階だけ濃くする。
+  function renderStrip() {
+    const ui = sim.ui;
+    const { first, wetAt, last } = stageBounds();
+    const spans = [first, last - first, 1 - last];
+    const stage = stageAt(sim.t);
+    ui.strip.replaceChildren(
+      ...spans.map((span, index) => {
+        const item = document.createElement("span");
+        item.className = `timeline-stage${index + 1 === stage ? " is-current" : ""}${index === 2 && wetAt === null ? " is-not-reached" : ""}`;
+        item.style.flexGrow = String(Math.max(span, 0));
+        item.hidden = span <= 0.001 && index + 1 !== stage;
+        const name = index === 2 && wetAt === null ? STAGE_NOT_REACHED : STAGE_NAMES[index];
+        item.textContent = `${index + 1} ${name}`;
+        item.title = item.textContent;
+        return item;
+      }),
+    );
+  }
+
+  function updateTimelineUi() {
+    if (!sim || !sim.ui) return;
+    sim.ui.range.value = String(Math.round(sim.t * 1000));
+    sim.ui.button.textContent = sim.playing ? "❚❚ 一時停止" : sim.t >= 1 ? "↺ 最初から再生" : "▶ 再生";
+    const stage = stageAt(sim.t);
+    if (stage !== sim.shownStage || !sim.ui.strip.childElementCount) {
+      sim.shownStage = stage;
+      renderStrip();
+    }
+  }
+
+  // 進み具合 t（0〜1）で描く。タイルは読み直さず、読んだ値から塗り直すだけ。
+  function setTimeline(t) {
+    if (!sim || !sim.ready) return;
+    sim.t = Math.min(1, Math.max(0, t));
+    const progress = Math.round(Math.min(1, sim.t / SPREAD_END) * 120) / 120;
+    if (progress !== sim.progress) {
+      sim.progress = progress;
+      sim.tiles.forEach((tile) => paint(tile, progress));
+    }
+    updateTimelineUi();
+  }
+
+  function playTimeline() {
+    if (!sim || !sim.ready) return;
+    if (sim.t >= 1) setTimeline(0);
+    sim.playing = true;
+    sim.last = performance.now();
+    const mine = sim;
+    const step = (now) => {
+      if (sim !== mine || !sim.playing) return;
+      // 画面が裏に回って止まっていたときに一気に進まないよう、1回に進める量を抑える。
+      const seconds = Math.min(0.1, Math.max(0, (now - sim.last) / 1000));
+      sim.last = now;
+      setTimeline(sim.t + seconds / PLAY_SECONDS);
+      if (sim.t >= 1) {
+        pauseTimeline();
+        return;
+      }
+      sim.frame = requestAnimationFrame(step);
+    };
+    sim.frame = requestAnimationFrame(step);
+    updateTimelineUi();
+  }
+
+  function pauseTimeline() {
+    if (!sim) return;
+    sim.playing = false;
+    cancelAnimationFrame(sim.frame);
+    updateTimelineUi();
+  }
+
+  // 確かめる用：今の進み具合と段階の境目。
+  function timeline() {
+    if (!sim) return null;
+    const { first, wetAt } = stageBounds();
+    return { ready: Boolean(sim.ready), t: sim.t, progress: sim.progress, stage: stageAt(sim.t), stage2From: first, stage3From: wetAt, pinWet: sim.pinWet, maxRank: sim.maxRank, useDem: sim.useDem, playing: Boolean(sim.playing), tiles: sim.tiles.length };
+  }
+
+  // scene: { layers, useDem }。読み込みが終わると onDone({ hadColor, hadDem }) を呼び、時間の再生を始める。
   function playScene(scene, onDone) {
     if (!map || !current) return;
     stopScene();
@@ -440,8 +593,14 @@ const HazardMap = (() => {
         readTile(coords, scene.layers, scene.useDem).then((data) => {
           tile.data = data;
           tiles.push(tile);
-          // 再生のあとに地図を動かして読んだタイルは、水を広げ終えた形で描く。
-          if (sim && sim.layer === this && sim.done) paint(tile, 1);
+          // ピンの点の画素を覚える（段階3の境目に使う）。細かいズームのタイルを優先する。
+          const point = map.project(center, coords.z);
+          if (Math.floor(point.x / 256) === coords.x && Math.floor(point.y / 256) === coords.y && sim && sim.layer === this && (!sim.pin || sim.pin.z <= coords.z)) {
+            const index = Math.floor(point.y - coords.y * 256) * 256 + Math.floor(point.x - coords.x * 256);
+            sim.pin = { z: coords.z, rank: data.rank[index], elevation: data.elevation[index] };
+          }
+          // 途中で地図を動かして読んだタイルは、その時点の進み具合で描く。
+          if (sim && sim.layer === this && sim.ready) paint(tile, sim.progress);
           done(null, canvas);
         });
         return canvas;
@@ -449,7 +608,7 @@ const HazardMap = (() => {
     });
     const layer = new Layer({ bounds, maxNativeZoom: 15, minNativeZoom: 13, maxZoom: 18, opacity: 0.85, attribution: HAZARD_CREDIT });
     const pinElevation = location.reading.elevation.points[0].elevation_m;
-    sim = { layer, frame: 0, maxRank: 1, low: 0, high: 0, useDem: scene.useDem && pinElevation !== null };
+    sim = { layer, tiles, frame: 0, maxRank: 1, low: 0, high: 0, t: 0, progress: 0, pin: null, pinWet: null, useDem: scene.useDem && pinElevation !== null };
     const mine = sim;
     layer.once("load", () => {
       if (sim !== mine) return;
@@ -465,24 +624,16 @@ const HazardMap = (() => {
       sim.maxRank = Math.max(maxRank, 1);
       sim.high = pinElevation ?? 0;
       sim.low = heights.length ? Math.min(heights[Math.floor(heights.length * 0.02)], sim.high) : sim.high;
-      const start = performance.now();
-      let last = -1;
-      const step = (now) => {
-        if (sim !== mine) return;
-        const progress = Math.min(1, (now - start) / (SIM_SECONDS * 1000));
-        const frame = Math.round(progress * 24);
-        if (frame !== last) {
-          last = frame;
-          tiles.forEach((tile) => paint(tile, frame / 24));
-        }
-        if (progress < 1) {
-          sim.frame = requestAnimationFrame(step);
-          return;
-        }
-        sim.done = true;
-        onDone({ hadColor: maxRank > 0, hadDem: sim.useDem });
-      };
-      sim.frame = requestAnimationFrame(step);
+      sim.pinWet = pinWetProgress();
+      sim.ready = true;
+      sim.ui = buildTimeline();
+      const Control = L.Control.extend({ options: { position: "topright" }, onAdd: () => mine.ui.box });
+      sim.control = new Control().addTo(map);
+      sim.progress = -1;
+      setTimeline(0);
+      // 結果の文は読み込みの時点で決まるので、再生を止めても「広がっています」のままにならないよう、ここで返す。
+      onDone({ hadColor: maxRank > 0, hadDem: sim.useDem });
+      playTimeline();
     });
     layer.addTo(map);
   }
@@ -491,7 +642,7 @@ const HazardMap = (() => {
     if (map) map.invalidateSize();
   }
 
-  return { init, show, setRelief, setTapMode, drawTaps, refresh, playScene, stopScene };
+  return { init, show, setRelief, setTapMode, drawTaps, refresh, playScene, stopScene, timeline, setTimeline, playTimeline, pauseTimeline };
 })();
 
 // 土地の形のミニグラフ。地図の標高データの値で、敷地を測ったものではない。

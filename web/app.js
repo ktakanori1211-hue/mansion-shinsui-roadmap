@@ -183,12 +183,11 @@ const App = {
     }
     await this.loadBuilding();
     this.shapeChosen = Boolean(this.sampleId);
-    ["sim-card", "consult-card"].forEach((id) => {
+    ["stage3-cost", "sim-card", "consult-card"].forEach((id) => {
       document.getElementById(id).hidden = false;
     });
     this.showShape();
     document.getElementById("stage2-empty").hidden = true;
-    document.getElementById("stage4-empty").hidden = true;
     document.getElementById("chat-toggle").hidden = !document.getElementById("chat").hidden;
     document.getElementById("plan-stage").hidden = true;
     document.getElementById("plan-message").textContent = "";
@@ -382,8 +381,8 @@ const App = {
       button.classList.toggle("active", button.dataset.tab === this.stage);
     });
     document.getElementById("why-bar").classList.toggle("is-hidden", this.stage !== "1" || !this.locationState);
-    document.getElementById("hero").classList.toggle("is-hidden", Boolean(this.locationState) || this.stage === "kb");
-    if (this.stage === "kb") Knowledge.load();
+    document.getElementById("hero").classList.toggle("is-hidden", Boolean(this.locationState) || this.stage === "materials");
+    if (this.stage === "materials") Materials.load();
     HazardMap.refresh();
     this.fitStage2();
     window.dispatchEvent(new Event("resize"));

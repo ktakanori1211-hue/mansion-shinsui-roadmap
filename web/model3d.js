@@ -365,11 +365,18 @@ function clear() {
   raisedNow = false;
 }
 
+// 盤・受電の箱の部屋に水が入るか。サーバーの scenario（水の位置③の wet に hv があるか）のとおりにし、ここで計算し直さない。
+function powerRoomReached(measure) {
+  const wet = window.App?.building?.scenarios?.[`3:${measure}`]?.wet;
+  return wet ? wet.includes("hv") : measure !== "hole";
+}
+
 function waterTarget(item, level, measure, sample) {
+  if (level <= 0) return 0;
   if (item.key === "road") return level >= 3 ? 0.6 : level >= 1 ? 0.3 : 0;
   if (item.key === "ev") return level >= 2 ? 0.8 : 0;
   if (item.key === "tr" && level < 3) return 0;
-  if ((item.key === "elec" || item.key === "panel_room") && measure === "hole") return 0;
+  if ((item.key === "elec" || item.key === "panel_room") && !powerRoomReached(measure)) return 0;
   if (sample.archetype === "ground") return level >= 3 ? 1.1 : 0;
   if (level === 1) return 0;
   return level === 2 ? 0.3 : 1.3;
@@ -503,6 +510,20 @@ window.Model3D = {
       refreshDetails();
     }
     if (meshes.hole) setColor(meshes.hole, measure === "hole" ? 0x3a7d44 : 0xd9534f);
+    this.measure = measure;
+  },
+  // 時間の再生（web/section-anim.js）から、水の位置を続いた値 flow（0〜3）で渡す。
+  // 段の間は前後の段の高さを混ぜるだけで、水の量や速さは計算しない。止まる色は apply の scenario のまま。
+  setFlow(flow) {
+    if (!this.sample || flow === null || flow === undefined) return;
+    const measure = this.measure || "plate";
+    const low = Math.floor(flow);
+    const high = Math.min(3, Math.ceil(flow));
+    waters.forEach((item) => {
+      const from = waterTarget(item, low, measure, this.sample);
+      const to = waterTarget(item, high, measure, this.sample);
+      item.target = from + (to - from) * (flow - low);
+    });
   },
   // 判定が変わったとき（書類・聞き取り・向き）に、模型を組み直さずに部屋の札の1行目だけ替える。
   updateTags() {

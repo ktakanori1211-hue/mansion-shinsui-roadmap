@@ -8,6 +8,7 @@
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="ui-more.css">
+  <link rel="stylesheet" href="section-anim.css">
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -33,12 +34,11 @@
     </div>
   </header>
 
-  <nav class="stage-tabs" id="stage-tabs" aria-label="4つの段階">
+  <nav class="stage-tabs" id="stage-tabs" aria-label="3つの段階">
     <button type="button" data-tab="1"><b>1</b>場所<small>土地の弱さ</small></button>
     <button type="button" data-tab="2"><b>2</b>建物<small>図面と3D</small></button>
-    <button type="button" data-tab="3"><b>3</b>資料<small>A4・共有</small></button>
-    <button type="button" data-tab="4"><b>4</b>費用<small>補助・相談</small></button>
-    <button type="button" data-tab="kb"><b>＋</b>調べたこと<small>根拠・本音・判定表・出典</small></button>
+    <button type="button" data-tab="3"><b>3</b>A4・費用<small>印刷・共有・相談</small></button>
+    <button type="button" class="materials-link" data-tab="materials">根拠と資料</button>
     <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   </nav>
 
@@ -200,7 +200,7 @@
         </details>
       </div>
 
-      <div class="stage-next"><button type="button" class="primary" data-go="3">次へ：③AIに相談し資料を出す</button></div>
+      <div class="stage-next"><button type="button" class="primary" data-go="3">次へ：③A4・費用</button></div>
     </section>
 
     <section class="stage" data-stage="3" aria-label="第3段階">
@@ -237,6 +237,21 @@
         <div class="share-result" id="share-result" hidden></div>
       </div>
       </div>
+
+      <details class="card stage3-cost" id="stage3-cost" hidden>
+        <summary>費用の桁と補助・専門家への相談</summary>
+        <section id="sim-card" aria-label="試算" hidden>
+          <h2>対策を選ぶと、桁と決め方と補助が変わります</h2>
+          <div id="sim-body"></div>
+        </section>
+        <section id="consult-card" aria-label="相談" hidden>
+          <h2>次の一歩</h2>
+          <button type="button" class="primary" id="consult-button">専門家に調査・見積もりを相談する</button>
+          <p class="hint">この道具から専門家へは送りません。送るのは管理組合です。</p>
+          <details class="fold"><summary>条件を開く</summary><p>押すと、この画面の内容から文書を作ります。API キーがあるときは、文面を整えるために内容が Anthropic の API を通ります。</p></details>
+          <div id="consult-body"></div>
+        </section>
+      </details>
 
       <div class="card exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
 
@@ -291,50 +306,10 @@
           <div id="sheet-memo-body"></div>
         </article>
       </div>
-      <div class="stage-next"><button type="button" class="primary" data-go="4">次へ：④概算と補助、専門家への相談</button></div>
     </section>
 
-    <section class="stage" data-stage="4" aria-label="第4段階">
-      <p class="hint stage-empty" id="stage4-empty">①で場所を選ぶと、ここが出ます。</p>
-      <section class="card" id="sim-card" aria-label="試算" hidden>
-        <h2>対策を選ぶと、桁と決め方と補助が変わります</h2>
-        <div id="sim-body"></div>
-      </section>
-      <section class="card" id="consult-card" aria-label="相談" hidden>
-        <h2>次の一歩</h2>
-        <button type="button" class="primary" id="consult-button">専門家に調査・見積もりを相談する</button>
-        <p class="hint">この道具から専門家へは送りません。送るのは管理組合です。</p>
-        <details class="fold"><summary>条件を開く</summary><p>押すと、この画面の内容から文書を作ります。API キーがあるときは、文面を整えるために内容が Anthropic の API を通ります。</p></details>
-        <div id="consult-body"></div>
-      </section>
-    </section>
-
-    <section class="stage" data-stage="kb" aria-label="調べたこと">
-      <section class="card kb-card">
-        <h2>調べたこと全部（なぜ・何を・市場とモデル・どう作るか・判定表・数字と出典）</h2>
-        <p class="hint">本人が調べた中身を、薄めずに並べています。数字は出典を確かめたものだけです。「仮説」は本人の見立てで、事実ではありません。この段階は場所を選ばなくても読めます。</p>
-        <div id="kb-coverage"></div>
-        <div class="kb-controls">
-          <div class="kb-areas" id="kb-areas" role="group" aria-label="領域で絞る"></div>
-          <input type="search" id="kb-search" placeholder="言葉で絞る（例：52%、管路口、理事長）" aria-label="言葉で絞る">
-          <span class="kb-count" id="kb-count"></span>
-        </div>
-        <div id="kb-entries"></div>
-        <h2>ノートに書かれた機能と、アプリでの状態</h2>
-        <div class="table-scroll" id="kb-feature-list"></div>
-        <h2>数字・名前を外して要件定義に入れた項目（理由の区分と番号）</h2>
-        <p class="hint">どの項目も要件定義の全文に入っています。外したのは、出典を確かめていない数字や、実在の場所が分かる名前などの部分だけです。</p>
-        <div id="kb-excluded"></div>
-        <details class="fold kb-eng">
-          <summary>電気主任技術者の方へ（住民・理事・管理員向けではありません。値だけで電気を戻しません）</summary>
-          <p class="fixed-note strong">ここにある値と注意は、電気主任技術者が判断するための資料です。住民・理事・管理員が測ったり、値を見て電気を戻したり、電気の部屋に近づいたりするためのものではありません。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断します。</p>
-          <div id="kb-engineer"></div>
-        </details>
-        <details class="fold kb-req">
-          <summary>要件定義の全文を開く（docs/REQUIREMENTS.md と同じ内容。主任技術者向けの行は上の折りたたみにあります）</summary>
-          <div class="kb-requirements" id="kb-requirements"></div>
-        </details>
-      </section>
+    <section class="stage" data-stage="materials" aria-label="根拠と資料">
+      <div class="materials" id="materials-body"><p class="hint">資料を読み込んでいます。</p></div>
     </section>
   </main>
 
@@ -366,8 +341,9 @@
   <script src="app.js"></script>
   <script src="plan.js"></script>
   <script src="panels.js"></script>
+  <script src="section-anim.js"></script>
   <script src="sim.js"></script>
-  <script src="knowledge.js"></script>
+  <script src="materials.js"></script>
   <script src="chat.js"></script>
   <script src="share-crypto.js"></script>
   <script src="share.js"></script>

@@ -6,6 +6,7 @@ SVG と DXF に書き出す。PDF は手元の Chrome、PNG は macOS の sips �
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -508,12 +509,33 @@ def _level_mark(sheet, x, y, key):
     sheet.text(x, y, str(key), 10.5, color="#0277bd", bold=True)
 
 
-def _section_key(sheet, sample, x, y):
-    """断面の読み方を短く。長い説明は書かない。"""
-    sheet.text(x, y, "水の位置（画面の①②③）", 12, "start", bold=True)
+# 断面の部屋の名前と、重ね絵での扱い。power は盤・受電の箱の部屋（サーバーの wet の hv で浸かるかを決める）、
+# tr は借室（中は描かない）、floor は一番低い床の続きの部屋。
+_ROOM_ROLES = {
+    "電気室": "power",
+    "受変電室": "power",
+    "共用分電盤室": "power",
+    "借室": "tr",
+    "給水ポンプ室": "floor",
+    "発電機室": "floor",
+    "雨水貯留槽": "floor",
+    "車路": "floor",
+    "エントランス": "floor",
+}
+
+
+def _section_short(sample):
+    """水の位置①②③の短い言い方。断面図の凡例と画面の重ね絵で同じ文を使う。"""
     short = {1: "道路・スロープ・壁の穴に達した", 2: "一番低い床に達した", 3: "盤・受電の箱の下端に達した"}
     if not sample["underground_feed"]:
         short[1], short[3] = "前の道路・坂下の扉に達した", "架台の上の盤の下端に達した"
+    return short
+
+
+def _section_key(sheet, sample, x, y):
+    """断面の読み方を短く。長い説明は書かない。"""
+    sheet.text(x, y, "水の位置（画面の①②③）", 12, "start", bold=True)
+    short = _section_short(sample)
     for i in (1, 2, 3):
         _level_mark(sheet, x + 10, y + 26 * i, i)
         sheet.text(x + 28, y + 26 * i, short[i], 11, "start")
@@ -633,6 +655,39 @@ def section_underground(sheet, sample, view, left, base):
         sheet.line(X(build_left + 300), Z(z), X(build_right - 300), Z(z), "水の位置")
         _level_mark(sheet, X(rooms[-1][0] + 1600), Z(z), key)
     _level_mark(sheet, X(4500), Z(0) - 16, 1)
+    # 画面の重ね絵（web/section-anim.js）が使う基準の座標。上で描いた値をそのまま渡し、図は変えない。
+    room_spans = []
+    for i, (x, name) in enumerate(rooms):
+        room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right - wall
+        room_spans.append({"name": name, "role": _ROOM_ROLES[name], "x0": X(x + (150 if i else 0)), "x1": X(room_end)})
+    anchors = {
+        "kind": "underground",
+        "floor_y": Z(b1),
+        "ceiling_y": Z(floor_1 - slab),
+        "levels": {"2": Z(b1 + 150), "3": Z(level_3)},
+        "rooms": room_spans,
+        "outside": [
+            {"profile": [[X(0), Z(0)], [X(5000), Z(0)], [X(5000), Z(150)], [X(build_left), Z(150)]]},
+            {"profile": [[X(slope_top), Z(150)], [X(slope_top + 2200), Z(150)]]},
+        ],
+        "outside_levels": {"1": Z(150 + 200), "2": Z(150 + 400), "3": Z(150 + 700)},
+        "handhole": [X(hh_x), Z(150), hh_w * s, 2100 * s],
+        "equipment": {
+            "hv": {"rect": [X(cub_x), Z(level_3 + 1600), cub_w * s, 1600 * s]},
+            "tr": {"rect": [X(tr_x), Z(level_3 + 1300), (tr_end - tr_x) * s, 1300 * s]},
+            "panel": {"rect": [X(pump_room + 2700), Z(level_3 + 1100), 1000 * s, 1100 * s]},
+            "pump": {"circle": [X(pump_room + 1000), Z(b1 + 500), 500 * s]},
+        },
+        "routes": [
+            {"key": "hole", "guard": "hv", "points": [[X(hh_x + hh_w / 2), Z(150)], [X(hh_x + hh_w / 2), Z(pipe)], [X(build_left + 150), Z(pipe)], [X(build_left + 900), Z(pipe)], [X(build_left + 900), Z(b1 + 700)]], "block": [X(build_left + 150), Z(pipe)]},
+            {"key": "slope", "points": [[X(slope_top + 1100), Z(150)], [X(slope_top), Z(150)], [X(build_right), Z(b1 + 300)], [X(rooms[-1][0]), Z(b1 + 300)]]},
+        ],
+        "stage_names": {str(k): v for k, v in _section_short(sample).items()},
+    }
+    if has_gen:
+        anchors["equipment"]["gen"] = {"rect": [X(18400), Z(b1 + 1500), 2200 * s, 1500 * s]}
+        anchors["routes"].append({"key": "basin", "points": [[X(27600), Z(floor_1)], [X(27600), Z(b1 + 2300)]]})
+    return anchors
 
 
 def section_hillside(sheet, sample, view, left, base):
@@ -691,6 +746,32 @@ def section_hillside(sheet, sample, view, left, base):
         sheet.line(X(build_left + 300), Z(z), X(build_right - 300), Z(z), "水の位置")
         _level_mark(sheet, X(24200 if key == 2 else 26200), Z(z), key)
     _level_mark(sheet, X(1600), Z(0) - 36, 1)
+    # 画面の重ね絵（web/section-anim.js）が使う基準の座標。上で描いた値をそのまま渡し、図は変えない。
+    room_spans = []
+    for i, (x, name) in enumerate(rooms):
+        room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right - wall
+        room_spans.append({"name": name, "role": _ROOM_ROLES[name], "x0": X(x + (150 if i else 0)), "x1": X(room_end)})
+    return {
+        "kind": "hillside",
+        "floor_y": Z(floor_1),
+        "ceiling_y": Z(top_2 - 300),
+        "levels": {"2": Z(floor_1 + 120), "3": Z(floor_1 + 500)},
+        "rooms": room_spans,
+        "outside": [
+            {"profile": [[X(0), Z(0)], [X(4500), Z(0)], [X(4500), Z(100)], [X(build_left), Z(200)]]},
+        ],
+        "outside_levels": {"1": Z(floor_1 + 50), "2": Z(floor_1 + 120 + 150), "3": Z(floor_1 + 500 + 150)},
+        "equipment": {
+            "hv": {"rect": [X(8800), Z(floor_1 + 1900), 2800 * s, 1400 * s]},
+            "panel": {"rect": [X(19400), Z(floor_1 + 1900), 2400 * s, 1400 * s]},
+            "tr": {"rect": [X(13800), Z(floor_1 + 2000), 3200 * s, 1500 * s]},
+        },
+        "routes": [
+            {"key": "hill", "points": [[X(37500), Z(5000) - 14], [X(30000), Z(1450) - 14]]},
+            {"key": "door", "points": [[X(5800), Z(650)], [X(build_left) + 2, Z(520)]]},
+        ],
+        "stage_names": {str(k): v for k, v in _section_short(sample).items()},
+    }
 
 
 def section_sheet(sample):
@@ -701,7 +782,7 @@ def section_sheet(sample):
         frame_and_title(sheet, sample, "竣工図 模式断面図（水の入り道）", number, "模式")
         view = View(80, 560, scale)
         sheet.use(view)
-        section_hillside(sheet, sample, view, 80, 560)
+        sheet.anchors = section_hillside(sheet, sample, view, 80, 560)
     else:
         width = 40500 if sample["id"] == "c" else 36500
         scale = 1260 / width
@@ -709,11 +790,38 @@ def section_sheet(sample):
         frame_and_title(sheet, sample, "竣工図 模式断面図（水の入り道）", number, "模式")
         view = View(80, 470, scale)
         sheet.use(view)
-        section_underground(sheet, sample, view, 80, 470)
+        sheet.anchors = section_underground(sheet, sample, view, 80, 470)
     sheet.use(None)
     title_of(sheet, 520, 720, "模式断面図（水の入り道）", "部屋は順に並べた展開")
     _section_key(sheet, sample, 80, 770)
     return sheet
+
+
+def section_anchors(sample) -> dict:
+    """断面図の基準の座標（用紙の px。PNG と同じ 1400×990）を、図を描く関数の値から作る。"""
+    anchors = section_sheet(sample).anchors
+
+    def rounded(value):
+        if isinstance(value, float):
+            return round(value, 2)
+        if isinstance(value, dict):
+            return {key: rounded(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [rounded(item) for item in value]
+        return value
+
+    return {"width": PLAN_WIDTH, "height": PLAN_HEIGHT, "sample": sample["id"], **rounded(anchors)}
+
+
+def section_anchors_json(sample) -> str:
+    return json.dumps(section_anchors(sample), ensure_ascii=False, indent=1) + "\n"
+
+
+def write_section_anchors() -> None:
+    """python3 -m scripts.draw_plans --anchors で、図を作り直さずに web/samples/section_*.json だけを書く。"""
+    for sample in SAMPLES.values():
+        with open(os.path.join(OUT_DIR, f"section_{sample['id']}.json"), "w", encoding="utf-8") as handle:
+            handle.write(section_anchors_json(sample))
 
 
 # 電気と給水の系統図
@@ -929,6 +1037,7 @@ def main() -> None:
             names.append(name)
         with open(os.path.join(OUT_DIR, f"report_{sid}.txt"), "w", encoding="utf-8") as handle:
             handle.write(REPORTS[sid])
+    write_section_anchors()
     if not os.path.exists(CHROME):
         print("Chrome がないので SVG と DXF だけ作りました。", file=sys.stderr)
         return
@@ -938,4 +1047,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--anchors" in sys.argv[1:]:
+        write_section_anchors()
+    else:
+        main()

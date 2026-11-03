@@ -1,0 +1,50 @@
+/* 時間の再生（①地図と②建物）。web/map.js と web/section-anim.js が使う。 */
+
+.timeline-bar { display: grid; gap: 4px; margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12.5px; line-height: 1.4; }
+.timeline-bar[hidden] { display: none; }
+.timeline-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.timeline-play { flex: none; padding: 3px 10px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.timeline-play:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.timeline-range { flex: 1 1 auto; min-width: 80px; accent-color: #1d6fc4; }
+.timeline-count { flex: none; color: var(--ink-muted); white-space: nowrap; }
+.timeline-count strong { color: var(--stopped); font-size: 18px; font-weight: 800; }
+.timeline-strip { display: flex; gap: 2px; min-width: 0; }
+.timeline-stage { flex: 1 1 0; min-width: 0; overflow: hidden; padding: 2px 6px; border-radius: 4px; background: #e7edf5; color: var(--ink-muted); font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.timeline-stage[hidden] { display: none; }
+.timeline-stage.is-current { background: #1d6fc4; color: #fff; font-weight: 700; }
+.timeline-stage.is-next { box-shadow: inset 0 0 0 2px #1d6fc4; color: #1d6fc4; }
+.timeline-stage.is-not-reached { background: #ececef; }
+.timeline-stage.is-not-reached.is-current { background: #6b6b73; }
+.timeline-note { margin: 0; color: var(--ink-muted); font-size: 11px; }
+.timeline-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; color: var(--ink-muted); font-size: 11px; }
+.timeline-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
+.swatch-water { background: rgba(41, 128, 214, .55); }
+.swatch-wet { background: repeating-linear-gradient(45deg, rgba(41, 128, 214, .75) 0 2px, rgba(232, 133, 58, .35) 2px 5px); }
+.swatch-stopped { border: 2px solid #c2410c; background: rgba(232, 133, 58, .35); }
+.swatch-sealed { border: 2px dashed #1c6b3a; background: rgba(28, 107, 58, .08); }
+
+/* ①地図の上に重ねる再生（Leaflet の右上の枠） */
+.map-timeline { width: min(360px, calc(100vw - 90px)); margin: 8px 8px 0 0; box-shadow: var(--card-shadow, 0 1px 6px rgba(0, 0, 0, .12)); background: rgba(255, 255, 255, .96); }
+.map-timeline .timeline-stage { font-size: 11px; }
+@media (max-width: 520px) {
+  .map-timeline { width: calc(100vw - 96px); }
+  .map-timeline .timeline-stage:not(.is-current) { flex-grow: 0 !important; flex-basis: 22px; text-overflow: clip; }
+}
+
+/* ②断面図の重ね絵。図の画像と同じ箱に重ね、押しても図の拡大の邪魔をしない。 */
+.section-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.section-overlay .ov-outside,
+.section-overlay .ov-inside { fill: rgba(41, 128, 214, .45); stroke: #1d6fc4; stroke-width: 1; }
+.section-overlay .ov-eq { fill: none; stroke: none; }
+.section-overlay .ov-eq.is-stopped { fill: rgba(232, 133, 58, .32); stroke: #c2410c; stroke-width: 2.5; }
+.section-overlay .ov-eq.is-wet { fill: url(#wet-hatch); }
+.section-overlay .ov-eq.is-raised:not(.is-wet) { stroke-dasharray: 5 3; }
+.section-overlay .wet-hatch-bg { fill: rgba(232, 133, 58, .32); }
+.section-overlay .wet-hatch-line { stroke: rgba(29, 111, 196, .85); stroke-width: 3; }
+.section-overlay .ov-seal { fill: rgba(28, 107, 58, .06); stroke: #1c6b3a; stroke-width: 2; stroke-dasharray: 6 4; }
+.section-overlay .ov-route { fill: none; stroke: #0b63c4; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 9 6; animation: ov-flow 1.2s linear infinite; }
+.section-overlay .flow-head { fill: #0b63c4; }
+.section-overlay .ov-block circle { fill: #1c6b3a; stroke: #fff; stroke-width: 2; }
+.section-overlay .ov-block path { stroke: #fff; stroke-width: 2.5; stroke-linecap: round; }
+@keyframes ov-flow { to { stroke-dashoffset: -30; } }
+@media (prefers-reduced-motion: reduce) { .section-overlay .ov-route { animation: none; } }
