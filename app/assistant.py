@@ -55,7 +55,14 @@ _SYSTEM_CHAT_RULES = """あなたはマンションの浸水対策を理事会�
 利用者が建物について事実を話したら（例：うちは1階に電気室がある）、statement にその事実を短く写します。判定は変わらず、図面で確かめるまで未確認のままだと答えます。ないときは空にします。"""
 
 # 毎回同じなので、指示と事実をまとめて Anthropic 側のキャッシュに置く。
-SYSTEM_CHAT = _SYSTEM_CHAT_RULES + "\n\n裏取り済みの事実：\n" + "\n".join(f"・{fact['text']}" for fact in FACTS)
+_MEASURE_COSTS = "\n".join(f"・{m['label']}｜{m['decision']}｜{m['range']}" for m in samples.MEASURES if not m["range"].startswith("—"))
+SYSTEM_CHAT = (
+    _SYSTEM_CHAT_RULES
+    + "\n\n裏取り済みの事実：\n"
+    + "\n".join(f"・{fact['text']}" for fact in FACTS)
+    + "\n\n対策の決める場と費用の桁（この道具の目安。裏取りした相場ではありません。費用は書いてある形のまま写し、見積りに置き換えると添えます）：\n"
+    + _MEASURE_COSTS
+)
 
 # 全体の表示は入れない。場所の話でないのに画面の段階が飛ぶので。全体へ戻すのは画面のボタンで足りる。
 _FOCUS_TARGETS = ["elec", "tr", "panel_room", "pump", "ev", "park", "slope", "hh", "tank", "gen", "door"]
@@ -93,6 +100,7 @@ _KEYWORDS = [
 def _allowed_sources(context: dict) -> List[str]:
     sources = [fact["text"] for fact in FACTS]
     sources.extend(f"{v['label']} {v['rate_label']} {' '.join(v['cautions'])}" for v in samples.SUBSIDIES.values())
+    sources.extend(f"{m['label']} {m['range']}" for m in samples.MEASURES)
     sources.append(json.dumps(context, ensure_ascii=False))
     return sources
 
@@ -165,7 +173,7 @@ def _context_text(context: dict) -> str:
         lines.append(f"建物：{context['name']}／{context.get('site', '')}")
     if context.get("location"):
         lines.append("立地：")
-        lines += [f"・{r['label']}｜{r['verdict']}｜{r.get('summary') or ''}｜確かめる人：{r.get('confirm_short') or '—'}" for r in context["location"]]
+        lines += [f"・{r['label']}｜{r['verdict']}｜{r.get('summary') or ''}｜確かめる人：{r.get('confirm_by') or r.get('confirm_short') or '—'}" for r in context["location"]]
     if context.get("equipment"):
         lines.append("設備：")
         lines += [f"・{r['label']}｜{r['verdict']}｜{r.get('summary') or ''}｜確かめる人：{r.get('confirm_by') or '—'}" for r in context["equipment"]]

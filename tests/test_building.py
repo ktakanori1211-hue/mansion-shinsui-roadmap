@@ -768,6 +768,29 @@ class LiveFindingsTest(unittest.TestCase):
         with mock.patch.object(claude, "create", return_value=reply):
             self.assertEqual(assistant.chat("何から確かめればいいですか", [], {"sample_id": "a"})["actions"], [])
 
+    def test_location_rows_keep_who_confirms(self):
+        row = {"label": "洪水", "verdict": "未確認（調査が必要）", "summary": "色あり"}
+        for key in ("confirm_short", "confirm_by"):
+            text = assistant._context_text({"location": [{**row, key: "管理会社から市区町村へ照会"}]})
+            self.assertIn("確かめる人：管理会社から市区町村へ照会", text)
+        self.assertIn("確かめる人：—", assistant._context_text({"location": [row]}))
+
+    def test_screen_sends_who_confirms_for_location(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "app.js")
+        with open(path, encoding="utf-8") as file:
+            line = next(item for item in file if "location: this.locationState.location.rows.map" in item)
+        self.assertRegex(line, r"confirm_(short|by):")
+
+    def test_measure_costs_pass_the_number_check(self):
+        for measure in samples.MEASURES:
+            self.assertIsNone(guard.check_text(f"目安は{measure['range']}です。", assistant._allowed_sources({})), measure["key"])
+        self.assertIsNotNone(guard.check_text("目安は500万円です。", assistant._allowed_sources({})))
+
+    def test_measure_costs_are_in_the_cached_part(self):
+        for measure in samples.MEASURES:
+            if not measure["range"].startswith("—"):
+                self.assertIn(measure["range"], assistant.SYSTEM_CHAT)
+
     def test_banned_answer_is_asked_again_once(self):
         replies = [self.chat_reply("電気室に入っても大丈夫です。"), self.chat_reply("管理会社に確かめてもらいます。")]
         with mock.patch.object(claude, "create", side_effect=replies) as create:

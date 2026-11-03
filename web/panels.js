@@ -297,7 +297,12 @@ const SheetPanel = (() => {
       memos: building.memos,
       board: `${building.exits.board}\n${building.exits.board_fixed}`,
       procedure: `${building.exits.procedure}\n\n${building.exits.procedure_fixed}`,
-      disclaimers: [App.disclaimerText(), ...FIXED_NOTES, "費用は桁の目安で、保安法人・工事業者の見積りに置き換えること"],
+      disclaimers: [
+        App.disclaimerText(),
+        "浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない",
+        "本シートは予報ではなく、現時点の静的な整理である",
+        "費用は桁の目安で、保安法人・工事業者の見積りに置き換えること",
+      ],
     };
   }
 
