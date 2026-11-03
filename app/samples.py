@@ -81,7 +81,30 @@ MEASURES = [
     {"key": "power", "tier": "工事が要る", "label": "停電したとき外から電源車をつなげる受け口を 1 階につくる", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜数百万円", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "unknown", "chiba": "no"},
     {"key": "door_rebuild", "tier": "更新と一緒", "label": "壁を壊して枠ごと防水扉にする", "decision": "総会（特別決議）", "account": "修繕積立金", "range": "300万円〜", "low": None, "high": None, "open_ended": True, "sample_yen": 4000000, "tokyo": "yes", "chiba": "no"},
     {"key": "move", "tier": "更新と一緒", "label": "共用部の受電の箱を屋上に移す（設備の更新に合わせて）", "decision": "総会（特別決議）＋最上階の住戸の承諾", "account": "修繕積立金", "range": "数千万〜1億円超", "low": 7, "high": 8, "sample_yen": 60000000, "tokyo": "unknown", "chiba": "no"},
+    # ここから下は、ノートの「実現したい機能」から足した行。新しい金額は持たず、桁は見積りで確かめる。
+    {"key": "pump_check", "tier": "今すぐ", "label": "排水ポンプ（地下の床、機械式駐車場の掘り込み、汚水の汲み上げ）が動くかを、保守会社の点検で確かめる", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費（保守の契約に入っているかを確かめる）", "range": "—（契約による）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
+    {"key": "backflow", "tier": "工事が要る", "label": "逆止弁を付ける", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "—（見積りで確かめる）", "low": None, "high": None, "sample_yen": 0, "tokyo": "with_plate", "chiba": "no"},
+    {"key": "main_panel", "tier": "工事が要る", "label": "共用の主開閉器盤（低圧）を高い位置に付け替える（盤の下の端が低いと分かった場合）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "—（見積りで確かめる）", "low": None, "high": None, "sample_yen": 0, "tokyo": "unknown", "chiba": "no"},
+    {"key": "gen_move", "tier": "更新と一緒", "label": "非常用発電機を上の階へ移す（設備の更新に合わせて）", "decision": "総会（特別決議）", "account": "修繕積立金", "range": "—（見積りで確かめる）", "low": None, "high": None, "sample_yen": 0, "tokyo": "unknown", "chiba": "no"},
 ]
+
+# 処置ごとの「担当」の列（誰が動くか）。主任技術者のいない建物では、壁の穴の行の括弧を外す（building.visible_measures）。
+MEASURE_OWNERS = {
+    "hole": "管理会社→電気工事の業者（主任技術者と決める）",
+    "plate": "理事会→管理会社",
+    "procedure": "理事会",
+    "tepco": "管理会社→東京電力パワーグリッド",
+    "panel": "管理会社→ポンプの保守業者",
+}
+HOLE_OWNER_NO_ENGINEER = "管理会社→電気工事の業者"
+
+# 壁の穴の行の折りたたみに出す、塞ぎ方の使い分け。施工時間や停電の要否は根拠が確かめられていないので書かない。
+HOLE_NOTE = "使っていない予備の管の口は栓で塞ぎ、ケーブルが通った穴は固まらない（非硬化の）止水材で埋めます（ケーブルの通った穴に栓は使えません）。"
+for _measure in MEASURES:
+    if _measure["key"] in MEASURE_OWNERS:
+        _measure["owner"] = MEASURE_OWNERS[_measure["key"]]
+    if _measure["key"] == "hole":
+        _measure["note"] = HOLE_NOTE
 
 SUBSIDIES = {
     "tokyo": {
@@ -368,7 +391,7 @@ EMPTY_ANSWERS = {"built_year": None, "floors": None, "basement": "unknown", "roo
 
 def base_for_answers(answers: dict, fallback: Optional[str] = None) -> str:
     """答えに一番近い形の見本を選ぶ。模型と図面の形を借りるだけで、建物の事実にはしない。"""
-    if answers.get("rooms_floor") == "ground" or answers.get("basement") == "no":
+    if answers.get("rooms_floor") in ("ground", "upper") or answers.get("basement") == "no":
         return "b"
     if (answers.get("floors") or 0) >= 20:
         return "c"

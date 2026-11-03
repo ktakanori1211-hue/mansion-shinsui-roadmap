@@ -17,11 +17,48 @@ const PlanPanel = (() => {
     tepco: "▲ 管理会社から東京電力パワーグリッドへ",
     outside: "● 外から見てよい",
   };
+  // 3D の札でも同じ印と色を使う（F-041）。
+  window.WHO_LABELS = WHO_LABELS;
 
   let pins = [];
   let fromReading = false;
   let shownPlan = "";
+  let shownKind = "plan";
   const tabs = document.getElementById("plan-tabs");
+  const direction = document.getElementById("plan-direction");
+  const absentBox = document.getElementById("plan-absent");
+
+  // 図面の種類（F-042）。販売時の配置図も同じ入口で受ける。どちらも設備図ではないので、「描かれていない」の根拠にしない。
+  const DOC_KINDS = [["plan", "竣工図の平面図"], ["sales", "販売時の配置図"]];
+  let docKind = "plan";
+  let shownDocKind = "plan";
+
+  // 設備図で確かめる（F-017・F-021）。「なし」にできるのは、該当する設備図が写しにあり、人が「描かれていない」を押したときだけ。
+  // 図面の種類と設備の組みは、ノートの書類の読み方（電気設備図、給排水衛生設備図など）から作った。
+  const DRAWINGS = [
+    ["elec", "電気設備図", ["tr", "elec", "panel_room", "gen"]],
+    ["water", "給排水衛生設備図", ["pump", "tank", "drain"]],
+    ["other", "そのほかの設備図（エレベーター・機械式駐車場）", ["ev", "park"]],
+  ];
+  const KIND_NAMES = {
+    tr: "東京電力の変圧器の部屋（借室）",
+    elec: "電気室（マンション側の受電の箱の部屋）",
+    panel_room: "共用部のおおもとのスイッチ盤の部屋",
+    gen: "非常用発電機の部屋",
+    pump: "ポンプの部屋",
+    tank: "地下の貯留タンク",
+    drain: "汚水を汲み上げるポンプ",
+    ev: "エレベーターの通り道",
+    park: "機械式駐車場",
+  };
+  // 種類と「何が止まるか」の行（サーバーの _UPPER_ROWS・_ABSENT_ROWS と同じ対応）。
+  const KIND_ROWS = { tr: "tr", elec: "power", panel_room: "power", gen: "gen", pump: "water", tank: "tank", drain: "drain", ev: "ev", park: "park" };
+  // 「2階以上」を確かめられるのは、受電設備・盤・借室・ポンプの部屋だけ。
+  const UPPER_KINDS = ["tr", "elec", "panel_room", "pump"];
+  const CHOICE_NAMES = { absent: "描かれていない", upper: "2階以上" };
+  let copies = new Set();
+  let readKinds = new Set();
+  let absentOpen = false;
 
   // 図を押すと、画面いっぱいに大きく出す。ピンを押したときは開かない。
   image.addEventListener("click", () => {
@@ -128,6 +165,7 @@ const PlanPanel = (() => {
 
   function renderRooms(result) {
     roomsBox.replaceChildren();
+    readKinds = new Set(result.rooms.map((room) => room.kind));
     if (!result.rooms.length) return;
     const table = element("table", undefined, "slim-table plan-table");
     const header = table.createTHead().insertRow();
@@ -150,7 +188,11 @@ const PlanPanel = (() => {
     roomsBox.append(
       element("p", "読み取りのあとに人が「確かめた」を押すまで、判定では図面で確かめたことになりません。描かれていないことは「なし」にしません。", "hint"),
       table,
+      element("p", "部屋や設備を「なし」にできるのは、下の「設備図で確かめる」で写しにある設備図に印を付け、その図に描かれていないと人が押したときだけです。", "hint"),
     );
+    if (shownDocKind === "sales") {
+      roomsBox.append(element("p", "販売時の配置図から読んだ部屋です。「確かめた」を押すまで判定に入れません。配置図は設備図ではないので、描かれていないことの根拠にはしません。", "hint"));
+    }
     if (result.unreadable && result.unreadable.length) {
       roomsBox.append(element("p", `読めなかった所：${result.unreadable.join("、")}`, "hint"));
     }
@@ -202,8 +244,9 @@ const PlanPanel = (() => {
     return { url: canvas.toDataURL("image/png"), words };
   }
 
-  async function load(buffer, mediaType, sampleId) {
+  async function load(buffer, mediaType, sampleId, kind = "plan") {
     fromReading = true;
+    shownDocKind = kind;
     message.textContent = "図面を読み取っています。";
     pinCard.hidden = true;
     try {
@@ -227,10 +270,11 @@ const PlanPanel = (() => {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      message.textContent = result.message;
+      message.textContent = kind === "sales" ? `販売時の配置図として受けました。${result.message}` : result.message;
       pins = withFloors(result.pins, result.rooms);
       renderPins();
       renderRooms(result);
+      renderAbsent();
     } catch (error) {
       message.textContent = `図面を読めませんでした：${error.message}`;
     }
@@ -248,6 +292,8 @@ const PlanPanel = (() => {
     image.src = plan ? shownPlan || sample.plan.png : sample.plan[`${kind}_png`];
     pinsLayer.hidden = !plan;
     if (!plan) pinCard.hidden = true;
+    shownKind = kind;
+    renderDirection();
     tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.drawing === kind));
     tabs.querySelector(".plan-open").href = plan ? sample.plan.pdf : sample.plan[`${kind}_pdf`];
     tabs.querySelector(".plan-cad").href = sample.plan.dxf[kind];
@@ -298,12 +344,132 @@ const PlanPanel = (() => {
       const chosen = file.files[0];
       if (!chosen) return;
       if (!window.confirm("この図面は回答を作るために Anthropic の API へ送ります（API キーを設定しているとき）。学習には使われない既定で、30日以内に削除されると同社は説明しています。実在の建物の図面は、著作権と建物の情報に注意してください。送りますか。")) return;
-      load(await chosen.arrayBuffer(), chosen.type, null);
+      load(await chosen.arrayBuffer(), chosen.type, null, docKind);
     });
     const fileLabel = element("label", "自分の図面を入れる（PDFか画像）", "plan-file-label");
     fileLabel.htmlFor = "plan-file";
-    actions.append(pdf, png, fileLabel, file);
+    const kindBox = element("label", "入れる図面の種類：", "plan-doc-kind");
+    const kindSelect = document.createElement("select");
+    kindSelect.id = "plan-doc-kind";
+    kindSelect.append(...DOC_KINDS.map(([value, text]) => new Option(text, value)));
+    kindSelect.value = docKind;
+    kindSelect.addEventListener("change", () => {
+      docKind = kindSelect.value;
+    });
+    kindBox.append(kindSelect);
+    actions.append(pdf, png, kindBox, fileLabel, file);
   }
 
-  return { offerSample, showPin, load, get pins() { return pins; } };
+  // 今の建物で、その種類に出すボタン。行がない設備や、図面に描かれていると読めた設備には「描かれていない」を出さない。
+  function choicesFor(kind, sample, rows, current) {
+    const row = rows.find((item) => item.key === KIND_ROWS[kind]);
+    if (!row) return null;
+    const unsure = Boolean(sample.engineer_unsure);
+    // 電気の部屋は、主任技術者のいる建物は電気室、いない建物は盤の部屋。どちらか分からない建物は両方。
+    if (kind === "elec" && !sample.has_chief_engineer) return null;
+    if (kind === "panel_room" && sample.has_chief_engineer && !unsure) return null;
+    // 見本の図面は見本の写しそのものなので、描かれている設備はボタンを出さない（階は図面のとおり）。
+    if (!sample.custom && (sample.rooms || []).includes(kind) && !current) return null;
+    const options = [];
+    if (!readKinds.has(kind) || current === "absent") options.push("absent");
+    // 主任技術者の有無が分からない建物の電気の行は、サーバーが「2階以上」で変えないので出さない。
+    if (UPPER_KINDS.includes(kind) && !(unsure && KIND_ROWS[kind] === "power")) options.push("upper");
+    return options.length ? { row, options } : null;
+  }
+
+  function currentChoice(kind) {
+    if (App.confirmed.includes(`absent:${kind}`)) return "absent";
+    if (App.confirmed.includes(`upper:${kind}`)) return "upper";
+    return null;
+  }
+
+  function renderAbsent() {
+    if (!absentBox) return;
+    const building = App.building;
+    if (!building) {
+      absentBox.replaceChildren();
+      return;
+    }
+    const { sample, equipment } = building;
+    const more = element("details", undefined, "fold plan-absent");
+    more.open = absentOpen;
+    more.addEventListener("toggle", () => {
+      absentOpen = more.open;
+    });
+    const marked = DRAWINGS.flatMap(([, , kinds]) => kinds).filter((kind) => currentChoice(kind)).length;
+    more.append(element("summary", `設備図で確かめる（描かれていない／2階以上）${marked ? `：${marked}件` : ""}`));
+    more.append(element("p", "竣工図の写しにある設備図に印を付けると、その図で確かめた結果を入れられます。建築の平面図や販売時の配置図だけでは「なし」にしません。", "hint"));
+    const copyLine = element("div", undefined, "absent-copies");
+    copyLine.append(element("span", "写しにある設備図：", "absent-copies-title"));
+    DRAWINGS.forEach(([key, name, kinds]) => {
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = copies.has(key);
+      box.addEventListener("change", async () => {
+        if (box.checked) {
+          copies.add(key);
+          renderAbsent();
+          return;
+        }
+        copies.delete(key);
+        // 図面の印を外したら、その図で確かめた結果も外す。
+        const remove = kinds.flatMap((kind) => [`absent:${kind}`, `upper:${kind}`]);
+        if (remove.some((item) => App.confirmed.includes(item))) await App.setConfirmedKeys(remove, []);
+        else renderAbsent();
+      });
+      const wrap = element("label", undefined, "confirm-box absent-copy");
+      wrap.append(box, name);
+      copyLine.append(wrap);
+    });
+    more.append(copyLine);
+    DRAWINGS.filter(([key]) => copies.has(key)).forEach(([, name, kinds]) => {
+      const lines = kinds
+        .map((kind) => {
+          const current = currentChoice(kind);
+          const found = choicesFor(kind, sample, equipment, current);
+          if (!found) return null;
+          const line = element("div", undefined, "absent-row");
+          line.append(verdictTag(found.row.verdict, found.row.verdict_label), element("span", KIND_NAMES[kind], "absent-name"));
+          found.options.forEach((option) => {
+            const button = element("button", CHOICE_NAMES[option], "absent-choice");
+            button.type = "button";
+            button.dataset.kind = kind;
+            button.dataset.choice = option;
+            button.setAttribute("aria-pressed", String(current === option));
+            button.addEventListener("click", () => {
+              const next = current === option ? null : option;
+              App.setConfirmedKeys([`absent:${kind}`, `upper:${kind}`], next ? [`${next}:${kind}`] : []);
+            });
+            line.append(button);
+          });
+          return line;
+        })
+        .filter(Boolean);
+      const section = element("div", undefined, "absent-drawing");
+      section.append(element("h4", name));
+      if (lines.length) section.append(...lines);
+      else section.append(element("p", "この建物では、この図で確かめる行がありません（図面に描かれていると読めた設備も外しています）。", "hint"));
+      more.append(section);
+    });
+    absentBox.replaceChildren(more);
+  }
+
+  function reset() {
+    copies = new Set();
+    readKinds = new Set();
+    absentOpen = false;
+    shownDocKind = "plan";
+  }
+
+  // 平面図の下に「土地の低い向き × 入口」の一文を出す（F-039）。文はサーバーの direction_line のまま変えない。
+  function renderDirection() {
+    if (!direction) return;
+    const line = App.building?.direction_line || "";
+    direction.hidden = !line || shownKind !== "plan";
+    direction.replaceChildren();
+    if (!line) return;
+    direction.append(element("span", line, "strong"), element("span", "（向きは答えと地図の目安で、測ったものではありません）", "plan-direction-note"));
+  }
+
+  return { offerSample, showPin, load, renderDirection, renderAbsent, reset, WHO_LABELS, get pins() { return pins; } };
 })();

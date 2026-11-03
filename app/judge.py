@@ -24,6 +24,13 @@ WATER_LANDFORM_CODES = {
 
 HAZARD_SOURCE = "出典：「ハザードマップポータルサイト」を加工して作成"
 ELEVATION_SOURCE = "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成"
+# 別紙の出典の欄に、二文に分けて添える。上の文は変えない。
+ELEVATION_SOURCE_MORE = [
+    "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/bousaichiri/lfc_index.html、標高 API）",
+    "この値は、上のデータを読み取って加工したものです。",
+]
+# 地形分類の層が取れないときの言い方。判定はもとから未確認なので変えない。
+_LANDFORM_MISSING = {"fetch_failed": "接続できず", "no_tile": "この地域のデータなし"}
 
 _REPRESENTATIVE_NOTE = (
     "これは町丁の代表点の値で、建物の位置の値ではありません。"
@@ -96,6 +103,24 @@ def _legend_level(legend: str) -> str:
     return "high" if index <= 3 else "mid"
 
 
+# 深さの帯。境目は公的な凡例の区分（3m、0.5m）をそのまま使い、新しい閾値は作らない。判定には使わない。
+_BAND_DEEP = {"20m〜", "10m〜20m", "5m〜10m", "3m〜5m"}
+_BAND_MID = {"0.5m〜3m", "0.5m〜1m"}
+_BAND_SHALLOW = {"〜0.5m", "〜0.3m"}
+BAND_LABELS = {"deep": "深い", "mid": "中くらい", "shallow": "浅い"}
+BAND_SHALLOW_NOTE = "深さの帯が「浅い」でも、地下の部屋や床に近い盤には水が入ることがあります。"
+
+
+def _legend_band(legend: str) -> Optional[str]:
+    if legend in _BAND_DEEP:
+        return "deep"
+    if legend in _BAND_MID:
+        return "mid"
+    if legend in _BAND_SHALLOW:
+        return "shallow"
+    return None
+
+
 def _hazard_face(hazards: List[dict]) -> tuple:
     """カードの一段目（大きな値、太字の一行、強調）。判定は変えない。"""
     colored = [h for h in hazards if h["status"] == "color"]
@@ -104,7 +129,13 @@ def _hazard_face(hazards: List[dict]) -> tuple:
         legend = _deepest([h["legend"] for h in colored])
         where = next(h for h in colored if h["legend"] == legend)
         line = f"{_LAYER_SHORT[where['key']]}の想定に色あり" if len(hazards) > 1 else "想定に色あり"
-        return legend, line, {"kind": "hazard", "level": _legend_level(legend), "badges": ["ハザード着色あり"]}
+        band = _legend_band(legend)
+        accent = {"kind": "hazard", "level": _legend_level(legend), "badges": ["ハザード着色あり"]}
+        if band:
+            line = f"{line}（深さの帯：{BAND_LABELS[band]}）"
+            accent["band"] = band
+            accent["band_label"] = BAND_LABELS[band]
+        return legend, line, accent
     if nearby:
         legend = _deepest([h["nearby_legend"] for h in nearby])
         return legend, "ピンの点に色はなく、数m先に色あり", {"kind": "nearby", "level": "low", "badges": ["すぐ近くに色あり"]}
@@ -140,6 +171,8 @@ def _hazard_row(
 
     verdict = RISK if colored and basis == BUILDING else UNCONFIRMED
     details = [f"{h['label']}：{_status_text(h)}" for h in hazards]
+    if colored and _legend_band(_deepest([h["legend"] for h in colored])) == "shallow":
+        details.append(BAND_SHALLOW_NOTE)
     details.extend(extra)
     details.append(HAZARD_SOURCE)
     open_item = verdict != RISK
@@ -230,7 +263,12 @@ def _ground_row(reading: dict, basis: str) -> Row:
     if names:
         joined = "』『".join(names)
         details.append(f"国の地形分類で『{joined}』にあたる地域です（国土地理院。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません）。")
+    for landform in reading["landforms"]:
+        if landform.get("status") in _LANDFORM_MISSING:
+            label = f"（{landform['label']}）" if landform.get("label") else ""
+            details.append(f"地形分類{label}：地図のデータが取れていない（{_LANDFORM_MISSING[landform['status']]}）")
     details.append(ELEVATION_SOURCE)
+    details.extend(ELEVATION_SOURCE_MORE)
     return Row(
         "ground", "敷地の高低差", UNCONFIRMED, headline, details, _GROUND_CONFIRM,
         summary=summary, confirm_short="管理会社が履歴と管理員の記録で",
@@ -246,6 +284,34 @@ def _ground_clean(reading: dict) -> bool:
     if center is None or None in around:
         return False
     return _ground_shape(center, around) is None and _landform_clean(reading["landforms"])
+
+
+def _neighbor_parts(record: dict) -> tuple:
+    """隣の町丁を、記録あり・記録なし・未収録に分ける。"""
+    found, empty, missing = [], [], []
+    for neighbor in record.get("neighbors") or []:
+        if neighbor.get("rows") is None:
+            missing.append(neighbor["town"])
+        elif neighbor["rows"]:
+            found.append(neighbor)
+        else:
+            empty.append(neighbor["town"])
+    return found, empty, missing
+
+
+def _neighbor_details(found: List[dict], empty: List[str], missing: List[str]) -> List[str]:
+    lines = []
+    for neighbor in found:
+        lines.append(f"隣の町丁（{neighbor['town']}）にも記録があります：" + "、".join(f"{date} {cause} {kind}" for date, cause, kind in neighbor["rows"]))
+    for town in empty:
+        lines.append(f"隣の町丁（{town}）の記録は見当たりません。記録がないことは、浸水がなかったことを示すものではありません。")
+    for town in missing:
+        lines.append(f"隣の町丁（{town}）：手元の表に未収録 → 管理会社から市区町村へ照会")
+    return lines
+
+
+def _neighbor_confirm(missing: List[str]) -> str:
+    return f"隣の町丁（{'・'.join(missing)}）の記録は、管理会社から市区町村へ照会します。" if missing else ""
 
 
 def _record_row(record: Optional[dict]) -> Row:
@@ -264,13 +330,24 @@ def _record_row(record: Optional[dict]) -> Row:
         )
     rows = record["rows"]
     source = f"出典：{record['source']}（読み取った事実を加工して作成）"
+    found, empty, missing = _neighbor_parts(record)
+    if not rows and found:
+        towns = "・".join(n["town"] for n in found)
+        details = [record["caution"], *_neighbor_details(found, empty, missing), source]
+        return Row(
+            "record", "市の浸水の記録", RISK,
+            f"同じ町丁の記録は見当たりませんが、隣の町丁（{towns}）に浸水の記録があります。",
+            details, (record["confirm_by"] + _neighbor_confirm(missing)),
+            summary=f"隣の町丁（{towns}）に記録あり", confirm_short="深さは管理会社が確かめる",
+            value="隣に記録", conclusion="隣の町丁に浸水の記録あり",
+        )
     if not rows:
         return Row(
             "record",
             "市の浸水の記録",
             UNCONFIRMED,
             "同じ町丁の記録は見当たりません。記録がないことは、浸水がなかったことを示すものではありません。",
-            [record["caution"], source],
+            [record["caution"], *_neighbor_details(found, empty, missing), source],
             _RECORD_CONFIRM,
             summary="同じ町丁の記録は見当たらず",
             confirm_short="管理会社から市区町村へ照会",
@@ -282,9 +359,10 @@ def _record_row(record: Optional[dict]) -> Row:
     headline = f"同じ丁目に浸水の記録があります（{amount}）。"
     lines = [f"{date}　{cause}　{kind}" for date, cause, kind in rows]
     details = [record["note"]] if record["note"] else []
-    details.extend([record["caution"], "隣の町丁の記録は、まだ照らし合わせていません。", source])
+    neighbor_lines = _neighbor_details(found, empty, missing)
+    details.extend([record["caution"], *(neighbor_lines or ["隣の町丁の記録は、まだ照らし合わせていません。"]), source])
     return Row(
-        "record", "市の浸水の記録", RISK, headline, details, record["confirm_by"], records=lines,
+        "record", "市の浸水の記録", RISK, headline, details, record["confirm_by"] + _neighbor_confirm(missing), records=lines,
         summary=f"同じ丁目に記録あり（{amount}）", confirm_short="深さは管理会社が確かめる",
         value=f"記録{len(rows)}行", conclusion="同じ丁目に浸水の記録あり",
     )
@@ -298,6 +376,7 @@ def _all_clear(reading: dict, record: Optional[dict], basis: str) -> bool:
         and _ground_clean(reading)
         and record is not None
         and not record["rows"]
+        and not any(neighbor.get("rows") is None or neighbor["rows"] for neighbor in record.get("neighbors") or [])
     )
 
 

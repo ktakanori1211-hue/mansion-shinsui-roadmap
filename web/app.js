@@ -17,6 +17,7 @@ const mapElements = {
   choices: document.getElementById("layer-choices"),
   legend: document.getElementById("map-legend"),
   pinNote: document.getElementById("map-pin-note"),
+  landforms: document.getElementById("landform-tags"),
 };
 
 const VERDICT_LEGEND = [
@@ -76,6 +77,8 @@ function screenRow(row) {
   const article = element("article", undefined, `row row-${row.verdict}`);
   const head = element("div", undefined, "row-head");
   head.append(verdictTag(row.verdict, row.verdict_label), element("span", row.label, "row-label"));
+  // サーバーが付けた札（規模の重点など、F-022）。文はサーバーのまま出す。
+  (row.badges || []).forEach((badge) => head.append(element("span", badge, "row-badge")));
   article.append(head, element("p", row.summary || row.headline, "row-headline"), fold("条件と出典を開く", detailItems(row, row.summary ? row.headline : "")));
   return article;
 }
@@ -193,7 +196,9 @@ const App = {
     document.getElementById("pin-card").hidden = true;
     document.getElementById("consult-body").replaceChildren();
     ExitPanel.reset();
+    QuestionPanel.reset();
     QuestionPanel.render();
+    PlanPanel.reset();
     PlanPanel.offerSample();
     SimPanel.reset();
     ModelPanel.renderControls();
@@ -294,6 +299,15 @@ const App = {
     this.loadModel();
   },
 
+  // 設備図で確かめた結果（F-017・F-021）。一つの種類に absent と upper が同時に入らないよう、外す key と入れる key を一度に替える。
+  async setConfirmedKeys(remove, add) {
+    const dropped = this.confirmed.filter((item) => !remove.includes(item));
+    this.confirmed = [...new Set([...dropped, ...add])];
+    await this.loadBuilding();
+    this.refresh();
+    this.loadModel();
+  },
+
   async setDirection(key, direction) {
     this.directions = { ...this.directions, [key]: direction };
     HazardMap.drawTaps(this.directions);
@@ -316,6 +330,8 @@ const App = {
     document.getElementById("top-banner-lead").textContent = building.top_line.lead;
     document.getElementById("top-banner-notes").textContent = building.top_line.notes.join("");
     document.getElementById("top-banner-dir").textContent = building.direction_line;
+    PlanPanel.renderDirection();
+    PlanPanel.renderAbsent();
     document.getElementById("legal-safety").textContent = this.disclaimerText();
     const body = document.getElementById("result-body");
     const grid = element("div", undefined, "result-grid");
@@ -325,6 +341,7 @@ const App = {
       body.append(element("p", `聞き取りとして入れた話：${building.statements.join("／")}（図面で確かめるまで未確認です）`, "hint"));
     }
     this.applyScenario();
+    window.Model3D?.updateTags?.();
     SimPanel.render();
     SheetPanel.render();
     ExitPanel.render();
@@ -635,7 +652,21 @@ window.addEventListener("model3d-ready", () => {
   if (App.building) App.loadModel();
 });
 
+// チャットの送り先を、送る前に出す（F-038）。表示を替えるだけで API は呼ばない。
+const CHAT_ROUTE_TEXT = {
+  claude: "送った質問と、この画面の住所・答え・判定は Anthropic の API を通ります。図面と書類の中身は送りません。",
+  none: "AI を通さず、説明カードで答えます",
+};
+
+function renderChatRoute(status) {
+  const route = document.getElementById("chat-route");
+  if (!route) return;
+  route.textContent = status.claude ? CHAT_ROUTE_TEXT.claude : CHAT_ROUTE_TEXT.none;
+  route.classList.toggle("chat-route-api", Boolean(status.claude));
+}
+
 function renderClaudeStatus(status) {
+  renderChatRoute(status);
   const statusText = document.getElementById("claude-status");
   const toggle = document.getElementById("key-toggle");
   const keyForm = document.getElementById("key-form");
@@ -707,6 +738,42 @@ async function showClaudeStatus() {
   });
 })();
 
+// 点検報告書・修繕履歴の PDF から文字を取り出す（F-042）。この画面の中で PDF.js を使うだけで、どこへも送らない。
+// 書類の規則は行の頭（「指摘」）や全角の「：」で読むので、行を作り直し、全体には NFKC をかけない。
+// 「⾞」のような康熙部首だけ、普通の字にそろえる。文字のない画像の PDF は読まない（API がある時だけの部分は作らない）。
+async function reportPdfText(buffer) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+  const pages = [];
+  for (let number = 1; number <= pdf.numPages; number += 1) {
+    const page = await pdf.getPage(number);
+    const content = await page.getTextContent();
+    const rows = [];
+    content.items
+      .filter((item) => item.str)
+      .forEach((item) => {
+        const x = item.transform[4];
+        const y = item.transform[5];
+        const size = Math.abs(item.transform[3]) || 10;
+        let row = rows.find((line) => Math.abs(line.y - y) < size * 0.5);
+        if (!row) {
+          row = { y, parts: [] };
+          rows.push(row);
+        }
+        row.parts.push({ x, str: item.str });
+      });
+    // PDF の座標は上へ向かって大きくなるので、上の行から並べる。
+    rows.sort((a, b) => b.y - a.y);
+    const text = rows
+      .map((row) => row.parts.sort((a, b) => a.x - b.x).map((part) => part.str).join("").trim())
+      .filter(Boolean)
+      .join("\n");
+    if (text) pages.push(text);
+  }
+  return pages.join("\n").replace(/[\u2E80-\u2EFF\u2F00-\u2FDF]/g, (char) => char.normalize("NFKC"));
+}
+window.reportPdfText = reportPdfText;
+
 // 建物の質問。「分からない」も答えとして受ける。
 const QuestionPanel = (() => {
   const CHOICES = [["yes", "あり"], ["no", "なし"], ["unknown", "分からない"]];
@@ -753,10 +820,65 @@ const QuestionPanel = (() => {
     return label;
   }
 
+  // 足した質問（F-012・F-013・F-022）。選ばれていなければ答えに入れず、サーバーの既定のまま（見本Cの貯留タンクと発電機など）にする。
+  const SCALE_CHOICES = [["small", "小さめ"], ["mid", "中くらい"], ["large", "大きめ"], ["unknown", "分からない"]];
+  const ENTRANCE_CHOICES = [["yes", "段差あり"], ["no", "段差なし"], ["unknown", "分からない"]];
+  // 高さの欄（F-024）。名前はサーバーの HEIGHT_FIELDS と同じ。入れた値をそのまま出すだけで、計算しない。
+  const HEIGHT_FIELDS = [
+    ["panel_bottom", "給水ポンプの制御盤の下の端（床から）"],
+    ["pump_floor", "ポンプの部屋の床（外の地面との差）"],
+    ["elec_floor", "電気の部屋の床（外の地面との差）"],
+  ];
+  const HEIGHT_SOURCES = [["drawing", "竣工図"], ["measured", "実測"], ["hearing", "聞き取り"]];
+
+  // 0cm や外の地面より低い床（負の値）も入れられるよう、下限を付けない。
+  function heightField(key, label, item) {
+    const box = element("div", undefined, "q-height");
+    const field = element("label", undefined, "q-number");
+    field.append(label);
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "any";
+    input.name = `q-height-${key}`;
+    input.value = item && typeof item.cm === "number" ? String(item.cm) : "";
+    const unit = element("span", undefined, "q-height-input");
+    unit.append(input, " cm");
+    field.append(unit);
+    const source = document.createElement("select");
+    source.name = `q-height-source-${key}`;
+    source.setAttribute("aria-label", `${label}の出どころ`);
+    source.append(new Option("出どころを選ぶ", ""), ...HEIGHT_SOURCES.map(([value, text]) => new Option(text, value)));
+    const given = item && item.source;
+    if (given && !HEIGHT_SOURCES.some(([value]) => value === given)) source.append(new Option(given, given));
+    source.value = given || "";
+    box.append(field, source);
+    return box;
+  }
+
+  // 空欄は飛ばす。全部空欄でも {} を送り、前に入れた値を消せるようにする。
+  function collectHeights(root) {
+    const heights = {};
+    HEIGHT_FIELDS.forEach(([key]) => {
+      const raw = root.querySelector(`input[name="q-height-${key}"]`)?.value.trim() || "";
+      if (raw === "") return;
+      const cm = Number(raw);
+      if (!Number.isFinite(cm)) return;
+      const source = root.querySelector(`select[name="q-height-source-${key}"]`)?.value;
+      heights[key] = source ? { cm, source } : { cm };
+    });
+    return heights;
+  }
+
   function collect(root) {
     const pick = (name) => root.querySelector(`input[name="q-${name}"]:checked`)?.value || "unknown";
+    const optional = (name) => root.querySelector(`input[name="q-${name}"]:checked`)?.value;
     const number = (name) => Number(root.querySelector(`input[name="q-${name}"]`).value) || null;
     return {
+      entrance_step: optional("entrance_step"),
+      tank: optional("tank"),
+      generator: optional("generator"),
+      scale: optional("scale"),
+      heights: collectHeights(root),
       built_year: number("built_year"),
       floors: number("floors"),
       basement: pick("basement"),
@@ -771,6 +893,152 @@ const QuestionPanel = (() => {
     };
   }
 
+  // 書類で読んだ語と質問の結びつき（F-043）。サーバーは語と答えの key を結ばないので、画面の側の表で結ぶ。
+  // API がある時だけの「対応表にない語のゆれを読む」部分は作らない。
+  // match は答えの値ごとの語。地中と読んだ答えに「架空」の語を結ばないよう、値で分ける。
+  const DOC_QUESTIONS = {
+    tr: { name: "東京電力の変圧器だけが入っている部屋", match: { any: /東京電力の変圧器/ } },
+    hv: { name: "マンション側で電気を受ける設備の部屋", match: { no: /受電設備なし|選任していない/, yes: /マンション側の受電設備/ } },
+    rooms_floor: { name: "電気の部屋とポンプの部屋の階", match: { any: /受電設備：地下|受電の箱は地下|電気室・主開閉器盤の階/ } },
+    panel_foot: { name: "盤の足元", match: { floor: /床置き|直置き/, raised: /壁掛け|架台/ } },
+    feed: { name: "電気の引込み（地中か空中か）", match: { underground: /地中/, overhead: /架空|空中/ } },
+    // ノートの機能で足した、書類で入る答え（F-013・F-014・F-017・F-019・F-021）。
+    tank: { name: "雨水を地下にためる槽（貯留槽）", match: { any: /貯留槽/ } },
+    generator: { name: "非常用発電機", match: { any: /非常用発電機/ } },
+    tank_valve: { name: "貯留槽の導入管の止水バルブ", match: { any: /止水バルブ/ } },
+    damp: { name: "点検報告書の湿気・漏水の指摘", match: { yes: /湿気|漏水/, no: /指摘事項/ } },
+    sealed: { name: "止水施工済み（止水処理済み）の記載", match: { any: /止水施工済|止水処理済/ } },
+    homes_feed: { name: "各戸の電気の受け方（高圧一括受電）", match: { any: /高圧一括受電/ } },
+  };
+  // 書類の答えの key のうち、別の質問の key に含めるもの。
+  const DOC_KEY_OF = { hv_documented: "hv", homes_feed_documented: "homes_feed" };
+  const questionOf = (key) => DOC_KEY_OF[key] || key;
+
+  function docMatches(key, value, text) {
+    const match = DOC_QUESTIONS[key].match;
+    const pattern = match[value] || match.any;
+    return Boolean(pattern && pattern.test(text));
+  }
+  let draft = "";
+  let doc = null;
+
+  // 答えの key（hv_documented は hv に含める）ごとに、どの語から読んだかを結ぶ。
+  function linkFindings(result) {
+    // 「分からない」と読んだものは、書類で埋まったことにしない。
+    const keys = Object.entries(result.answers || {})
+      .filter(([, value]) => value !== "unknown")
+      .map(([key]) => questionOf(key))
+      .filter((key) => DOC_QUESTIONS[key]);
+    const answers = result.answers || {};
+    const findings = result.findings.map((item) => ({ ...item, keys: [...new Set(keys)].filter((key) => docMatches(key, answers[key], `${item.word}${item.item}`)) }));
+    [...new Set(keys)].forEach((key) => {
+      if (!findings.some((item) => item.keys.includes(key))) {
+        findings.push({ word: "書類の記載", item: DOC_QUESTIONS[key].name, effect: "質問の答えに入れました", keys: [key] });
+      }
+    });
+    return findings;
+  }
+
+  function rejectedKeys() {
+    const rejected = new Set();
+    doc.links.forEach((item, index) => {
+      if (doc.off.has(index)) item.keys.forEach((key) => rejected.add(key));
+    });
+    return rejected;
+  }
+
+  // 書類で埋まっている質問の key と、その語。
+  function filledByDoc() {
+    if (!doc) return {};
+    const rejected = rejectedKeys();
+    const filled = {};
+    doc.links.forEach((item) => {
+      item.keys.forEach((key) => {
+        if (rejected.has(key)) return;
+        filled[key] = [...(filled[key] || []), item.word];
+      });
+    });
+    return filled;
+  }
+
+  // 外した key を答えから除き（読む前の答えへ戻し）、作り直す。/api/report はもう一度呼ばない。
+  async function applyDoc() {
+    const rejected = rejectedKeys();
+    const answers = { ...(App.answers || {}) };
+    Object.entries(doc.result.answers || {}).forEach(([key, value]) => {
+      const question = questionOf(key);
+      if (!rejected.has(question)) {
+        answers[key] = value;
+      } else if (doc.before && key in doc.before) {
+        answers[key] = doc.before[key];
+      } else {
+        delete answers[key];
+      }
+    });
+    App.answers = answers;
+    App.documentRead = Boolean(doc.result.basement_power) && !rejected.has("rooms_floor");
+    await App.loadBuilding();
+    App.refresh();
+    render();
+  }
+
+  function renderFound(found) {
+    const list = element("ul", undefined, "row-details report-links");
+    doc.links.forEach((item, index) => {
+      const off = doc.off.has(index);
+      const line = element("li", undefined, off ? "doc-off" : "");
+      line.append(element("span", `「${item.word}」→ ${item.item}：${item.effect}`));
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = off;
+      toggle.addEventListener("change", async () => {
+        if (toggle.checked) doc.off.add(index);
+        else doc.off.delete(index);
+        await applyDoc();
+      });
+      const wrap = element("label", undefined, "doc-wrong");
+      wrap.append(toggle, "この結びつきは違う");
+      line.append(" ", wrap);
+      if (!item.keys.length) line.append(element("small", "（質問の答えには入れていない語です）", "doc-nokey"));
+      list.append(line);
+    });
+    found.replaceChildren(element("p", doc.result.message, "hint"), list);
+  }
+
+  // 書類で埋まった質問は灰色にして下へ寄せ、書類で埋まらない質問を上に並べる。外せば元に戻る。
+  function markDocQuestions(grid) {
+    const filled = filledByDoc();
+    const keys = Object.keys(filled);
+    if (!keys.length) return;
+    const section = element("div", undefined, "q-section q-doc-section");
+    section.append(element("h3", "書類で読んだ項目"));
+    keys.forEach((key) => {
+      const words = `書類で読みました（${filled[key].map((word) => `「${word}」`).join("")}の語）`;
+      const undo = element("button", "この読みを外す", "doc-undo");
+      undo.type = "button";
+      undo.addEventListener("click", async () => {
+        doc.links.forEach((item, index) => {
+          if (item.keys.includes(key)) doc.off.add(index);
+        });
+        await applyDoc();
+      });
+      const box = grid.querySelector(`input[name="q-${key}"]`)?.closest("fieldset");
+      if (box) {
+        box.classList.add("q-from-doc");
+        box.querySelectorAll("input").forEach((input) => {
+          input.disabled = true;
+        });
+        box.append(element("p", words, "q-doc-note"), undo);
+        section.append(box);
+      } else {
+        const line = element("div", undefined, "q-group q-from-doc");
+        line.append(element("p", `${DOC_QUESTIONS[key].name}：${words}`, "q-doc-note"), undo);
+        section.append(line);
+      }
+    });
+    grid.append(section);
+  }
+
   function render() {
     const { sample } = App.building;
     const answers = sample.answers || {};
@@ -780,8 +1048,9 @@ const QuestionPanel = (() => {
     const first = element("div", undefined, "q-section");
     first.append(element("h3", "建物のあらまし"), numberField("築年（西暦）", "built_year", answers.built_year), numberField("階数", "floors", answers.floors));
     first.append(group("地下はありますか", "basement", CHOICES, answers.basement));
-    first.append(group("電気の部屋とポンプの部屋の階", "rooms_floor", [["basement", "地下階"], ["ground", "1階"], ["unknown", "分からない"]], answers.rooms_floor));
+    first.append(group("電気の部屋とポンプの部屋の階", "rooms_floor", [["basement", "地下階"], ["ground", "1階"], ["upper", "2階以上"], ["unknown", "分からない"]], answers.rooms_floor));
     first.append(element("p", "2020年6月の国のガイドラインより前の建物は、ケーブルを通す壁の穴の止水処理が要確認です。", "hint"));
+    first.append(group("建物の規模（総戸数のおおよそ）", "scale", SCALE_CHOICES, answers.scale));
 
     const second = element("div", undefined, "q-section");
     second.append(element("h3", "外から見える3つ"));
@@ -794,6 +1063,21 @@ const QuestionPanel = (() => {
     third.append(group("盤の足元", "panel_foot", [["floor", "床置き"], ["raised", "架台・壁掛けの上"], ["unknown", "分からない"]], answers.panel_foot, FOOT_ART));
     third.append(group("電気室の扉", "door_step", [["yes", "段差あり"], ["no", "段差なし"], ["unknown", "分からない"]], answers.door_step, STEP_ART));
 
+    // 足した質問（F-012・F-013）。見本Cの貯留タンクと発電機は、答えがなければサーバーの既定（あり）のまま見せる。
+    const tower = sample.id === "c" && !sample.custom;
+    const extra = element("div", undefined, "q-section");
+    extra.append(element("h3", "分かれば（出入口・槽・発電機）"));
+    extra.append(group("1階の出入口・搬入口に、道路からの段差がありますか（外から見て）", "entrance_step", ENTRANCE_CHOICES, answers.entrance_step));
+    extra.append(group("雨水を地下にためる槽（貯留槽）はありますか", "tank", CHOICES, answers.tank ?? (tower ? "yes" : undefined)));
+    extra.append(group("非常用発電機はありますか", "generator", CHOICES, answers.generator ?? (tower ? "yes" : undefined)));
+
+    const heightBox = element("div", undefined, "q-section");
+    heightBox.append(element("h3", "高さ（分かれば・cm）"));
+    HEIGHT_FIELDS.forEach(([key, label]) => heightBox.append(heightField(key, label, (answers.heights || {})[key])));
+    heightBox.append(element("p", "入れた値をそのまま表と3Dに出すだけで、浸かるかどうかは計算しません。空欄のままで構いません。", "hint"));
+    const given = App.building.heights || [];
+    if (given.length) heightBox.append(element("p", given.map((item) => `${item.label}：${item.text}`).join("／"), "q-height-given"));
+
     const fourth = element("div", undefined, "q-section");
     fourth.append(element("h3", "電気の受け方"));
     fourth.append(group("東京電力の変圧器だけが入っている部屋（借室。東京電力の表示があり、東京電力が鍵を持つ）はありますか", "tr", CHOICES, answers.tr));
@@ -803,7 +1087,7 @@ const QuestionPanel = (() => {
     const submit = element("button", "この答えで作り直す", "primary");
     submit.type = "submit";
     const grid = element("div", undefined, "q-grid");
-    grid.append(first, second, third, fourth);
+    grid.append(first, second, third, fourth, extra, heightBox);
     questions.append(
       element("p", "どの質問も、部屋や盤を見に行って確かめる必要はありません。電気の部屋、盤の部屋、ポンプの部屋、東京電力の変圧器の部屋には入らず、扉も開けません。外から見えるものも、雨や冠水のときは見に行かず、蓋は開けません。覚えていない所は「分からない」のままで構いません。", "fixed-note strong"),
       grid,
@@ -811,8 +1095,11 @@ const QuestionPanel = (() => {
     );
     questions.addEventListener("submit", async (event) => {
       event.preventDefault();
+      // 書類で入った答え（hv_documented、feed、damp、sealed、tank_valve、homes_feed など）と、選んだ近い形（type）を残す。
+      // 欄のある答えは欄の値で上書きし、選ばれていない欄（undefined）は上書きしない。
       const documented = App.building.sample.answers || {};
-      App.answers = { ...collect(questions), hv_documented: documented.hv_documented, feed: documented.feed };
+      const fresh = Object.fromEntries(Object.entries(collect(questions)).filter(([, value]) => value !== undefined));
+      App.answers = { ...documented, ...fresh };
       await App.rebuild();
     });
 
@@ -820,10 +1107,15 @@ const QuestionPanel = (() => {
     report.id = "report-input";
     report.rows = 5;
     report.setAttribute("aria-label", "点検報告書の文");
+    report.value = draft;
+    report.addEventListener("input", () => {
+      draft = report.value;
+    });
     const load = element("button", "架空の点検報告書を読み込む");
     load.type = "button";
     load.addEventListener("click", async () => {
       report.value = await (await fetch(App.building.sample.report)).text();
+      draft = report.value;
     });
     const read = element("button", "書類を読む", "primary");
     read.type = "button";
@@ -832,16 +1124,41 @@ const QuestionPanel = (() => {
       found.replaceChildren(element("p", "書類を読んでいます。", "hint"));
       const response = await fetch("/api/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: report.value }) });
       const result = await response.json();
-      const list = element("ul", undefined, "row-details");
-      result.findings.forEach((item) => list.append(element("li", `「${item.word}」→ ${item.item}：${item.effect}`)));
-      App.documentRead = result.basement_power;
-      if (Object.keys(result.answers || {}).length) App.answers = { ...(App.answers || {}), ...result.answers };
-      await App.loadBuilding();
-      App.refresh();
-      found.replaceChildren(element("p", result.message, "hint"), list);
+      // 読む前の答えを残し、結びつきを外したときはそこへ戻す。二度目に読んだときも、最初に読む前の答えへ戻す。
+      const before = doc ? doc.before : App.answers ? { ...App.answers } : null;
+      doc = { text: report.value, result, before, off: new Set(), links: linkFindings(result) };
+      await applyDoc();
+    });
+    if (doc) renderFound(found);
+    // PDF の受け口（F-042）。取り出した文字は貼り付け欄に入れるだけで、読むのは「書類を読む」を押したとき。
+    const pdfInput = document.createElement("input");
+    pdfInput.type = "file";
+    pdfInput.accept = "application/pdf";
+    pdfInput.id = "report-file";
+    const pdfLabel = element("label", "PDF から文字を入れる（点検報告書・修繕履歴）", "plan-file-label report-file-label");
+    pdfLabel.htmlFor = "report-file";
+    const pdfNote = element("p", "", "hint report-file-note");
+    pdfInput.addEventListener("change", async () => {
+      const chosen = pdfInput.files[0];
+      pdfInput.value = "";
+      if (!chosen) return;
+      pdfNote.textContent = "PDF から文字を取り出しています（この画面の中で取り出し、まだどこへも送りません）。";
+      try {
+        const text = await reportPdfText(await chosen.arrayBuffer());
+        if (!text.trim()) {
+          pdfNote.textContent = "文字を取り出せませんでした。文字のある PDF を入れるか、文を貼り付けてください。";
+          return;
+        }
+        report.value = text;
+        draft = text;
+        pdfNote.textContent = `「${chosen.name}」の文字を貼り付け欄に入れました。合っているか見てから「書類を読む」を押してください。`;
+      } catch (error) {
+        pdfNote.textContent = `PDF を読めませんでした：${error.message}`;
+      }
     });
     const reportBox = element("div", undefined, "q-section q-report");
-    reportBox.append(element("h3", "点検報告書など（必須ではありません）"), report, load, read, found);
+    reportBox.append(element("h3", "点検報告書など（必須ではありません）"), report, load, read, pdfLabel, pdfInput, pdfNote, found);
+    markDocQuestions(grid);
 
     const title = sample.custom
       ? `${sample.name}（${sample.kind}）`
@@ -849,7 +1166,13 @@ const QuestionPanel = (() => {
     body.replaceChildren(element("p", title, "strong"), questions, reportBox);
   }
 
-  return { render };
+  return {
+    render,
+    reset() {
+      draft = "";
+      doc = null;
+    },
+  };
 })();
 
 // 出口 A・B・C の切り替えと、Claude で読みやすく整えるボタン。

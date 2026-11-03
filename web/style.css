@@ -921,3 +921,64 @@ body > .stages { flex: 1 0 auto; width: 100%; }
 .kb-requirements h3 { margin: 12px 0 4px; font-size: 15px; }
 .kb-requirements h4 { margin: 8px 0 2px; font-size: 13.5px; }
 .kb-requirements p { margin: 2px 0; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+
+/* 全部入りの版で足した画面の表示（F-038・F-039・F-040・F-041・F-043） */
+.chat-route { margin: 0; padding: 4px 10px 6px; background: var(--page); border-bottom: 1px solid var(--line); color: var(--ink-muted); font-size: 11px; line-height: 1.45; }
+.chat-route-api { color: var(--ink); }
+.plan-direction { margin: 6px 0 2px; font-size: 12px; line-height: 1.5; }
+.plan-direction-note { color: var(--ink-muted); font-size: 11px; }
+.model-tag-line { display: inline-flex; gap: 3px; align-items: center; }
+.model-tag { padding: 0 4px; border: 1px solid; border-radius: 3px; font-size: 10px; font-weight: 700; }
+.model-who { padding: 0 4px; border-radius: 3px; color: #fff; font-size: 10px; font-weight: 600; }
+.model-label-ghost { border-style: dashed; color: var(--ink-muted); }
+.q-from-doc { background: #f1f1f3; color: var(--ink-muted); }
+.q-from-doc input:disabled + svg, .q-from-doc input:disabled ~ span { opacity: .6; }
+.q-doc-note { margin: 4px 0 2px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.doc-undo { font-size: 12px; }
+.report-links li { margin: 3px 0; }
+.doc-wrong { margin-left: 6px; font-size: 12px; white-space: nowrap; }
+.doc-off > span:first-child { text-decoration: line-through; color: var(--ink-muted); }
+.doc-nokey { margin-left: 4px; color: var(--ink-muted); }
+
+/* 全部入りの版で足した A4 と試算の表示（F-001〜F-005・F-021・F-022・F-024〜F-036・F-051） */
+.print-only { display: none; }
+@media print {
+  .print-only { display: inline; }
+  .screen-only { display: none !important; }
+}
+.sheet-fold { display: inline; margin-left: 2px; font-size: 7.5pt; }
+.sheet-fold summary { display: inline; color: var(--ink-muted); cursor: pointer; }
+.sheet-fold[open] > span { display: block; margin-top: 0.5mm; }
+.sheet-fold-print { font-size: 7pt; color: var(--ink-muted); }
+#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(1) { width: 7%; white-space: nowrap; }
+#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(2) { width: 37%; }
+#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(3) { width: 21%; white-space: normal; }
+#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(4) { width: 10%; white-space: nowrap; }
+#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(5) { width: 13%; white-space: normal; font-size: 7pt; }
+#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(6) { width: 12%; white-space: normal; font-size: 7pt; }
+.scale-tag { display: inline-block; padding: 0 3px; border: 1px solid var(--stopped); border-radius: 2px; color: var(--stopped); font-size: 7pt; white-space: nowrap; }
+.scale-focus { display: block; color: var(--ink-muted); font-size: 7pt; }
+.memo-no { display: inline-block; min-width: 2.6em; color: var(--accent); }
+.memo-xref { font-size: 8pt; line-height: 1.45; }
+.reuse-lead { margin-top: 1.5mm; }
+.sheet .slim-table.reuse-table { font-size: 7.5pt; line-height: 1.25; }
+.sheet .slim-table.reuse-table td:first-child { width: 24%; }
+.sheet .slim-table.reuse-table td:nth-child(2) { width: auto; }
+.sheet .slim-table.reuse-table td:last-child { width: 26%; }
+#sheet-back .sheet-list { font-size: 8.5pt; line-height: 1.35; }
+.scope-line { margin-top: 3mm; }
+.hero-scope { margin-top: 8px; font-size: 13px; }
+.timeline-table th .row-note { display: block; font-weight: 400; font-size: 11px; color: var(--ink-muted); }
+.timeline-table th .row-tags { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-top: 2px; }
+.timeline-table th .row-tag { padding: 0 4px; border: 1px dashed var(--unconfirmed); border-radius: 3px; font-weight: 400; font-size: 10.5px; color: var(--ink-muted); white-space: nowrap; }
+.chain-note { font-weight: 600; }
+.sim-owner { display: block; }
+.future-tag { margin: 10px 0 4px; padding: 4px 8px; border: 1px dashed var(--ink-muted); border-radius: 4px; font-size: 13px; font-weight: 600; }
+.future-mock { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #f1f1f3; }
+.future-mock input:disabled { flex: 1 1 200px; padding: 4px 6px; background: #e3e3e6; color: var(--ink-muted); border: 1px solid var(--line); }
+.future-mock button:disabled { opacity: .5; cursor: not-allowed; }
+.future-mock-head, .future-mock-note { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--ink-muted); }
+.measure-table .range-part { display: block; }
+@media print { .sheet .slim-table tr { break-inside: avoid; } }
+/* メモ番号を足した「誰が確かめるか」の列は折り返し、「分かったこと」の列を潰さない。 */
+#sheet-front div#sheet-equipment > .slim-table td:last-child { width: 22%; white-space: normal; }

@@ -24,7 +24,22 @@ const SimPanel = (() => {
     return low === high ? BANDS[low] : `${BANDS[low].replace("円", "")}〜${BANDS[high]}`;
   }
 
+  // 段の順。サーバーが後から足した手（pump_check など）は末尾に来るので、段ごとに並べ直す（同じ段の中の順は保つ）。
+  const TIER_ORDER = ["今すぐ", "工事が要る", "更新と一緒"];
+  function byTier(measures) {
+    const rank = (m) => (TIER_ORDER.includes(m.tier) ? TIER_ORDER.indexOf(m.tier) : TIER_ORDER.length);
+    return measures
+      .map((m, i) => [m, i])
+      .sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1])
+      .map(([m]) => m);
+  }
+
+  // 補助の印。A4 の紙（手を選ばない）では checked を渡さず、制度の条件の文をそのまま出す。
   function markFor(measure, region, checked) {
+    if (!checked) {
+      if (region === "tokyo" || region === "chiba") return MARKS[measure[region]] || MARKS.unknown;
+      return MARKS.unknown;
+    }
     if (region === "tokyo") {
       if (measure.tokyo === "with_plate") {
         const joined = checked.some((m) => m.tokyo === "yes");
@@ -178,7 +193,7 @@ const SimPanel = (() => {
 
     const rows = [];
     let tier = null;
-    building.measures.forEach((measure) => {
+    byTier(building.measures).forEach((measure) => {
       if (measure.tier !== tier) {
         tier = measure.tier;
         const heading = element("th", tier);
@@ -196,6 +211,7 @@ const SimPanel = (() => {
       row.insertCell().append(check);
       const decision = element("td");
       decision.append(element("span", measure.decision), element("small", measure.account, "sim-note"));
+      if (measure.owner) decision.append(element("small", `担当：${measure.owner}`, "sim-note sim-owner"));
       row.append(namedCell(measure.label), decision, element("td", measure.range, "sim-range"));
       const markCell = row.insertCell();
       const estimateCell = row.insertCell();
@@ -292,12 +308,30 @@ const SimPanel = (() => {
     body.append(
       element("p", "依頼文ができました。送るのは管理組合です。この道具から外へは送っていません。業者の紹介はしません。", "fixed-note strong"),
     );
+    // 将来の形は、札を表面に、完了イメージ（押せない静的な絵）を折りたたみに入れる。
+    body.append(element("p", "将来の形：手続きも含めて相談できる窓口（デモ画面：実際には送信していません。紹介料は取りません）", "future-tag"));
     const future = element("details", undefined, "fold");
     future.append(
       element("summary", "補足：将来の窓口"),
       element("p", "手続きも含めて相談できる窓口は、将来の構想です。今は送信の機能を持たず、紹介料も取りません。"),
+      futureMock(),
     );
     body.append(future);
+  }
+
+  function futureMock() {
+    const box = element("div", undefined, "future-mock");
+    box.setAttribute("aria-label", "将来の画面の完了イメージ（押せません）");
+    const to = document.createElement("input");
+    to.type = "text";
+    to.disabled = true;
+    to.value = "宛先（管理組合が選びます）";
+    to.setAttribute("aria-label", "宛先（将来の画面。入力できません）");
+    const send = element("button", "送信");
+    send.type = "button";
+    send.disabled = true;
+    box.append(element("p", "完了イメージ", "future-mock-head"), to, send, element("p", "この画面は将来の姿で、今は何も送っていません。", "future-mock-note"));
+    return box;
   }
 
   function renderRecipients(letter) {
@@ -334,7 +368,7 @@ const SimPanel = (() => {
     return box;
   }
 
-  return { reset, render, consult, get checked() { return [...state.checked]; } };
+  return { reset, render, consult, markFor, byTier, get checked() { return [...state.checked]; } };
 })();
 
 document.getElementById("consult-button").addEventListener("click", () => SimPanel.consult());

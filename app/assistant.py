@@ -408,7 +408,22 @@ _REPORT_RULES = [
     ("非常用発電機", "非常用発電機あり", "火災のときのための設備で、水害の長い停電に足りるとは言えません"),
     ("止水バルブ", "止水バルブの記載", "記載がなければ未確認のままです"),
     ("聞いている", "聞き取りの記載", "図面で確かめるまで未確認のままです"),
+    ("止水施工済", "止水施工済みの記載", "その穴の行だけを「問題なし（対策済）」にします。部屋全体の対策済みとは読みません。後の点検で湿気・漏水の指摘があれば未確認に戻します"),
+    ("止水処理済", "止水処理済みの記載", "その穴の行だけを「問題なし（対策済）」にします。部屋全体の対策済みとは読みません。後の点検で湿気・漏水の指摘があれば未確認に戻します"),
 ]
+
+# 修繕履歴の語。記載があれば二段目に出すだけで、判定は変えない。「記載なし」「なし」の行は記載ありと読まない。
+_REPAIR_RULES = [
+    (r"止水", "止水"),
+    (r"防水", "防水"),
+    (r"貫通部", "貫通部"),
+    (r"浸水", "浸水"),
+    (r"冠水", "冠水"),
+    (r"排水ポンプ", "排水ポンプ"),
+    (r"制御盤.{0,8}更新", "制御盤の更新"),
+]
+_REPAIR_NEGATION = re.compile(r"記載なし|記載がない|なし|項目になく|不明")
+REPAIR_EFFECT = "修繕履歴などに記載があります。二段目に出すだけで、判定は未確認のまま変えません"
 
 
 _REPORT_ITEMS = {
@@ -454,13 +469,18 @@ contract は電気代の明細や契約書に書かれた契約の種別の語�
 項目：""" + "／".join(f"{key}={label}" for key, label in _REPORT_ITEMS.items())
 
 
+def _without_fiction_marks(text: str) -> str:
+    """見本の「架空の見本」「（架空）」の印を外す。引込みの「架空」の規則に当てないため。"""
+    return re.sub(r"[（(]架空[）)]", "", text.replace("架空の見本", ""))
+
+
 def _basement_power(text: str) -> bool:
     return bool(re.search(r"(受電設備|受変電|受電室|電気室|キュービクル).{0,12}(地下|地階)|(地下|地階).{0,12}(受変電|受電|電気室|キュービクル)", text)) and "受電設備なし" not in text
 
 
 def _documented_facts(text: str) -> dict:
     """書類に明記があるときだけ答えに入れる。受電設備の「なし」は、なしと選任なしの両方の明記が要る。"""
-    plain = text.replace("架空の見本", "")
+    plain = _without_fiction_marks(text)
     facts = {}
     if "受電設備なし" in plain and "選任していない" in plain:
         facts.update({"hv": "no", "hv_documented": True})
@@ -474,6 +494,25 @@ def _documented_facts(text: str) -> dict:
         facts["panel_foot"] = "raised"
     if _basement_power(plain):
         facts["rooms_floor"] = "basement"
+    # ここから下は、書類に明記があるときだけ答えに入れる項目（ノートの機能から足した）。
+    lines = [row.strip() for row in plain.splitlines()]
+    finding_lines = [row for row in lines if row.startswith("指摘")]
+    if any(re.search(r"湿気|漏水", row) and not re.search(r"(湿気|漏水)[・、]?(漏水|湿気)?(は)?(なし|ない|認められない)", row) for row in finding_lines):
+        facts["damp"] = "yes"
+    elif any(re.search(r"指摘事項：\s*なし", row) for row in finding_lines):
+        facts["damp"] = "no"
+    if re.search(r"貯留槽", plain) and not re.search(r"貯留槽(は|：)?\s*なし", plain):
+        facts["tank"] = "yes"
+    if re.search(r"止水バルブ(あり|：\s*あり|を設置|設置済)", plain):
+        facts["tank_valve"] = "yes"
+    elif re.search(r"止水バルブ(なし|：\s*なし)", plain):
+        facts["tank_valve"] = "no"
+    if re.search(r"非常用発電機", plain) and not re.search(r"非常用発電機(は|：)?\s*なし", plain):
+        facts["generator"] = "yes"
+    if re.search(r"止水(施工|処理)済", plain):
+        facts["sealed"] = "yes"
+    if "高圧一括受電" in plain:
+        facts.update({"homes_feed": "mansion", "homes_feed_documented": True})
     return facts
 
 
@@ -517,12 +556,16 @@ def read_report(text: str) -> dict:
         if result:
             return {"mode": "claude", **result, "basement_power": basement, "message": "Claude が書類から項目を抜きました。語と項目が合っているか確かめてください。"}
     findings = []
-    plain = text.replace("架空の見本", "")
+    plain = _without_fiction_marks(text)
     answers = _documented_facts(text)
     for word, item, effect in _REPORT_RULES:
         if word in plain:
             line = next((row.strip() for row in plain.splitlines() if word in row), "")
             findings.append({"word": word, "item": item, "effect": effect, "line": line})
+    for pattern, word in _REPAIR_RULES:
+        line = next((row.strip() for row in plain.splitlines() if re.search(pattern, row) and not _REPAIR_NEGATION.search(row)), "")
+        if line:
+            findings.append({"word": word, "item": f"修繕履歴の記載（{word}）", "effect": REPAIR_EFFECT, "line": line})
     return {
         "mode": "text",
         "findings": findings,
@@ -712,6 +755,12 @@ def consult_template(body: dict) -> dict:
     return {"karte": karte, "schedule": schedule, "letter": letter}
 
 
+# 議題のたたき台に足す固定の文。Claude の整形に渡さない。
+# 国の標準様式は参考として示す文書なので「義務」とは書かない（国交省 標準様式・ガイドライン 令和6年6月改定）。
+LONG_TERM_PLAN_NOTE = "国の長期修繕計画の標準様式に、浸水対策の行は見当たりません（国交省 標準様式・ガイドライン 令和6年6月改定）。"
+AGENDA_TEPCO_CALL = "警戒レベル4で東京電力パワーグリッドへ一報を入れる運用も、事前に合意する候補にする。"
+
+
 def exits(sample: dict, label: str, payload: dict) -> dict:
     """出口 B（理事会の議題のたたき台）と出口 C（補助と手続きの順番、翌朝の初動）。プログラムで作る。"""
     measures = payload["measures"]
@@ -731,9 +780,12 @@ def exits(sample: dict, label: str, payload: dict) -> dict:
         "4. 総会の議案にするための下書き（工事が要る段と、更新と一緒の段）：",
     ]
     lines += [f"   ・{m['label']}：{m['decision']}、{m['account']}、{m['range']}" for m in works]
+    renewal = [m["label"] for m in measures if m["tier"] == "更新と一緒"]
+    if renewal:
+        lines.append(f"   ・長期修繕計画に入れるもの（更新と一緒の段）：{'／'.join(renewal)}。次の計画の見直しのときに、管理会社に項目として入れてもらう。")
     lines += [
         "5. 大雨が近づいたときに誰が何をするか（警戒レベル3と4の役割）を決める。",
-        "6. 電気の部屋に水が来そうなときの役割を事前に決める。連絡は管理員か理事長、遮断の判断は主任技術者（いない建物では東京電力パワーグリッドと電気工事の業者）。在宅で医療機器を使う住民の、本人の同意を得た事前の把握と、遮断と同時の全戸への排水禁止の連絡もあわせて決める。",
+        "6. 電気の部屋に水が来そうなときの役割を事前に決める。連絡は管理員か理事長、遮断の判断は主任技術者（いない建物では東京電力パワーグリッドと電気工事の業者）。在宅で医療機器を使う住民の、本人の同意を得た事前の把握と、遮断と同時の全戸への排水禁止の連絡もあわせて決める。" + AGENDA_TEPCO_CALL,
         "",
         "費用は桁の目安で、見積りに置き換えます。特定の工事や申請を勧めるものではありません。",
     ]
@@ -774,7 +826,7 @@ def exits(sample: dict, label: str, payload: dict) -> dict:
         "procedure": "\n".join(procedure),
         "procedure_fixed": "\n".join(actions + notes),
         "procedure_actions": "\n".join(actions),
-        "board_fixed": "\n".join(notes),
+        "board_fixed": "\n".join(notes + [LONG_TERM_PLAN_NOTE]),
     }
 
 

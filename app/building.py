@@ -10,7 +10,7 @@ from dataclasses import asdict
 from typing import List, Optional
 
 from . import samples
-from .state import DRAWING, DOCUMENT, QUESTION, RISK, UNCONFIRMED, Equipment
+from .state import CLEAR, DRAWING, DOCUMENT, QUESTION, RISK, UNCONFIRMED, VERDICT_LABELS, Equipment
 
 # 画面に出す固定の文。言い換えず、折りたたまない。
 FIXED = {
@@ -49,6 +49,116 @@ ACTIONS_BEFORE = "警戒レベル3で車を上へ、レベル4で止水板と土
 ACTIONS_DAY_UNSURE = "管理員か理事長が、東京電力パワーグリッドと管理会社と、いれば主任技術者に連絡します。電気の部屋に入って電気を切りません。扉を開けて中に入って操作しません。在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡をあわせて行います。浸水中は電気の部屋・東京電力の変圧器の部屋・ポンプ室・エレベーターの底の部分に立ち入りません"
 ACTIONS_MORNING_UNSURE = "部屋などに水が残っていたら、電気の部屋・東京電力の変圧器の部屋・ポンプ室・エレベーターの底の部分に立ち入りません。管理員か理事長は、東京電力パワーグリッドの切り離しと、主任技術者（いない建物では電気工事の業者）の確認を確かめてから排水を始めます。電気を戻すかは、点検のあとで主任技術者（いない建物では電気工事の業者）と決めます。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
 
+# ここから下は、ノートの「実現したい機能」から足した固定の文。上の承認済みの文は変えない。
+# 依頼メモに足す項目。
+MEMO_WATER_SUPPLY = "管理会社が竣工図の給水設備図で、給水の方式と、ポンプ・制御盤がどの階にあるかを確かめます。"
+MEMO_DAMP_LOOK = "現地調査のときに、盤の底の錆、水滴や結露の跡、ケーブルを通す壁の穴の充填材の劣化、ケーブルの端末と接続部の防水処理を見てもらいます。床下の点検口（ピット）の蓋や扉の隙間もあわせて見てもらいます（判定には使いません）。盤の扉を開けるかは主任技術者が決め、防水業者や管理会社は盤に触れません。"
+MEMO_DAMP_LOOK_NO_ENGINEER = "現地調査のときに、盤の底の錆、水滴や結露の跡、ケーブルや配管を通す穴の充填材の劣化、ケーブルの端末と接続部の防水処理を見てもらいます。床下の点検口（ピット）の蓋や扉の隙間もあわせて見てもらいます（判定には使いません）。盤の扉を開けるかは電気工事の業者が決め、防水業者や管理会社は盤に触れません。"
+MEMO_PUMP_CHECK = "管理会社が保守会社に、排水ポンプ（地下の床、機械式駐車場の掘り込み、汚水の汲み上げ）の動作と点検の記録を聞きます。"
+MEMO_FREE_SURVEY = "止水板メーカーの中には、無料の現地診断を受け付けているところがあります。受付の枠が限られ、受けるかはメーカーが決めるので、業者の現地調査の代わりではなく、補助として使います。"
+# 水（全戸）の行の二段目に添える一文。階数の閾値は置かない。
+WATER_SUPPLY_NOTE = "給水がポンプによる方式なら、ポンプと制御盤は低い階にあることがあり、一番低い盤が床の近くにある可能性があります。方式は竣工図の給水設備図で確かめます。"
+# オートロック・インターホンの行。機種によるので決めつけない。
+LOCK_HEADLINE = "共用部の電気が止まったとき、オートロックの扉とインターホンがどう動くかが確かめられていません。"
+# 「長引くおそれ」の注記に足す目安（経産省の検討会資料、facts の済の行。一般的な目安で、特定の建物の実績ではない）。
+TOP_NOTE_GUIDE_DAYS = "供給用変圧器や受電設備が浸かった場合、排水開始から仮復旧まで4〜7日程度（経産省の検討会資料。一般的な目安で、特定の建物の実績ではない）。"
+# A4 だけに出す千葉の見通し（共同通信 2026/8/22。見通しで実績ではないので「かかった」とは書かない）。
+A4_NOTE_CHIBA = "2026年8月の千葉では断水が1週間以上続き、復旧まで1か月以上の見通しを示すところもあると報じられた（共同通信 2026/8/22。見通しで、実績ではない）。"
+STREET_VIEW_NOTE = "スロープや出入口の段差は、敷地の外からの写真（ストリートビューなど）でも見られます。"
+DAMP_CONFIRM = "管理会社から建物・防水の業者へ現地調査を依頼します（部屋の中の確認は主任技術者が立ち会い、業者は盤に触れません）。"
+DAMP_CONFIRM_NO_ENGINEER = "管理会社から防水の業者へ現地調査を依頼します（盤の部屋では電気工事の業者が立ち会い、防水業者は目で見るだけです）。"
+GEN_HEADLINE_ANSWERED = "非常用発電機があるとの答えです。置き場所の階と床の高さが確かめられていません。火災のときのための設備で、水害の長い停電に足りるとは言えません。"
+# 地中引込の高圧ケーブルの確認先。主任技術者のいない建物（借室のみ型）は東京電力パワーグリッドへの照会にする。
+MEMO_CABLE_NO_ENGINEER = "管理会社から東京電力パワーグリッドに、引込みの高圧ケーブルと管路がどちらの持ち物か、大雨や浸水のあとにどんな確認をするかを照会します。歩道ぎわの蓋は開けません。"
+MEMO_FEED_FORM = "管理会社が単線結線図で、電気の引込みが地中か空中かを確かめます。"
+# くぼ地の目安に当たるときに、トイレ・排水の行と依頼メモに添える理由。
+HOLLOW_REASON = "くぼ地の目安に当たり、排水口や雨水ますから水が上がる経路もありうるため。逆流が起きるかは判定していません。"
+HOLLOW_BADGES = ("くぼ地の目安", "周囲より低い凹み（目安）")
+# 警戒レベル4の満潮の分岐に、貯留槽と止水弁がともに「あり」の建物だけ添える文。誰がいつ閉めるかを事前に決める項目で、浸水中の操作は誘導しない。
+RAIN_TANK_VALVE = "雨水の導入管の止水弁も、事前に決めた担当が閉めます（誰がいつ閉めるかは理事会で先に決めておきます。水が来てからは近づきません）。"
+# 設備の行を「問題なし」にする道（図面で不在／2階以上／止水施工済み）。三分類のまま、「分からない＝危険」にしない。
+CLEAR_NOT_ENTRY = "「問題なし」は、部屋への立ち入りを許すという意味ではありません。"
+ABSENT_HEADLINE = "該当する設備図に描かれていないことを、図面の読み取りのあとに人が確かめました。"
+UPPER_HEADLINE = "想定の深さより明確に上の階（2階以上・屋上）にあることを、図面の読み取りのあとに人が確かめました。"
+SEALED_HEADLINE = "修繕履歴か竣工図に、この穴の止水施工済みと明記されています。この穴の行だけの読みで、部屋全体の対策済みとは読みません。後の点検報告書に湿気や漏水の指摘があれば、未確認に戻します。"
+TR_ABSENT_HEADLINE = "東京電力の変圧器の部屋は、電気設備図に描かれていないことを人が確かめました。各戸へ電気を送る東京電力の設備がどこにあるかは分かっていません。"
+TR_ABSENT_CONFIRM = "管理会社が、各戸へ電気を送る設備の種類と位置を東京電力パワーグリッドに照会します。"
+# 高圧一括受電の建物（借室なし。各戸もマンション側の受電設備から）。書類と図面で分かったときだけ。
+BULK_LABEL = "各戸の電気（マンション側の受電設備から）"
+BULK_HEADLINE = "東京電力の変圧器の部屋は図面に描かれておらず、各戸の電気もマンション側の受電設備から来ると書類で確かめた建物です。受電設備が浸かると全館が止まり、主遮断器を開放した場合も全館が止まります。"
+CHAIN_NOTE_BULK = "受電設備が浸かると全館が止まり、主遮断器を開放した場合も全館が止まる建物です（高圧一括受電。書類と図面で確認）。"
+CHAIN_NOTE_TR = "借室のある建物では、マンション側の受電設備が浸かって止まるのは共用部だけです。各戸の電気は東京電力の変圧器の部屋しだいです。"
+CHAIN_NOTE_NO_ENGINEER = "共用部のおおもとのスイッチ盤が浸かって止まるのは共用部だけです。東京電力の変圧器の部屋が浸かると、各戸と共用部の両方が止まります。"
+# 高さの入力。本人が入れた値をそのまま出すだけで、浸かる・浸からないは計算しない。
+HEIGHT_SOURCES = {"drawing": "竣工図", "measured": "実測", "hearing": "聞き取り"}
+HEIGHT_FIELDS = {
+    "panel_bottom": ("給水ポンプの制御盤の下の端（床から）", "床から"),
+    "pump_floor": ("ポンプの部屋の床（外の地面との差）", "外の地面との差"),
+    "elec_floor": ("電気の部屋の床（外の地面との差）", "外の地面との差"),
+}
+WATER_MEASURED_CONFIRM = "盤の下の端と部屋の床の高さは、実測の入力値があります。付け替えが要るかは、管理会社がポンプの保守業者と見積りで確かめます。"
+TOP_NOTE_LOCATION_CLEAR = "立地の五項目を、建物の位置の公開データで確かめました（出典は別紙）。"
+# 規模（総戸数の区分）ごとの重点。戸数の区切りは仮の目安で済の出典がないので、画面に数字を出さない。
+# 戸数から受電の形や主任技術者の有無は推定しない。重点は確かめる候補で、網羅ではない。
+SCALE_LABELS = {"small": "小さめ", "mid": "中くらい", "large": "大きめ", "unknown": "分からない"}
+SCALE_TAG = "この規模で重点"
+SCALE_NOTE = "規模の区切りは仮の目安です。重点は確かめる候補で、全部ではありません。規模から受電の形や主任技術者の有無は決めません。ポンプの確認は設備業者（ポンプの保守業者）の担当です。"
+SCALE_OUT_OF_SCOPE = "低圧で受電する小さな建物は、この道具の対象の外です（拡張の想定）。"
+MEMO_SCALE_UNKNOWN = "管理会社が、総戸数と受電の形を点検報告書で確かめます。"
+_SCALE_MID = [("entry", "ケーブルを通す壁の穴"), ("outside", "建物の周りの掘り下げた部分の足元の換気口"), ("water", "床置きのポンプ制御盤")]
+SCALE_FOCUS = {
+    "small": [("power", "受電設備の基礎の高さ"), ("water", "直結増圧の給水ポンプ"), ("ev", "エレベーターの底"), ("outside", "出入口と足元の換気口")],
+    "mid": _SCALE_MID,
+    "large": _SCALE_MID + [("tank", "雨水ますから地下の貯留槽への導入管の止水バルブ"), ("tank", "マンホールの蓋のロック"), ("tr", "水防ラインの東京電力パワーグリッドとの協議")],
+}
+SCALE_OUTSIDE_CONFIRM = "管理会社が外から見える所を見て、入口や換気口の高さと止水板を置けるかを確かめます。冠水中は近づきません。"
+SCALE_TANK_HEADLINE = "この規模の建物で重点に確かめる候補です。雨水を地下にためる槽があるか、あれば導入管の止水バルブとマンホールの蓋のロックが確かめられていません。"
+# 大雨が近づいたときの手順の三行目。A4（web/panels.js の rain[2]）と同じ文を、ここに写して両方で使う（文は変えない）。
+RAIN_THIRD = {
+    "unsure": "電気の部屋や変圧器の部屋に水が来そうになったら：管理員か理事長が東京電力パワーグリッドと管理会社と、いれば主任技術者に連絡します。部屋に入りません。在宅で医療機器を使う人へ先に知らせ、全戸へ排水しないよう放送します。",
+    "engineer": "電気の部屋に水が来そうになったら：管理員か理事長が主任技術者に連絡します。操作は主任技術者の指示で行い、電気の部屋には、水が来る前も後も、主任技術者の同行なしに入りません。在宅で医療機器を使う人へ先に知らせ、止めると同時に全戸へ排水しないよう放送します。",
+    "no_engineer": "盤の部屋や変圧器の部屋に水が来そうになったら：管理員か理事長が東京電力パワーグリッドと管理会社に連絡します。部屋に入りません。在宅で医療機器を使う人へ先に知らせ、全戸へ排水しないよう放送します。",
+}
+# 三行目の後ろに足す文。盤下端の手前で遮断する仮の cm は置かない。
+RAIN_CUT_PUMP = {
+    "engineer": "遮断すると排水ポンプも止まるので、遮断するかは主任技術者が排水への影響もあわせて判断し、遮断だけを単独で決めません。",
+    "unsure": "電気を止めると排水ポンプも止まるので、止めるかは主任技術者（いない建物では東京電力パワーグリッドと電気工事の業者）と、排水への影響もあわせて決めます。",
+    "no_engineer": "電気を止めると排水ポンプも止まるので、止めるかは東京電力パワーグリッドと電気工事の業者に相談し、排水への影響もあわせて決めます。",
+}
+RAIN_TR_SCOPE = "借室のある建物では、主遮断器を開放した場合に止まるのは共用部だけで、各戸の電気は東京電力パワーグリッドの領分です。"
+RAIN_TR_CALL = "借室の扉の前まで水が来たら、管理員か理事長が東京電力パワーグリッドに連絡します。扉は開けず、近づきません。連絡先と、連絡してから来てもらうまでの時間は、事前に確かめておきます。"
+RAIN_DRAIN_BAN = "排水の禁止は、館内放送とSNSで全戸に知らせ、携帯トイレに切り替えてもらいます。"
+RAIN_SET_OF_THREE = {
+    "engineer": "手順には、在宅で医療機器を使う住民への配慮（本人の同意を得た事前の把握）、全戸への排水禁止の連絡、前もって電気を止めるかの判断（主任技術者が判断）の三つを組にして決めておきます。",
+    "unsure": "手順には、在宅で医療機器を使う住民への配慮（本人の同意を得た事前の把握）、全戸への排水禁止の連絡、前もって電気を止めるかの判断（主任技術者がいれば主任技術者、いない建物では東京電力パワーグリッドと電気工事の業者に相談）の三つを組にして決めておきます。",
+    "no_engineer": "手順には、在宅で医療機器を使う住民への配慮（本人の同意を得た事前の把握）、全戸への排水禁止の連絡、前もって電気を止めるかの判断（東京電力パワーグリッドと電気工事の業者に相談）の三つを組にして決めておきます。",
+}
+# 下水の逆流の行。書類（竣工図）で確かめる行の形だけにする。止まる設備の数には入れない。
+BACKFLOW_HEADLINE = "下水の水位が上がったとき、低い階のトイレや排水口から水が逆流するかが確かめられていません。"
+BACKFLOW_CONFIRM = "管理会社が竣工図で、下水道が雨水と汚水を一緒に流す方式（合流式）か、排水管に逆止弁があるか、あれば平時に動作を確かめたかを確かめます。"
+LOCK_CONFIRM = "管理会社が、オートロックの保守会社に、停電のときの扉の動き（開いたままか、閉じたままか）と、電池で動く時間を確かめます。"
+
+
+def _engineer_kind(sample: dict) -> str:
+    if sample.get("engineer_unsure"):
+        return "unsure"
+    return "engineer" if sample["has_chief_engineer"] else "no_engineer"
+
+
+def rain_lines(sample: dict, confirmed: Optional[List[str]] = None) -> dict:
+    """大雨が近づいたときの手順の三行目と、その後ろに足す文。警戒レベル3と4の行はここに持たない。"""
+    kind = _engineer_kind(sample)
+    answers = sample.get("answers") or {}
+    has_tr = answers.get("tr") not in ("no", "unknown") and "absent:tr" not in (confirmed or []) and not is_bulk(sample, confirmed)
+    extra = [RAIN_CUT_PUMP[kind]]
+    if has_tr and kind == "engineer":
+        # 主遮断器の話は、マンション側に受電設備がある建物だけ。
+        extra.append(RAIN_TR_SCOPE)
+    if has_tr:
+        extra.append(RAIN_TR_CALL)
+    extra.append(RAIN_DRAIN_BAN)
+    return {"third": RAIN_THIRD[kind], "extra": extra, "set_of_three": RAIN_SET_OF_THREE[kind]}
+
 
 def actions_for(sample: dict) -> tuple:
     """当日と翌朝の文。主任技術者の有無が書類で分かっていないときは、有無を決めつけない。"""
@@ -65,7 +175,7 @@ def rooms_in_basement(sample: dict) -> Optional[bool]:
     floor = answers.get("rooms_floor")
     if floor == "basement":
         return True
-    if floor == "ground":
+    if floor in ("ground", "upper"):
         return False
     if floor == "unknown":
         return None
@@ -98,19 +208,138 @@ def _item(key, label, verdict, headline, summary, confirm_by, confirm_short, mem
     return data
 
 
-def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, document_read: bool = False) -> List[dict]:
+def heights(sample: dict) -> dict:
+    """高さの入力を読む。数でないもの、あり得ない大きさのものは捨てる。"""
+    given = (sample.get("answers") or {}).get("heights") or {}
+    result = {}
+    if not isinstance(given, dict):
+        return result
+    for key, (label, lead) in HEIGHT_FIELDS.items():
+        item = given.get(key)
+        if not isinstance(item, dict):
+            continue
+        value = item.get("cm")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not -10000 <= value <= 10000:
+            continue
+        number = int(value) if float(value).is_integer() else round(float(value), 1)
+        raw = item.get("source")
+        # 出どころは決まった語（drawing／measured／hearing）か、入力した人や書類の名前の短い文。
+        if raw in HEIGHT_SOURCES:
+            source = HEIGHT_SOURCES[raw]
+        elif isinstance(raw, str) and raw.strip():
+            source = raw.strip()[:30]
+        else:
+            source = "出どころ未選択"
+        measured = raw == "measured" or source == "実測"
+        result[key] = {"key": key, "label": label, "cm": number, "source": source, "measured": measured, "text": f"入力値：{lead} {number}cm（{source}）"}
+    return result
+
+
+def is_bulk(sample: dict, confirmed: Optional[List[str]] = None) -> bool:
+    """高圧一括受電（借室なし＋受電設備あり＋各戸もマンション側から）。図面と書類の両方で分かったときだけ。"""
+    answers = sample.get("answers") or {}
+    return (
+        bool(sample.get("has_chief_engineer"))
+        and not sample.get("engineer_unsure")
+        and "absent:tr" in (confirmed or [])
+        and answers.get("homes_feed") == "mansion"
+        and bool(answers.get("homes_feed_documented"))
+    )
+
+
+def _make_clear(row: dict, headline: str, summary: str, label: Optional[str] = None, verdict_label: str = "問題なし", evidence: str = DRAWING) -> None:
+    row.update(
+        verdict=CLEAR,
+        verdict_label=verdict_label,
+        headline=headline,
+        summary=summary,
+        confirm_by=None,
+        confirm_short=None,
+        evidence=evidence,
+        confirmed_by_person=evidence == DRAWING,
+        details=[CLEAR_NOT_ENTRY],
+    )
+    if label:
+        row["label"] = label
+
+
+# 「2階以上」と図面で確かめられる部屋と、その行。
+_UPPER_ROWS = {"pump": "water", "elec": "power", "panel_room": "power", "tr": "tr"}
+# 「描かれていない」と図面で確かめられる設備と、その行。借室は別に扱う。
+_ABSENT_ROWS = {"tank": "tank", "gen": "gen", "park": "park", "ev": "ev", "drain": "drain", "pump": "water"}
+# 電気の部屋が描かれていなくても、共用部の電気はどこかから来るので、行は「問題なし」にしない。
+ABSENT_POWER_NOTE = "この部屋は図面に描かれていないと人が確かめました。共用部の電気がどこから来るかは、別に確かめます。"
+
+
+def _clear_paths(rows: List[dict], sample: dict, confirmed: List[str]) -> None:
+    answers = sample.get("answers") or {}
+    by_key = {row["key"]: row for row in rows}
+    for room, key in _UPPER_ROWS.items():
+        if f"upper:{room}" in confirmed and key in by_key:
+            # 主任技術者の有無が分からない建物の電気の行は、部屋の種類が決まらないので変えない。
+            if key == "power" and sample.get("engineer_unsure"):
+                continue
+            if key == "power" and (room == "elec") != bool(sample["has_chief_engineer"]):
+                continue
+            _make_clear(by_key[key], UPPER_HEADLINE, "2階以上と図面で確認")
+    for room, key in _ABSENT_ROWS.items():
+        if f"absent:{room}" in confirmed and key in by_key:
+            _make_clear(by_key[key], ABSENT_HEADLINE, "図面に描かれていないと確認")
+    power = by_key.get("power")
+    if power and power["verdict"] != CLEAR and ("absent:elec" in confirmed or "absent:panel_room" in confirmed):
+        power["details"].append(ABSENT_POWER_NOTE)
+    tr = by_key.get("tr")
+    if tr and "absent:tr" in confirmed and "upper:tr" not in confirmed:
+        if is_bulk(sample, confirmed):
+            power = by_key.get("power") or {}
+            tr.update(
+                label=BULK_LABEL,
+                verdict=power.get("verdict", UNCONFIRMED),
+                verdict_label=power.get("verdict_label", tr["verdict_label"]),
+                headline=BULK_HEADLINE,
+                summary="受電設備が浸かると全館が止まる",
+                confirm_by=power.get("confirm_by"),
+                confirm_short=power.get("confirm_short"),
+                memo_section=None,
+                evidence=DOCUMENT,
+                details=[],
+            )
+        else:
+            tr.update(
+                verdict=UNCONFIRMED,
+                verdict_label=VERDICT_LABELS[UNCONFIRMED],
+                headline=TR_ABSENT_HEADLINE,
+                summary="部屋は図面になし。東京電力の設備の位置は未確認",
+                confirm_by=TR_ABSENT_CONFIRM,
+                confirm_short="管理会社→東京電力PG",
+                memo_section=1,
+                evidence=DRAWING,
+                details=[],
+            )
+    entry = by_key.get("entry")
+    # 湿気の行が出ている（後の点検で指摘がある）建物では、止水施工済みの記載があっても未確認のまま。
+    if entry and answers.get("sealed") == "yes" and answers.get("damp") != "yes" and "damp" not in by_key:
+        _make_clear(entry, SEALED_HEADLINE, "止水施工済みと記載あり（この穴だけ）", verdict_label="問題なし（対策済）", evidence=DOCUMENT)
+
+
+def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, document_read: bool = False, hollow: bool = False) -> List[dict]:
     """confirmed は、図面の読み取りのあとで人が確かめた部屋の種類。
 
     document_read は、点検報告書などの書類で受電の箱が地下にあると読めたこと。
+    hollow は、立地の敷地の高低差の行に「くぼ地の目安」か「周囲より低い凹み」の札があること。
     """
     rows = []
     answers = sample.get("answers") or {}
     in_basement_known = rooms_in_basement(sample)
-    place_word = {True: "地下", False: "1階", None: "階が未確認"}[in_basement_known]
+    upper = answers.get("rooms_floor") == "upper"
+    place_word = "2階以上" if upper else {True: "地下", False: "1階", None: "階が未確認"}[in_basement_known]
+    # 2階以上の答えでは、借りた見本の図面の階を出さない。
+    floor_known = in_basement_known is not None and not upper
     unsure = sample.get("engineer_unsure")
     drawing = lambda key: key in confirmed  # noqa: E731
     evidence = lambda key, fallback: DRAWING if drawing(key) else fallback  # noqa: E731
     mount = sample["panel_mount"]
+    given = heights(sample)
 
     rows.append(
         _item(
@@ -122,9 +351,10 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
             "管理会社が、給水ポンプの保守業者に、スイッチ盤の下の端の高さと部屋の床の高さを測ってもらいます。",
             "管理会社→ポンプの保守業者",
             3,
-            floor=_room_on_floor(sample, "pump") if in_basement_known is not None else None,
+            floor=_room_on_floor(sample, "pump") if floor_known else None,
             evidence=evidence("pump", DOCUMENT if not sample.get("custom") else QUESTION),
             confirmed=drawing("pump"),
+            details=[WATER_SUPPLY_NOTE],
         )
     )
 
@@ -158,7 +388,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "床からの盤や箱の高さは未確認なので、依頼メモで確かめます。盤の下の端は主任技術者が月次点検の立会いで測ります。",
                 "管理会社、主任技術者（高さ）",
                 1,
-                floor=_room_on_floor(sample, "elec") if in_basement_known is not None else None,
+                floor=_room_on_floor(sample, "elec") if floor_known else None,
                 evidence=DRAWING if drawing("elec") else DOCUMENT if document_read else QUESTION,
                 confirmed=drawing("elec"),
                 always_confirm=True,
@@ -176,7 +406,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "管理会社から電気工事の業者に、盤の下の端の高さを測ってもらいます。",
                 "管理会社→電気工事の業者",
                 2,
-                floor=_room_on_floor(sample, "panel_room"),
+                floor=_room_on_floor(sample, "panel_room") if not upper else None,
                 evidence=evidence("panel_room", DOCUMENT),
                 confirmed=drawing("panel_room"),
             )
@@ -292,6 +522,8 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
         outside.append("1階の足元の換気口")
     if answers.get("door_step") == "no":
         outside.append("段差のない電気の部屋の扉")
+    if answers.get("entrance_step") == "no":
+        outside.append("道路からの段差がない1階の出入口・搬入口")
     if outside:
         rows.append(
             _item(
@@ -304,9 +536,11 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "管理会社（外から）",
                 1,
                 evidence=QUESTION,
+                details=[STREET_VIEW_NOTE] if answers.get("slope") == "yes" or answers.get("entrance_step") == "no" else [],
             )
         )
-    if sample["id"] == "a" and not sample.get("custom"):
+    damp = answers.get("damp")
+    if sample["id"] == "a" and not sample.get("custom") and damp != "no":
         rows.append(
             _item(
                 "damp",
@@ -320,7 +554,27 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 evidence=DOCUMENT,
             )
         )
-    if sample["id"] == "c" and not sample.get("custom"):
+    elif damp == "yes":
+        # 点検報告書の指摘（書類）から出す。見本Aの文は変えない。
+        room = "電気の部屋・ポンプの部屋" if sample["has_chief_engineer"] else "盤の部屋・ポンプの部屋"
+        rows.append(
+            _item(
+                "damp",
+                f"{place_word if in_basement_known is not None else '地下（または1階）'}の{room}の床の湿気（点検で指摘済み）",
+                UNCONFIRMED,
+                "すでにどこかから水気が入っているサインの可能性があります。どの部屋の指摘かは、点検報告書で確かめます。",
+                "点検で湿気の指摘あり",
+                DAMP_CONFIRM if sample["has_chief_engineer"] and not sample.get("engineer_unsure") else DAMP_CONFIRM_NO_ENGINEER,
+                "管理会社→防水の業者",
+                2,
+                evidence=DOCUMENT,
+            )
+        )
+    tower_sample = sample["id"] == "c" and not sample.get("custom")
+    # 答えがないときは今の見本Cの扱いのまま。答えが「あり」のときだけ未確認で出す。
+    has_tank = answers.get("tank", "yes" if tower_sample else None) == "yes"
+    has_gen = answers.get("generator", "yes" if tower_sample else None) == "yes"
+    if has_tank:
         rows.append(
             _item(
                 "tank",
@@ -332,10 +586,11 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "管理会社→設備業者",
                 2,
                 floor=_room_on_floor(sample, "tank"),
-                evidence=evidence("tank", DOCUMENT),
+                evidence=evidence("tank", DOCUMENT if tower_sample else QUESTION),
                 confirmed=drawing("tank"),
             )
         )
+    if has_gen and tower_sample:
         rows.append(
             _item(
                 "gen",
@@ -351,6 +606,21 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 confirmed=drawing("gen"),
             )
         )
+    elif has_gen:
+        # 答えや書類で「あり」と分かっただけでは、置き場所の階は決めない。
+        rows.append(
+            _item(
+                "gen",
+                "非常用発電機",
+                UNCONFIRMED,
+                GEN_HEADLINE_ANSWERED,
+                "置き場所の階が未確認。水害の長い停電に足りるとは言えない",
+                "管理会社から設備業者に、部屋の床の高さと燃料の持ち時間を確かめてもらいます。",
+                "管理会社→設備業者",
+                3,
+                evidence=QUESTION,
+            )
+        )
 
     rows.append(
         _item(
@@ -364,7 +634,19 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
             3,
         )
     )
-    if in_basement_known is not False:
+    rows.append(
+        _item(
+            "lock",
+            "オートロック・インターホン",
+            UNCONFIRMED,
+            LOCK_HEADLINE,
+            "停電のときの扉の動きが未確認",
+            LOCK_CONFIRM,
+            "管理会社→オートロックの保守会社",
+            3,
+        )
+    )
+    if in_basement_known is not False or hollow:
         rows.append(
             _item(
                 "drain",
@@ -375,8 +657,21 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "管理会社が竣工図で確かめます。",
                 "管理会社（竣工図）",
                 1,
+                details=[HOLLOW_REASON] if hollow else [],
             )
         )
+    rows.append(
+        _item(
+            "backflow",
+            "下水の逆流（低い階のトイレ・排水口）",
+            UNCONFIRMED,
+            BACKFLOW_HEADLINE,
+            "合流式か、逆止弁の有無と動作の確認が未確認",
+            BACKFLOW_CONFIRM,
+            "管理会社（竣工図）",
+            1,
+        )
+    )
     if sample["archetype"] != "ground":
         rows.append(
             _item(
@@ -390,7 +685,26 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 3,
             )
         )
+    _apply_heights(rows, given, mount)
+    _clear_paths(rows, sample, confirmed)
     return rows
+
+
+def _apply_heights(rows: List[dict], given: dict, mount: str) -> None:
+    """入力された高さを、水の行と電気の行の文に入れる。計算はしない。"""
+    by_key = {row["key"]: row for row in rows}
+    water = by_key.get("water")
+    if water and "panel_bottom" in given:
+        text = given["panel_bottom"]["text"]
+        water["headline"] = water["headline"].replace(f"と高さが確かめられていません（盤の形：{mount}）。", f"が確かめられていません（盤の形：{mount}。盤の下の端の高さは{text}）。")
+        water["summary"] = water["summary"].replace("高さは未確認", f"高さは{text}")
+    if water and "pump_floor" in given:
+        water["details"].append(f"ポンプの部屋の床：{given['pump_floor']['text']}")
+    if water and all(key in given and given[key]["measured"] for key in ("panel_bottom", "pump_floor")):
+        water["confirm_by"] = WATER_MEASURED_CONFIRM
+    power = by_key.get("power")
+    if power and "elec_floor" in given:
+        power["details"].append(f"電気の部屋の床：{given['elec_floor']['text']}")
 
 
 def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], confirmed: List[str]) -> dict:
@@ -399,8 +713,23 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
     location_clear = bool(location_rows) and all(row["verdict"] == "clear" for row in location_rows)
     is_basement = rooms_in_basement(sample) is True
     notes = []
+    # A4 だけで使う注記。Claude の整形と模型の上の帯には渡さない。
+    a4_notes = []
     if location_clear or all(item["verdict"] == "clear" for item in equipment):
         lead = "今の情報では、浸水で水が止まるおそれは小さい（または対策済み）。"
+        # 何で確かめたかを添える。lead の文は変えない。
+        if location_clear:
+            notes.append(TOP_NOTE_LOCATION_CLEAR)
+        if equipment and all(item["verdict"] == "clear" for item in equipment):
+            by_drawing = [item["label"] for item in equipment if item.get("evidence") == DRAWING]
+            by_document = [item["label"] for item in equipment if item.get("evidence") == DOCUMENT]
+            parts = []
+            if by_drawing:
+                parts.append(f"図面で確かめた設備：{'、'.join(by_drawing)}")
+            if by_document:
+                parts.append(f"書類で確かめた設備：{'、'.join(by_document)}")
+            if parts:
+                notes.append("／".join(parts) + "。")
     elif any(item["verdict"] == "risk" for item in equipment) or is_basement:
         lead = "このままなら、長引くおそれがある。"
         if not location_risk:
@@ -409,10 +738,12 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
         if not basement_keys.issubset(confirmed):
             notes.append("地下にあるのは書類や聞き取りによるもので、図面ではまだ確かめていない。管理会社が竣工図で確かめる。")
         notes.append("給水・排水のスイッチ盤は製作に約2か月（建築設備技術者協会の報告書）。武蔵小杉は断水8日・トイレ11日（ほかの建物の例）。一番安い手は数万円から。")
+        notes.append(TOP_NOTE_GUIDE_DAYS)
+        a4_notes.append(A4_NOTE_CHIBA)
     else:
         lead = "まだ分からない。"
         notes.append("どこまで水が来るかと盤の高さが未確認。もし浸かれば制御盤の製作に約2か月（建築設備技術者協会の報告書）など長引くおそれがあるので、まず依頼メモで高さを確かめる。")
-    return {"lead": lead, "notes": notes}
+    return {"lead": lead, "notes": notes, "a4_notes": a4_notes}
 
 
 def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
@@ -422,12 +753,18 @@ def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
         "move": sample["has_chief_engineer"],
         "door_rebuild": sample["archetype"] != "ground",
         "tepco": tr_risk,
+        # 共用の主開閉器盤の付け替えは、主任技術者のいない建物（借室のみ型・全低圧受電型）だけ。
+        "main_panel": not sample["has_chief_engineer"],
+        # 発電機の上階移設は、発電機の行がある建物だけ。
+        "gen_move": any(item["key"] == "gen" for item in equipment),
     }
     rows = []
     for measure in samples.MEASURES:
         if not keys.get(measure["key"], True):
             continue
         row = dict(measure)
+        if measure["key"] == "hole" and not sample["has_chief_engineer"]:
+            row["owner"] = samples.HOLE_OWNER_NO_ENGINEER
         if measure["key"] == "panel" and sample["panel_mount"] != "壁掛け":
             row["label"] = "ポンプのスイッチ盤をさらに高い位置に付け替える（盤の下の端が低いと分かった場合）"
         if measure["key"] == "hole" and not sample["underground_feed"]:
@@ -436,7 +773,19 @@ def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
     return rows
 
 
-def memos(sample: dict, equipment: List[dict], location_rows: List[dict], statements: Optional[List[str]] = None) -> List[dict]:
+def is_hollow(location_rows: List[dict], basin: bool = False) -> bool:
+    """敷地の高低差の行に、くぼ地か周囲より低い凹みの札があるか。札は地図の目安で、判定ではない。"""
+    if basin:
+        return True
+    for row in location_rows:
+        if row.get("key") == "ground":
+            badges = (row.get("accent") or {}).get("badges") or []
+            if any(badge in HOLLOW_BADGES for badge in badges):
+                return True
+    return False
+
+
+def memos(sample: dict, equipment: List[dict], location_rows: List[dict], statements: Optional[List[str]] = None, hollow: bool = False, scale_unknown: bool = False) -> List[dict]:
     """未確認を、確認する先ごとの依頼メモにする。"""
     sections = {
         1: {"key": 1, "label": "①", "title": "管理会社が書類・問い合わせで確かめること", "items": []},
@@ -445,10 +794,16 @@ def memos(sample: dict, equipment: List[dict], location_rows: List[dict], statem
     }
     for row in location_rows:
         if row.get("confirm_by"):
-            sections[1]["items"].append({"from": row["label"], "text": row["confirm_by"]})
+            text = row["confirm_by"]
+            if hollow and row.get("key") == "ground":
+                text = f"{text}（{HOLLOW_REASON}）"
+            sections[1]["items"].append({"from": row["label"], "text": text})
     for item in equipment:
         if item.get("confirm_by") and item.get("memo_section"):
-            sections[item["memo_section"]]["items"].append({"from": item["label"], "text": item["confirm_by"]})
+            text = item["confirm_by"]
+            if hollow and item["key"] == "drain":
+                text = f"{text}汚水を汲み上げるポンプがあるか、どの階かも確かめます（{HOLLOW_REASON}）"
+            sections[item["memo_section"]]["items"].append({"from": item["label"], "text": text})
     first = sections[1]["items"]
     for statement in statements or []:
         first.append({"from": "聞き取り", "text": f"「{statement}」との話を、管理会社が竣工図で確かめます（図面で確かめるまで未確認です）。"})
@@ -457,14 +812,65 @@ def memos(sample: dict, equipment: List[dict], location_rows: List[dict], statem
         first.append({"from": "電気を切る手段", "text": "主任技術者に、単線結線図で受電設備側の最初の開閉器の位置と、電気室に入らずに切れる手段があるかを確かめてもらいます。"})
     else:
         first.append({"from": "受電の形", "text": "管理会社が、共用部の電気代の明細で契約種別が低圧であることと、同じ敷地に発電設備がないことを確かめます。"})
-    if sample["underground_feed"]:
+    if sample.get("feed_unknown"):
+        first.append({"from": "引込みの形", "text": MEMO_FEED_FORM})
+    if sample["underground_feed"] and not sample["has_chief_engineer"]:
+        first.append({"from": "地中の高圧ケーブル", "text": MEMO_CABLE_NO_ENGINEER})
+    elif sample["underground_feed"]:
         first.append({"from": "地中の高圧ケーブル", "text": "管理会社を通じて電気主任技術者に、高圧ケーブルの敷設年と点検の記録、大雨や浸水のあとに行う確認を聞きます。歩道ぎわの蓋は開けません。"})
-    return list(sections.values())
+    first.append({"from": "給水の方式", "text": MEMO_WATER_SUPPLY})
+    if scale_unknown:
+        first.append({"from": "規模", "text": MEMO_SCALE_UNKNOWN})
+    sections[2]["items"].append({"from": "盤の中の湿気", "text": MEMO_DAMP_LOOK if sample["has_chief_engineer"] and not sample.get("engineer_unsure") else MEMO_DAMP_LOOK_NO_ENGINEER})
+    sections[3]["items"].append({"from": "排水ポンプ", "text": MEMO_PUMP_CHECK})
+    # 補助の一行は区分②の最後に置く。
+    sections[2]["items"].append({"from": "補助", "text": MEMO_FREE_SURVEY})
+    return _number_memos(list(sections.values()), equipment)
+
+
+def _number_memos(sections: List[dict], equipment: List[dict]) -> List[dict]:
+    """同じ文を一つにまとめ、元の行の名前を sources に持たせ、区分の中で ①-1 から番号を振る。文は変えない。"""
+    index = {}
+    for section in sections:
+        merged: List[dict] = []
+        by_text = {}
+        for item in section["items"]:
+            if item["text"] in by_text:
+                by_text[item["text"]]["sources"].append(item["from"])
+                continue
+            item = {**item, "sources": [item["from"]]}
+            by_text[item["text"]] = item
+            merged.append(item)
+        for number, item in enumerate(merged, start=1):
+            item["no"] = f"{section['label']}-{number}"
+            for source in item["sources"]:
+                index.setdefault(source, item["no"])
+        section["items"] = merged
+        section["index"] = {source: item["no"] for item in merged for source in item["sources"]}
+    for row in equipment:
+        if row["label"] in index and row.get("confirm_by") and row.get("memo_section"):
+            row["memo_no"] = index[row["label"]]
+    return sections
 
 
 # 停電の連鎖の図の箱とつながり。
-def chain_nodes(sample: dict) -> dict:
+def chain_nodes(sample: dict, confirmed: Optional[List[str]] = None) -> dict:
+    answers = sample.get("answers") or {}
+    if is_bulk(sample, confirmed):
+        nodes = [
+            {"key": "line", "label": "外の電線"},
+            {"key": "hv", "label": "受電の箱"},
+            {"key": "panel", "label": "給水ポンプの制御盤"},
+            {"key": "pump", "label": "給水ポンプ（全戸の水）"},
+            {"key": "ev", "label": "エレベーター"},
+            {"key": "light", "label": "廊下の照明"},
+            {"key": "homes", "label": "各戸の電気"},
+        ]
+        edges = [("line", "hv"), ("hv", "panel"), ("panel", "pump"), ("hv", "ev"), ("hv", "light"), ("hv", "homes")]
+        return {"nodes": nodes, "edges": edges, "note": CHAIN_NOTE_BULK}
     result = _chain_nodes(sample)
+    if not sample.get("engineer_unsure") and answers.get("tr") not in ("no", "unknown") and "absent:tr" not in (confirmed or []):
+        result["note"] = CHAIN_NOTE_TR if sample["has_chief_engineer"] else CHAIN_NOTE_NO_ENGINEER
     if (sample.get("answers") or {}).get("tr") in ("no", "unknown"):
         for node in result["nodes"]:
             if node["key"] == "tr":
@@ -541,24 +947,26 @@ def services(stopped: set) -> List[dict]:
     return result
 
 
-def scenario(sample: dict, water: int, measure: str) -> dict:
+def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[str]] = None) -> dict:
     """水の位置と対策の組合せごとに、浸かる想定、止まる想定、表のマス、固定の文を作る。"""
     answers = sample.get("answers") or {}
-    tr_unseen = answers.get("tr") in ("no", "unknown")
+    confirmed = confirmed or []
+    bulk = is_bulk(sample, confirmed)
+    tr_unseen = answers.get("tr") in ("no", "unknown") or "absent:tr" in confirmed
     wet = set()
     if water >= 2:
         wet.add("ev")
         if sample["panel_mount"] == "床置き" and measure != "raise":
             wet.add("panel")
     if water >= 3:
-        if not tr_unseen:
+        if not tr_unseen and not bulk:
             wet.add("tr")
         if measure != "hole":
             wet.add("hv")
         if measure != "raise":
             wet.add("panel")
 
-    chain = chain_nodes(sample)
+    chain = chain_nodes(sample, confirmed)
     stopped = set(wet)
     changed = True
     while changed:
@@ -577,7 +985,7 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
         notes.append(FIXED["tank_outside"])
     if answers.get("panel_foot") == "unknown":
         notes.append("盤の足元の形が分からないので、水の位置②で盤が浸かるかどうかは未確認です。")
-    if tr_unseen:
+    if tr_unseen and not bulk:
         notes.append("東京電力の設備の位置は未確認です（東京電力パワーグリッドに確かめる）。")
     below = []
     gone = False
@@ -638,6 +1046,21 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
             "note": FIXED["tr_box"],
         },
     ]
+    if bulk:
+        # 各戸の電気もマンション側の受電設備から来る建物。東京電力の変圧器の部屋の行を、各戸の電気の行にする。
+        table[3] = {
+            "key": "tr",
+            "label": BULK_LABEL,
+            "cells": [
+                "—",
+                mark("homes"),
+                (f"止まる想定のまま、{checker}が確かめるまで戻さない") if "homes" in stopped else "—",
+                guide_days if hv_wet else "目安なし＊",
+                "—",
+            ],
+            "stopped": "homes" in stopped,
+        }
+    _tag_rows(table, sample, confirmed)
     if any("目安なし＊" in row["cells"] for row in table):
         gone = True
     if wet:
@@ -654,6 +1077,8 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
     before = ACTIONS_BEFORE
     if measure == "plate" and sample["underground_feed"]:
         before += "。止水板だけのときは、地中の壁の穴からの経路が残ります"
+    rain = rain_lines(sample, confirmed)
+    before += "。" + rain["third"] + "".join(rain["extra"])
     table.append(
         {
             "key": "actions",
@@ -688,9 +1113,27 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
     }
 
 
-def scenarios(sample: dict) -> dict:
+def _tag_rows(table: List[dict], sample: dict, confirmed: List[str]) -> None:
+    """時間の流れの表の行に、位置と高さを確かめたかの札を付ける。"""
+    given = heights(sample)
+    power_room = "elec" if sample["has_chief_engineer"] else "panel_room"
+    rooms = {"water": "pump", "hv": power_room, "tr": "tr", "ev": "ev"}
+    height_keys = {"water": "panel_bottom", "hv": "elec_floor"}
+    for row in table:
+        room = rooms.get(row["key"])
+        if not room:
+            continue
+        tags = []
+        if room not in confirmed:
+            tags.append("位置は図面で未確認")
+        if height_keys.get(row["key"]) not in given:
+            tags.append("高さは未確認")
+        row["tags"] = tags
+
+
+def scenarios(sample: dict, confirmed: Optional[List[str]] = None) -> dict:
     return {
-        f"{water}:{item['key']}": scenario(sample, water, item["key"])
+        f"{water}:{item['key']}": scenario(sample, water, item["key"], confirmed)
         for water in (1, 2, 3)
         for item in measures_for_model(sample)
     }
@@ -714,6 +1157,40 @@ def direction_line(directions: dict, low: List[str], sample: dict, high: Optiona
     return lead + "、".join(parts) + f"。その向きに{entrances}があれば、先に確かめます。"
 
 
+def scale_focus(sample: dict, equipment: List[dict], location_rows: List[dict]) -> dict:
+    """規模の区分ごとの重点を、今ある行の札にし、重ならないものだけ未確認の行として足す。"""
+    answers = sample.get("answers") or {}
+    value = answers.get("scale")
+    location_clear = bool(location_rows) and all(row.get("verdict") == "clear" for row in location_rows)
+    info = {"value": value, "label": SCALE_LABELS.get(value, ""), "shown": False, "focus": [], "note": SCALE_NOTE, "out_of_scope": SCALE_OUT_OF_SCOPE, "memo": value == "unknown" and not location_clear}
+    if value not in SCALE_FOCUS or location_clear:
+        return info
+    no_engineer = not sample["has_chief_engineer"]
+    by_key = {row["key"]: row for row in equipment}
+    for key, focus in SCALE_FOCUS[value]:
+        if key == "power" and no_engineer:
+            focus = "共用部のおおもとのスイッチ盤の下の端の高さ"
+        if key == "tr" and sample["has_chief_engineer"] and not sample.get("engineer_unsure"):
+            focus += "（主任技術者は技術面で同席）"
+        row = by_key.get(key)
+        if row is None and key == "outside":
+            row = _item("outside", "外から見える入口", UNCONFIRMED, f"この規模の建物で重点に確かめる候補です。{focus}の高さと止水板を置けるかが確かめられていません。", focus, SCALE_OUTSIDE_CONFIRM, "管理会社（外から）", 1, evidence=QUESTION)
+            equipment.append(row)
+            by_key[key] = row
+        elif row is None and key == "tank" and answers.get("tank") != "no":
+            row = _item("tank", "雨水ますから地下の貯留タンク", UNCONFIRMED, SCALE_TANK_HEADLINE, "貯留槽の有無、止水バルブと蓋のロックが未確認", "管理会社が竣工図で確かめ、設備業者へ現地調査を依頼します。", "管理会社→設備業者", 2, evidence=QUESTION)
+            equipment.append(row)
+            by_key[key] = row
+        if row is None:
+            continue
+        if SCALE_TAG not in row.setdefault("badges", []):
+            row["badges"].append(SCALE_TAG)
+        row.setdefault("scale_focus", []).append(focus)
+        info["focus"].append({"row": key, "text": focus})
+    info["shown"] = True
+    return info
+
+
 def building_payload(
     sample: dict,
     confirmed: List[str],
@@ -726,7 +1203,10 @@ def building_payload(
     basin: bool = False,
 ) -> dict:
     location_risk = any(row["verdict"] == "risk" for row in location_rows)
-    equipment = judge_equipment(sample, confirmed, location_risk, document_read)
+    hollow = is_hollow(location_rows, basin)
+    equipment = judge_equipment(sample, confirmed, location_risk, document_read, hollow=hollow)
+    answers = sample.get("answers") or {}
+    scale = scale_focus(sample, equipment, location_rows)
     return {
         "sample": samples.client_view(sample),
         "confirmed": confirmed,
@@ -735,12 +1215,22 @@ def building_payload(
         "top_line": top_line(sample, equipment, location_rows, confirmed),
         "measures": visible_measures(sample, equipment),
         "subsidies": samples.SUBSIDIES,
-        "memos": memos(sample, equipment, location_rows, statements or []),
+        "memos": memos(sample, equipment, location_rows, statements or [], hollow=hollow, scale_unknown=scale["memo"]),
+        "scale": scale,
         "direction_line": direction_line(directions or {}, low_directions or [], sample, high_directions, basin),
         "statements": statements or [],
-        "chain": chain_nodes(sample),
+        "chain": chain_nodes(sample, confirmed),
         "water_levels": WATER_LEVELS,
         "model_measures": measures_for_model(sample),
-        "scenarios": scenarios(sample),
+        "scenarios": scenarios(sample, confirmed),
+        "heights": list(heights(sample).values()),
+        "rain": rain_lines(sample, confirmed),
         "fixed": FIXED,
+        # 警戒レベル4の満潮の分岐に足す文の材料。表示は A4 の担当が決める。
+        "rain_tank_valve": {
+            "tank": "yes" if any(item["key"] == "tank" for item in equipment) and answers.get("tank") != "no" else answers.get("tank", "unknown"),
+            "tank_valve": answers.get("tank_valve", "unknown"),
+            "show": answers.get("tank") == "yes" and answers.get("tank_valve") == "yes",
+            "text": RAIN_TANK_VALVE,
+        },
     }

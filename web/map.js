@@ -160,6 +160,46 @@ const HazardMap = (() => {
     container.replaceChildren(...items, hatch);
   }
 
+  // 地形分類の札（F-011）。サーバーが読んだ landforms の status から作るだけで、タイルを取りに行かない。
+  // 取れないときの文はサーバーの立地の行（app/judge.py）と同じにする。
+  const LANDFORM_MISSING = { fetch_failed: "接続できず", no_tile: "この地域のデータなし" };
+  const LANDFORM_NOTE = "国土地理院 地形分類（提供実験）。分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません。";
+
+  function landformText(item) {
+    if (LANDFORM_MISSING[item.status]) return `地図のデータが取れていない（${LANDFORM_MISSING[item.status]}）`;
+    const codes = item.codes || [];
+    if (!codes.length) return "ピンの点：どの分類にも当たらず";
+    return `ピンの点：${codes.map((code, index) => `『${(item.names || [])[index] || `分類番号 ${code}`}』`).join("")}`;
+  }
+
+  function renderLandforms(container, landforms, rows) {
+    if (!container) return;
+    // 立地の行で水に関わる分類として札が付いた名前だけ、橙にする。
+    const ground = (rows || []).find((row) => row.key === "ground");
+    const marked = new Set(((ground && ground.accent && ground.accent.badges) || []).filter((badge) => badge.startsWith("地形分類：")).map((badge) => badge.slice(5)));
+    const tags = (landforms || []).map((item) => {
+      const missing = Boolean(LANDFORM_MISSING[item.status]);
+      const names = (item.codes || []).map((code, index) => (item.names || [])[index] || `分類番号 ${code}`);
+      const state = missing ? "missing" : names.some((name) => marked.has(name)) ? "marked" : names.length ? "found" : "none";
+      const tag = document.createElement("span");
+      tag.className = `landform-tag landform-${state}`;
+      tag.title = LANDFORM_NOTE;
+      const name = document.createElement("span");
+      name.className = "layer-name";
+      name.textContent = `地形分類（${item.label}）`;
+      const status = document.createElement("span");
+      status.className = "layer-status";
+      status.textContent = landformText(item);
+      tag.append(name, status);
+      return tag;
+    });
+    const note = document.createElement("p");
+    note.className = "landform-note";
+    note.textContent = LANDFORM_NOTE;
+    container.replaceChildren(...tags, ...(tags.length ? [note] : []));
+    container.hidden = !tags.length;
+  }
+
   function pinNote(site) {
     if (site.demo) {
       return "ピンは町丁の代表点で、建物の位置ではありません。見本は代表点から動かしません（建物は架空です）。";
@@ -262,6 +302,7 @@ const HazardMap = (() => {
     });
 
     renderChoices(elements.choices, location.reading.hazards);
+    renderLandforms(elements.landforms, location.reading.landforms, location.rows);
     renderLegend(elements.legend, location.reading.hazard_legend);
     elements.pinNote.textContent = pinNote(site);
     showLayer(location.reading.hazards.find((hazard) => hazard.key === selectedKey));
