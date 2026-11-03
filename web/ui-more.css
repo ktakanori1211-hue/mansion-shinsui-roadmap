@@ -40,3 +40,10 @@
 .absent-name { flex: 1 1 160px; font-size: 13px; }
 .absent-choice { padding: 2px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 12px; cursor: pointer; }
 .absent-choice[aria-pressed="true"] { border-color: var(--clear); background: var(--clear-bg); color: var(--clear); font-weight: 700; }
+
+/* 場面の再生で凹みの模式を出さない切り替え（F-045）。地図のすぐ上。 */
+.scene-dem-toggle { display: flex; margin: 0 0 6px; color: var(--ink-muted); }
+.scene-dem-toggle input { flex: none; }
+
+/* 区域の外の一行（F-049）。対象の範囲の一行のすぐ下。 */
+.scope-outside { margin-top: 1mm; }

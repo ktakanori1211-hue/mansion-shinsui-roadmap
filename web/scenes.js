@@ -66,6 +66,28 @@ const Scenes = (() => {
   ];
 
   let active = null;
+  let activeCard = null;
+
+  // 「凹みの模式を出さない」の切り替え（F-045）。既定は出す（2026-11-03 の決定）。
+  // 入れると、色のない所の水色（標高から凹みにたまる模式）を塗らず、公的な地図の色の所だけを広げる
+  // （2026-11-02 の「ツールが計算した範囲や深さを塗らない」に合わせた見方）。カードの当てはまり（凹みを含む）は変えない。
+  const demToggle = (() => {
+    // app.js（element の定義）より前に読まれるので、ここでは document.createElement で作る。
+    const label = document.createElement("label");
+    label.className = "control-inline scene-dem-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.id = "scene-hide-dem";
+    input.checked = false;
+    label.append(input, " 場面の再生で、凹みの模式（水色）を出さない（公的な地図の色の所だけ広げる）");
+    document.getElementById("map").before(label);
+    input.addEventListener("change", () => {
+      // 再生中の場面があれば、切り替えた見方で再生し直す。
+      const scene = SCENES.find((item) => item.key === active);
+      if (scene && activeCard) play(scene, activeCard);
+    });
+    return input;
+  })();
 
   function colored(reading, key) {
     const hazard = reading.hazards.find((item) => item.key === key);
@@ -123,6 +145,7 @@ const Scenes = (() => {
     const state = App.locationState;
     if (!state) return;
     active = scene.key;
+    activeCard = card;
     document.querySelectorAll(".scene-card").forEach((item) => item.classList.toggle("active", item === card));
     App.scene = scene.key;
     if (App.building && App.scenario()) App.applyScenario();
@@ -138,7 +161,9 @@ const Scenes = (() => {
     // 狭い画面では地図がカードの下にあるので、地図まで動かしてから広げる。
     const mapBox = document.getElementById("map").getBoundingClientRect();
     if (mapBox.top < 0 || mapBox.bottom > window.innerHeight) document.getElementById("map").scrollIntoView({ block: "center", behavior: "smooth" });
-    HazardMap.playScene(scene, (outcome) => {
+    // 模式を出さないときは標高タイルを読まず、水色も塗らない（outcome.hadDem が偽になり、凡例と結果の文から模式が消える）。
+    const shown = { ...scene, useDem: scene.useDem && !demToggle.checked };
+    HazardMap.playScene(shown, (outcome) => {
       if (active !== scene.key) return;
       box.replaceChildren(
         element("p", `${scene.name}：${scene.line}`, "scene-result-head"),
@@ -162,6 +187,7 @@ const Scenes = (() => {
   // 地図の重ね方を選び直したら、場面の再生をやめた表示に戻す。
   document.getElementById("layer-choices").addEventListener("change", () => {
     active = null;
+    activeCard = null;
     document.querySelectorAll(".scene-card").forEach((item) => item.classList.remove("active"));
     document.getElementById("scene-result").hidden = true;
   });
@@ -184,6 +210,7 @@ const Scenes = (() => {
   function render(state) {
     const reading = state.location.reading;
     active = null;
+    activeCard = null;
     App.scene = null;
     document.getElementById("scene-result").hidden = true;
     document.getElementById("scene-cards").replaceChildren(...SCENES.map((scene) => card(scene, reading)));

@@ -982,3 +982,6 @@ body > .stages { flex: 1 0 auto; width: 100%; }
 @media print { .sheet .slim-table tr { break-inside: avoid; } }
 /* メモ番号を足した「誰が確かめるか」の列は折り返し、「分かったこと」の列を潰さない。 */
 #sheet-front div#sheet-equipment > .slim-table td:last-child { width: 22%; white-space: normal; }
+.kb-eng { margin: 10px 0; padding: 6px 10px; border: 2px solid var(--hot-deep); border-radius: 8px; background: #fff8f7; }
+.kb-eng summary { color: var(--hot-deep); font-weight: 800; }
+.kb-eng-line { margin: 2px 0; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }

@@ -286,6 +286,11 @@ const SheetPanel = (() => {
     const label = `住所：${sample.name}／${App.locationState.site.label}${sample.custom ? "（図と設備の形は見本から借りています）" : "（建物は架空）"}`;
     document.getElementById("sheet-address").textContent = label;
     document.getElementById("sheet-basis-address").textContent = label;
+    // 対象の範囲の一行（F-035、web/index.html の #sheet-basis .scope-line）の直後に、区域の外の一行を一度だけ足す（F-049）。
+    const scopeLine = document.querySelector("#sheet-basis .scope-line");
+    if (scopeLine && !document.querySelector("#sheet-basis .scope-outside")) {
+      scopeLine.after(element("p", "東京電力パワーグリッドの区域の外では、借室の照会先はその地域の電力会社（一般送配電事業者）になり、この道具の文はそのままでは当てはまりません（区域の都道府県の一覧は確かめていません）。", "sheet-pointer scope-outside"));
+    }
     document.getElementById("sheet-memo-address").textContent = label;
 
     document.querySelectorAll(".disclaimer li:first-child").forEach((node) => {
@@ -466,7 +471,12 @@ const SheetPanel = (() => {
   function shareData() {
     const building = App.building;
     const { sample } = building;
-    const toCard = (row) => ({ verdict: row.verdict, verdict_label: row.verdict_label, label: row.label, text: row.headline, confirm: row.confirm_by });
+    // 規模の重点の札とメモの番号は、おもての行（equipment）にだけある。立地の行では空のまま。
+    const toCard = (row) => ({ verdict: row.verdict, verdict_label: row.verdict_label, label: row.label, text: row.headline, confirm: row.confirm_by, badges: row.badges || [], scale_focus: row.scale_focus || [], memo_no: row.memo_no || "" });
+    // 主任技術者の欄と表の下の一行は、建物ごとの出し分けが render の中にあるので、描いた A4 から読む（同じ条件を二度書かない）。
+    const texts = (selector) => [...document.querySelectorAll(selector)].map((node) => node.textContent);
+    const region = sample.subsidy;
+    const trRisk = building.equipment.find((item) => item.key === "tr")?.verdict === "risk";
     return {
       name: sample.name,
       address: `${App.locationState.site.label}${sample.custom ? "" : "（建物は架空）"}`,
@@ -477,12 +487,29 @@ const SheetPanel = (() => {
       direction: building.direction_line,
       location: App.locationState.location.rows.map(toCard),
       equipment: building.equipment.map(toCard),
-      measures: SimPanel.byTier(building.measures).map((m) => ({ tier: m.tier, label: m.label, decision: m.decision, account: m.account, range: m.range })),
+      // 高さの入力値と規模の一行（A4 の「何が止まるか」の表の下）。
+      equipment_notes: texts("#sheet-equipment > p"),
+      // 「担当」「補助」の列と、穴の行の「止水材の使い分け」の補足（A4 の処置の表と同じ値）。
+      measures: SimPanel.byTier(building.measures).map((m) => ({ tier: m.tier, label: m.label, decision: m.decision, account: m.account, range: m.range, owner: m.owner || "—", mark: SimPanel.markFor(m, region)[0], note: m.note || "" })),
+      measure_tepco: trRisk ? "" : "東京電力の変圧器の部屋が地下にあり、そこまで水が来るおそれがあると図面と立地で確かめられたら、扉と穴の浸水対策を東京電力パワーグリッドに申し入れます。",
+      // A4 の補助の一行の前の二文（共有の画面には④費用の欄がないので、その案内の文は入れない）。
+      mark_note: "補助の列は、この住所の制度で当たりうるかの印です。申請を勧めるものではありません。",
+      set_of_three: building.rain?.set_of_three || "",
       measure_note: "「理事会で決められる場合がある」は、総会から任されている、規約に定めがある、その年の予算に入っている、のどれかに当たるときのことです。予算だけで足りるかは規約の書き方により確かめていません。管理会社に規約・予算書・総会の議事録で確かめてもらい、当たらなければ総会で決めるか任せてもらいます。",
       rain: last.rain,
       during: last.during,
       days_top: building.fixed.timeline_top,
       days: last.days,
+      // A4 の裏に足した欄。図面とチャットは共有に入れない。
+      after: AFTER_LINES,
+      engineer: {
+        lines: texts("#sheet-engineer > ul > li"),
+        reuse_lead: texts("#sheet-engineer .reuse-lead").join(""),
+        reuse_head: texts("#sheet-engineer .reuse-table thead th"),
+        reuse_rows: [...document.querySelectorAll("#sheet-engineer .reuse-table tbody tr")].map((tr) => [...tr.cells].map((td) => td.textContent)),
+      },
+      // 対象の範囲の一行（A4 の別紙）と、区域の外の一行。
+      scope: texts("#sheet-basis .scope-line, #sheet-basis .scope-outside"),
       // 依頼メモの番号を、共有の画面でも項目の頭に出す。
       memos: building.memos.map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, from: item.no ? `${item.no} ${item.from}` : item.from })) })),
       // 免責と注意書きは、ページの一番下の disclaimers に一度だけ出す。

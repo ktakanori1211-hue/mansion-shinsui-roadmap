@@ -50,7 +50,7 @@ const Knowledge = (() => {
   function coverageTable() {
     const table = element("table", undefined, "slim-table kb-coverage");
     const header = table.createTHead().insertRow();
-    ["領域", "項目", "アプリに既にある", "資料として追加", "機能として追加", "仕様書だけ", "入れない（理由つき）", "見出し"].forEach((name) => header.append(element("th", name)));
+    ["領域", "項目", "アプリに既にある", "資料として追加", "機能として追加", "仕様書だけ（下の全文にある）", "数字・名前を外して要件定義に入れた", "見出し"].forEach((name) => header.append(element("th", name)));
     const body = table.createTBody();
     data.areas.forEach((area) => {
       const row = body.insertRow();
@@ -120,15 +120,26 @@ const Knowledge = (() => {
   function excludedTable() {
     const table = element("table", undefined, "slim-table kb-coverage");
     const header = table.createTHead().insertRow();
-    ["領域", "理由", "数"].forEach((name) => header.append(element("th", name)));
+    ["領域", "外したものの理由", "数", "ノートの項目（要件定義の全文で、この番号の行を読めます）"].forEach((name) => header.append(element("th", name)));
     const body = table.createTBody();
     data.areas.forEach((area) => {
-      Object.entries(data.excluded[area.key] || {}).forEach(([reason, count]) => {
+      Object.entries(data.excluded[area.key] || {}).forEach(([reason, item]) => {
         const row = body.insertRow();
-        row.append(element("td", area.title), element("td", REASON_NAMES[reason] || reason), element("td", String(count)));
+        row.append(element("td", area.title), element("td", REASON_NAMES[reason] || reason), element("td", String(item.count)), element("td", item.ids.join("、"), "kb-ids"));
       });
     });
     return table;
+  }
+
+  // 主任技術者向けの値と注意。住民・理事・管理員向けの本文とは分け、折りたたみに入れる。
+  function engineerBlock() {
+    const box = document.createDocumentFragment();
+    data.engineer.entries.forEach((entry) => box.append(entryCard(entry)));
+    if (data.engineer.requirement_lines.length) {
+      box.append(element("h3", "要件定義のうち、主任技術者向けの行"));
+      data.engineer.requirement_lines.forEach((line) => box.append(element("p", line, "kb-eng-line")));
+    }
+    return box;
   }
 
   // 要件定義の全文。見出しと表の行が分かる程度に、行ごとに出す。
@@ -150,6 +161,7 @@ const Knowledge = (() => {
     document.getElementById("kb-feature-list").replaceChildren(featureTable());
     document.getElementById("kb-excluded").replaceChildren(excludedTable());
     document.getElementById("kb-requirements").replaceChildren(requirementsText());
+    document.getElementById("kb-engineer").replaceChildren(engineerBlock());
     renderControls();
     renderEntries();
   }

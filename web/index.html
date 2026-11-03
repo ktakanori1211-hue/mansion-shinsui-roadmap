@@ -322,10 +322,16 @@
         <div id="kb-entries"></div>
         <h2>ノートに書かれた機能と、アプリでの状態</h2>
         <div class="table-scroll" id="kb-feature-list"></div>
-        <h2>入れなかった項目（理由の区分ごとの数）</h2>
+        <h2>数字・名前を外して要件定義に入れた項目（理由の区分と番号）</h2>
+        <p class="hint">どの項目も要件定義の全文に入っています。外したのは、出典を確かめていない数字や、実在の場所が分かる名前などの部分だけです。</p>
         <div id="kb-excluded"></div>
+        <details class="fold kb-eng">
+          <summary>電気主任技術者の方へ（住民・理事・管理員向けではありません。値だけで電気を戻しません）</summary>
+          <p class="fixed-note strong">ここにある値と注意は、電気主任技術者が判断するための資料です。住民・理事・管理員が測ったり、値を見て電気を戻したり、電気の部屋に近づいたりするためのものではありません。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断します。</p>
+          <div id="kb-engineer"></div>
+        </details>
         <details class="fold kb-req">
-          <summary>要件定義の全文を開く（docs/REQUIREMENTS.md と同じ内容。画面に出さない段取りや、入れなかった理由もここにあります）</summary>
+          <summary>要件定義の全文を開く（docs/REQUIREMENTS.md と同じ内容。主任技術者向けの行は上の折りたたみにあります）</summary>
           <div class="kb-requirements" id="kb-requirements"></div>
         </details>
       </section>
