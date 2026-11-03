@@ -23,6 +23,31 @@ const PlanPanel = (() => {
   let shownPlan = "";
   const tabs = document.getElementById("plan-tabs");
 
+  // 図を押すと、画面いっぱいに大きく出す。ピンを押したときは開かない。
+  image.addEventListener("click", () => {
+    const overlay = element("div", undefined, "drawing-zoom");
+    const big = document.createElement("img");
+    big.src = image.src;
+    big.alt = "図面を大きく表示";
+    const close = element("button", "閉じる（Esc）", "drawing-zoom-close");
+    close.type = "button";
+    const shut = () => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") shut();
+    };
+    close.addEventListener("click", shut);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) shut();
+    });
+    document.addEventListener("keydown", onKey);
+    overlay.append(big, close);
+    document.body.append(overlay);
+    close.focus();
+  });
+
   // 図面の縦横比で、平面図のカードに収まる大きさを決める。
   image.addEventListener("load", () => {
     if (image.naturalHeight) fit.style.setProperty("--plan-ratio", image.naturalWidth / image.naturalHeight);
@@ -217,14 +242,15 @@ const PlanPanel = (() => {
     return found.map((pin) => ({ ...pin, how_water: floors[pin.target] ? `（${floors[pin.target]}）${pin.how_water}` : pin.how_water }));
   }
 
-  // 平面図と、水の入り道の断面図を切り替える。ピンは平面図にだけ立てる。
+  // 平面図、水の入り道の断面図、電気と給水の系統図を切り替える。ピンは平面図にだけ立てる。
   function showDrawing(sample, kind) {
-    const section = kind === "section";
-    image.src = section ? sample.plan.section_png : shownPlan || sample.plan.png;
-    pinsLayer.hidden = section;
-    if (section) pinCard.hidden = true;
+    const plan = kind === "plan";
+    image.src = plan ? shownPlan || sample.plan.png : sample.plan[`${kind}_png`];
+    pinsLayer.hidden = !plan;
+    if (!plan) pinCard.hidden = true;
     tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.drawing === kind));
-    tabs.querySelector(".plan-open").href = section ? sample.plan.section_pdf : sample.plan.pdf;
+    tabs.querySelector(".plan-open").href = plan ? sample.plan.pdf : sample.plan[`${kind}_pdf`];
+    tabs.querySelector(".plan-cad").href = sample.plan.dxf[kind];
   }
 
   function offerDrawings(sample) {
@@ -236,12 +262,11 @@ const PlanPanel = (() => {
       return button;
     };
     const cad = element("a", "CADデータ（DXF）", "plan-cad");
-    cad.href = sample.plan.dxf;
     cad.download = "";
     const full = element("a", "PDFで拡大", "plan-open");
     full.target = "_blank";
     full.rel = "noopener";
-    tabs.replaceChildren(named("平面図", "plan"), named("断面図（水の入り道）", "section"), full, cad);
+    tabs.replaceChildren(named("平面図", "plan"), named("断面図（水の入り道）", "section"), named("系統図（電気と給水）", "system"), full, cad);
     showDrawing(sample, "plan");
   }
 
@@ -280,5 +305,5 @@ const PlanPanel = (() => {
     actions.append(pdf, png, fileLabel, file);
   }
 
-  return { offerSample, showPin, get pins() { return pins; } };
+  return { offerSample, showPin, load, get pins() { return pins; } };
 })();

@@ -133,11 +133,11 @@ SAMPLES = {
         "has_chief_engineer": True,
         "panel_mount": "壁掛け",
         "underground_feed": True,
-        "plan": {"pdf": "samples/plan_a.pdf", "png": "samples/plan_a.png", "section_png": "samples/section_a.png", "section_pdf": "samples/section_a.pdf", "dxf": "samples/drawings_a.dxf"},
+        "plan": {"pdf": "samples/plan_a.pdf", "png": "samples/plan_a.png", "section_png": "samples/section_a.png", "section_pdf": "samples/section_a.pdf", "system_png": "samples/system_a.png", "system_pdf": "samples/system_a.pdf", "dxf": {"plan": "samples/plan_a.dxf", "section": "samples/section_a.dxf", "system": "samples/system_a.dxf"}},
         "report": "samples/report_a.txt",
         "title": "竣工図 地下1階・1階平面図 ※架空の見本",
         "plan_size": (42000, 15000),
-        "plan_frames": {0: (130, 126, 840), 1: (130, 541, 840)},
+        "plan_frames": {0: (90, 105, 900), 1: (90, 530, 900)},
         "grid": {"x": [0, 6000, 12000, 18000, 24000, 30000, 36000, 42000], "y": [0, 7200, 15000]},
         "views": [
             {
@@ -184,19 +184,6 @@ SAMPLES = {
                     {"kind": "conduit", "label": "引込管路", "x": 3000 / 42000, "y": 1.145, "x2": 3000 / 42000, "y2": 1.0},
                 ],
             },
-            {
-                "name": "基準階平面図",
-                "rooms": _rooms(
-                    (42000, 15000),
-                    ("corridor", "共用廊下（外廊下）", 0, 0, 42000, 2400, {"outdoor": True}),
-                    *[(f"unit_{i}", f"{name} type", x, 2400, x + 6000, 13200, {"unit": True}) for i, (name, x) in enumerate(zip("ABCD", (0, 6000, 12000, 18000)))],
-                    ("ev_u", "EV", 24000, 2400, 27000, 5400, {"symbol": "ev", "openings": [_door("top", 25500, "open", 1000)]}),
-                    ("stair_u", "階段", 27000, 2400, 30000, 8400, {"symbol": "stair", "openings": [_door("top", 28500)]}),
-                    ("ps_u", "PS", 24000, 5400, 27000, 8400),
-                    ("void_u", "EPS・吹抜け", 24000, 8400, 30000, 13200),
-                    *[(f"unit_{i}", f"{name} type", x, 2400, x + 6000, 13200, {"unit": True}) for i, (name, x) in enumerate(zip("EF", (30000, 36000)), 4)],
-                ),
-            },
         ],
         "pins": [
             {"key": "ア", "target": "elec", "view": 0, "x": 0.0714, "y": 0.95, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、電気室の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は電気の月次点検の立会いに合わせる）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
@@ -219,11 +206,11 @@ SAMPLES = {
         "has_chief_engineer": False,
         "panel_mount": "架台の上",
         "underground_feed": False,
-        "plan": {"pdf": "samples/plan_b.pdf", "png": "samples/plan_b.png", "section_png": "samples/section_b.png", "section_pdf": "samples/section_b.pdf", "dxf": "samples/drawings_b.dxf"},
+        "plan": {"pdf": "samples/plan_b.pdf", "png": "samples/plan_b.png", "section_png": "samples/section_b.png", "section_pdf": "samples/section_b.pdf", "system_png": "samples/system_b.png", "system_pdf": "samples/system_b.pdf", "dxf": {"plan": "samples/plan_b.dxf", "section": "samples/section_b.dxf", "system": "samples/system_b.dxf"}},
         "report": "samples/report_b.txt",
-        "title": "竣工図 1階・基準階平面図 ※架空の見本",
+        "title": "竣工図 1階平面図 ※架空の見本",
         "plan_size": (30000, 13200),
-        "plan_frames": {0: (160, 110, 720), 1: (160, 622, 720)},
+        "plan_frames": {0: (110, 140, 1150)},
         "grid": {"x": [0, 6000, 12000, 18000, 24000, 30000], "y": [0, 5400, 13200]},
         "views": [
             {
@@ -245,19 +232,6 @@ SAMPLES = {
                     {"kind": "road", "label": "敷地内通路（坂の下の側）", "slope": True},
                     {"kind": "pole", "label": "電柱", "x": -0.022, "y": 1.1, "x2": 0, "y2": 0.86},
                 ],
-            },
-            {
-                "name": "基準階平面図",
-                "rooms": _rooms(
-                    (30000, 13200),
-                    ("unit_1", "A type", 0, 2400, 6000, 11400, {"unit": True}),
-                    ("unit_2", "B type", 6000, 2400, 12000, 11400, {"unit": True}),
-                    ("unit_3", "C type", 12000, 2400, 18000, 11400, {"unit": True}),
-                    ("unit_4", "D type", 18000, 2400, 24000, 11400, {"unit": True}),
-                    ("corridor", "共用廊下（外廊下）", 0, 0, 24000, 2400, {"outdoor": True}),
-                    ("ev_u", "EV", 24000, 0, 27000, 2700, {"symbol": "ev", "openings": [_door("left", 1350, "open", 1000)]}),
-                    ("stair_u", "階段", 27000, 0, 30000, 5400, {"symbol": "stair"}),
-                ),
             },
         ],
         "pins": [
@@ -281,11 +255,11 @@ SAMPLES = {
         "has_chief_engineer": True,
         "panel_mount": "壁掛け",
         "underground_feed": True,
-        "plan": {"pdf": "samples/plan_c.pdf", "png": "samples/plan_c.png", "section_png": "samples/section_c.png", "section_pdf": "samples/section_c.pdf", "dxf": "samples/drawings_c.dxf"},
+        "plan": {"pdf": "samples/plan_c.pdf", "png": "samples/plan_c.png", "section_png": "samples/section_c.png", "section_pdf": "samples/section_c.pdf", "system_png": "samples/system_c.png", "system_pdf": "samples/system_c.pdf", "dxf": {"plan": "samples/plan_c.dxf", "section": "samples/section_c.dxf", "system": "samples/system_c.dxf"}},
         "report": "samples/report_c.txt",
         "title": "竣工図 地下1階・1階平面図 ※架空の見本",
         "plan_size": (36000, 36000),
-        "plan_frames": {0: (125, 170, 470), 1: (695, 170, 470)},
+        "plan_frames": {0: (80, 130, 580), 1: (770, 130, 580)},
         "grid": {"x": [0, 12000, 24000, 36000], "y": [0, 12000, 24000, 36000]},
         "views": [
             {
@@ -331,31 +305,6 @@ SAMPLES = {
                     {"kind": "hh", "label": "HH（東電・高圧）", "x": 3000 / 36000, "y": 1.055},
                     {"kind": "conduit", "label": "引込管路", "x": 3000 / 36000, "y": 1.055, "x2": 3000 / 36000, "y2": 1.0},
                 ],
-            },
-            {
-                "name": "基準階平面図",
-                "balcony_ring": True,
-                "rooms": _rooms(
-                    (36000, 36000),
-                    ("unit_1", "A type", 1800, 1800, 13800, 9000, {"unit": True, "unit_door": _door("bottom", 11500)}),
-                    ("unit_2", "B type", 13800, 1800, 22200, 9000, {"unit": True, "unit_door": _door("bottom", 18000)}),
-                    ("unit_3", "C type", 22200, 1800, 34200, 9000, {"unit": True, "unit_door": _door("bottom", 24500)}),
-                    ("unit_4", "D type", 1800, 27000, 13800, 34200, {"unit": True, "unit_door": _door("top", 11500)}),
-                    ("unit_5", "E type", 13800, 27000, 22200, 34200, {"unit": True, "unit_door": _door("top", 18000)}),
-                    ("unit_6", "F type", 22200, 27000, 34200, 34200, {"unit": True, "unit_door": _door("top", 24500)}),
-                    ("unit_7", "G type", 1800, 9000, 9000, 15000, {"unit": True, "unit_door": _door("right", 12000)}),
-                    ("unit_8", "H type", 1800, 15000, 9000, 21000, {"unit": True, "unit_door": _door("right", 18000)}),
-                    ("unit_9", "I type", 1800, 21000, 9000, 27000, {"unit": True, "unit_door": _door("right", 24000)}),
-                    ("unit_10", "J type", 27000, 9000, 34200, 15000, {"unit": True, "unit_door": _door("left", 12000)}),
-                    ("unit_11", "K type", 27000, 15000, 34200, 21000, {"unit": True, "unit_door": _door("left", 18000)}),
-                    ("unit_12", "L type", 27000, 21000, 34200, 27000, {"unit": True, "unit_door": _door("left", 24000)}),
-                    ("corridor_n", "内廊下", 9000, 9000, 27000, 13000),
-                    ("corridor_s", "内廊下", 9000, 23000, 27000, 27000),
-                    ("corridor_w", "", 9000, 13000, 12000, 23000),
-                    ("corridor_e", "", 24000, 13000, 27000, 23000),
-                    ("ev_u", "EV", 12000, 13000, 18000, 23000, {"symbol": "ev_bank", "openings": [_door("top", 15000, "open", 2400)]}),
-                    ("stair_u", "階段", 18000, 13000, 24000, 23000, {"symbol": "stair", "openings": [_door("top", 21000)]}),
-                ),
             },
         ],
         "pins": [
@@ -423,6 +372,9 @@ def base_for_answers(answers: dict, fallback: Optional[str] = None) -> str:
         return "b"
     if (answers.get("floors") or 0) >= 20:
         return "c"
+    # 画面で選んだ「近い形」は、質問の答えより弱い手がかりとして使う。
+    if answers.get("type") in SAMPLES:
+        return answers["type"]
     return fallback if fallback in ("a", "c") else "a"
 
 

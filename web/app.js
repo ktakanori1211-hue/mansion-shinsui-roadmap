@@ -137,6 +137,8 @@ const App = {
   water: 3,
   measure: "plate",
   stage: "1",
+  // 見本でない建物は、図面を入れるか近い形を選ぶまで図面と3Dを出さない。
+  shapeChosen: false,
 
   roomName(key) {
     return { elec: "電気室（受電の箱の部屋）", pump: "ポンプの部屋", panel_room: "おおもとのスイッチ盤の部屋", tank: "地下の貯留タンク", gen: "非常用発電機の部屋", park: "機械式駐車場の掘り込み", slope: "車路スロープ" }[key] || key;
@@ -177,9 +179,11 @@ const App = {
       this.answers = { basement: "unknown", floors: this.hints.floors || null, built_year: this.hints.built_year || null };
     }
     await this.loadBuilding();
-    ["plan-card", "model-card", "model-lower", "step-result", "step-building", "sim-card", "consult-card", "top-banner"].forEach((id) => {
+    this.shapeChosen = Boolean(this.sampleId);
+    ["sim-card", "consult-card"].forEach((id) => {
       document.getElementById(id).hidden = false;
     });
+    this.showShape();
     document.getElementById("stage2-empty").hidden = true;
     document.getElementById("stage4-empty").hidden = true;
     document.getElementById("chat-toggle").hidden = !document.getElementById("chat").hidden;
@@ -195,6 +199,22 @@ const App = {
     ModelPanel.renderControls();
     this.loadModel();
     this.refresh();
+  },
+
+  showShape() {
+    ["plan-card", "model-card", "model-lower", "step-result", "step-building", "top-banner"].forEach((id) => {
+      document.getElementById(id).hidden = !this.shapeChosen;
+    });
+    document.getElementById("type-chooser").hidden = this.shapeChosen;
+    this.fitStage2();
+    window.dispatchEvent(new Event("resize"));
+  },
+
+  async chooseShape(type) {
+    this.answers = { ...(this.answers || {}), type };
+    this.shapeChosen = true;
+    await this.rebuild();
+    this.showShape();
   },
 
   // 答えを変えたときは、図面の確認を残して組み直す。
@@ -343,7 +363,8 @@ const App = {
     document.querySelectorAll("#stage-tabs button").forEach((button) => {
       button.classList.toggle("active", button.dataset.tab === this.stage);
     });
-    document.getElementById("why-bar").classList.toggle("is-hidden", this.stage !== "1" && this.stage !== "all");
+    document.getElementById("why-bar").classList.toggle("is-hidden", this.stage !== "1" || !this.locationState);
+    document.getElementById("hero").classList.toggle("is-hidden", Boolean(this.locationState));
     HazardMap.refresh();
     this.fitStage2();
     window.dispatchEvent(new Event("resize"));
@@ -399,6 +420,7 @@ function renderLocation(state) {
   HazardMap.show(state, mapElements, movePin);
   TerrainChart.render(document.getElementById("terrain"), location.reading, site);
   App.locationState = state;
+  App.showStage(App.stage);
   App.startBuilding();
 }
 
@@ -584,6 +606,39 @@ async function loadDemoPoints() {
   }
 }
 
+// 近い形の選択肢。図は見本の平面図を小さく見せる。
+const SHAPES = [
+  ["a", "板状で、地下に機器", "中〜大規模。地下に電気室やポンプ室がある"],
+  ["b", "小規模で、1階に機器", "地下がなく、電気やポンプの部屋が1階にある"],
+  ["c", "タワーで、地下に機器", "20階建て以上。地下に受変電室や発電機がある"],
+];
+
+function renderShapeOptions() {
+  const box = document.getElementById("type-options");
+  box.replaceChildren(
+    ...SHAPES.map(([type, name, note]) => {
+      const button = element("button", undefined, "type-option");
+      button.type = "button";
+      const image = document.createElement("img");
+      image.src = `samples/plan_${type}.png`;
+      image.alt = "";
+      button.append(image, element("strong", name), element("span", note));
+      button.addEventListener("click", () => App.chooseShape(type));
+      return button;
+    }),
+  );
+}
+renderShapeOptions();
+
+document.getElementById("type-file").addEventListener("change", async (event) => {
+  const chosen = event.target.files[0];
+  if (!chosen) return;
+  if (!window.confirm("この図面は回答を作るために Anthropic の API へ送ります（API キーを設定しているときだけ）。続けますか？")) return;
+  App.shapeChosen = true;
+  App.showShape();
+  PlanPanel.load(await chosen.arrayBuffer(), chosen.type, null);
+});
+
 window.addEventListener("model3d-ready", () => {
   if (App.building) App.loadModel();
 });
@@ -600,9 +655,11 @@ function renderClaudeStatus(status) {
     toggle.disabled = !local || status.key_source === "env";
     keyForm.hidden = true;
   } else {
-    statusText.textContent = "⚪ API キー未設定（説明カードと定型文で動きます）";
-    toggle.hidden = true;
-    keyForm.hidden = !local;
+    statusText.textContent = "⚪ APIキーなし（説明カードで動きます）";
+    toggle.textContent = "APIキーを設定";
+    toggle.hidden = !local;
+    toggle.disabled = false;
+    keyForm.hidden = true;
   }
 }
 

@@ -44,6 +44,8 @@ class PlanView:
         self.sheet, self.spec, self.size, self.grid = sheet, spec, size, grid
         self.view = View(left, top, scale)
         self.rooms = spec["rooms"]
+        # 図が大きいほど小さな文字も大きくする。0.02 px/mm を基準にする。
+        self.zoom = max(1.0, min(1.6, scale / 0.02))
 
     def px(self, x, y):
         return self.view.x(x), self.view.y(y)
@@ -56,7 +58,7 @@ class PlanView:
         self.sheet.rect(px, py, (x1 - x0) * self.view.scale, (y1 - y0) * self.view.scale, layer)
 
     def label(self, x, y, value, size=8, layer="文字", bold=False):
-        self.sheet.text(*self.px(x, y), value, size, layer=layer, bold=bold)
+        self.sheet.text(*self.px(x, y), value, size * self.zoom, layer=layer, bold=bold)
 
     # 通り芯と寸法
 
@@ -233,7 +235,7 @@ class PlanView:
         elif kind == "panel_stand":
             self.box(x0 + w * 0.15, y1 - h * 0.34, x1 - w * 0.15, y1 - h * 0.14)
             self.box(x0 + w * 0.1, y1 - h * 0.38, x1 - w * 0.1, y1 - h * 0.11, "シャッター")
-            self.label(cx, y1 - h * 0.24, "共用部の盤（架台の上）", 7)
+            self.label(cx, y1 - h * 0.24, "おおもとのスイッチ盤（架台の上）", 7)
         elif kind == "water_tank":
             self.box(x0 + w * 0.2, y1 - h * 0.42, x1 - w * 0.2, y1 - h * 0.12)
             self.label(cx, y1 - h * 0.27, "受水槽", 8)
@@ -317,7 +319,7 @@ class PlanView:
             if not room["label"]:
                 continue
             width = (x1 - x0) * self.view.scale
-            size = _fit_label(room["label"], width)
+            size = _fit_label(room["label"], width, 13 * self.zoom + 2)
             y = (y0 + y1) / 2
             if room.get("symbol") in ("cubicle", "transformer", "pump", "pump_stand", "panel_stand", "water_tank", "generator"):
                 y = y0 + (y1 - y0) * 0.3
@@ -438,10 +440,11 @@ LEGEND = [
 ]
 
 
-def legend(sheet, x, y, aerial=False):
-    sheet.text(x, y, "凡例", 10, "start", bold=True)
+def legend(sheet, x0, y0, aerial=False, columns=False):
+    sheet.text(x0, y0, "凡例", 11, "start", bold=True)
     for i, (kind, name) in enumerate(LEGEND):
-        yy = y + 20 + i * 19
+        x = x0 + (i % 3) * 200 if columns else x0
+        yy = y0 + 24 + (i // 3) * 24 if columns else y0 + 22 + i * 22
         if kind == "wall":
             sheet.solid_rect(x, yy - 2, 30, 4, "壁")
         elif kind == "column":
@@ -455,13 +458,13 @@ def legend(sheet, x, y, aerial=False):
             sheet.line(x, yy, x + 30, yy, "敷地")
         elif kind == "conduit":
             sheet.line(x, yy, x + 30, yy, "引込")
-        sheet.text(x + 40, yy, "引込線（空中）" if aerial and kind == "conduit" else name, 9.5, "start")
+        sheet.text(x + 40, yy, "引込線（空中）" if aerial and kind == "conduit" else name, 11, "start")
 
 
 def frame_and_title(sheet, sample, drawing_name, number, scale_text):
     sheet.rect(16, 16, PLAN_WIDTH - 32, PLAN_HEIGHT - 32, "図枠", 2)
     sheet.text(PLAN_WIDTH - 36, 40, "※架空の見本です。実在の建物の図面ではありません。", 13, "end", bold=True)
-    x, y, w = PLAN_WIDTH - 396, PLAN_HEIGHT - 124, 376
+    x, y, w = PLAN_WIDTH - 356, PLAN_HEIGHT - 124, 336
     rows = [("工事名称", f"{sample['name']} 新築工事"), ("図面名称", drawing_name), ("縮尺", scale_text), ("図番", number)]
     sheet.rect(x, y, w, 104, "図枠", 1.6)
     for i, (name, value) in enumerate(rows):
@@ -473,69 +476,59 @@ def frame_and_title(sheet, sample, drawing_name, number, scale_text):
     sheet.line(x + 60, y, x + 60, y + 104, "図枠", 0.8)
 
 
-def plan_sheet(sample, world_y=0.0):
+def plan_sheet(sample):
     W, H = sample["plan_size"]
     frames = sample["plan_frames"]
     scale = frames[0][2] / W
-    sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, scale, world_y)
-    number = {"a": "A-101", "b": "A-111", "c": "A-121"}[sample["id"]]
-    frame_and_title(sheet, sample, sample["title"].replace(" ※架空の見本", ""), number, "S=1/100（用紙に合わせて縮小）")
+    sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, scale)
+    frame_and_title(sheet, sample, "竣工図 平面図（機器のある階と1階）", f"A-1{'01' if sample['id'] == 'a' else '11' if sample['id'] == 'b' else '21'}", "S=1/100（用紙に合わせて縮小）")
     for index, (left, top, width) in frames.items():
         spec = sample["views"][index]
-        plan = PlanView(sheet, spec, left, top, scale, (W, H), sample["grid"])
-        plan.draw("S=1/100")
-        extra = 98 if any(m["kind"] == "road" for m in spec.get("marks", [])) else 24
+        PlanView(sheet, spec, left, top, scale, (W, H), sample["grid"]).draw("S=1/100")
+        extra = 100 if any(m["kind"] == "road" for m in spec.get("marks", [])) else 26
         title_of(sheet, left + width / 2, top + H * scale + extra, spec["name"], "S=1/100")
-    if sample["id"] == "c":
-        legend(sheet, 130, 790)
-        north(sheet, 330, 830)
-        sheet.text(420, 810, "タワー型（内廊下・中央コア）。\n機器は地下1階にまとまる例で、機器の構成は一例です。\n壁の穴の止水の有無は図から分かりません。", 11, "start")
+    if sample["id"] == "a":
+        north(sheet, 1110, 120)
+        legend(sheet, 1070, 190)
     else:
-        lx = frames[0][0] + frames[0][2] + 56
-        north(sheet, lx + 40, 160)
-        legend(sheet, lx, 230, aerial=sample["id"] == "b")
-        kind = "板状型（外廊下）で、\n機器が地下1階にある例です。\n壁の穴の止水の有無は\n図から分かりません。" if sample["id"] == "a" else "小規模（外廊下）で、\n機器が1階にある例です。\n空中からの引込みの例です。"
-        sheet.text(lx, 420, kind, 11, "start")
+        north(sheet, 70 + 40, 850)
+        legend(sheet, 200, 836, aerial=sample["id"] == "b", columns=True)
     return sheet
 
 
 # 水の入り道の断面
 
-def _levels(sheet, x, y, sample, second=None):
-    """断面の読み方。水の位置、ピンの意味、図から分からないこと。"""
-    sheet.text(x, y, "水の位置（画面の①②③と同じ）", 10.5, "start", bold=True)
-    yy = y + 20
-    for level in WATER_LEVELS:
-        sheet.circle(x + 9, yy, 9, "水の入り道")
-        sheet.text(x + 9, yy, level["label"].replace("①", "1").replace("②", "2").replace("③", "3"), 9, color="#0277bd", bold=True)
-        text = level["text"]
-        lines = [text[i:i + 26] for i in range(0, len(text), 26)]
-        for j, line in enumerate(lines):
-            sheet.text(x + 24, yy + j * 13, line, 9.5, "start")
-        yy += 12 + 13 * len(lines)
-    sheet.text(x, yy + 2, "破線は模式で、高さの値ではありません。", 9.5, "start", color="#0277bd", bold=True)
-    sheet.text(x, yy + 15, "全部の部屋が同じ高さになるという意味でもありません。", 9.5, "start", color="#0277bd", bold=True)
-    yy += 36
-    if second:
-        x, yy = second
-    sheet.text(x, yy, "図の印", 10.5, "start", bold=True)
-    yy += 16
-    for pin in sample["pins"]:
-        sheet.text(x, yy, f"{pin['key']}　{pin['title']}", 9.5, "start")
-        yy += 14
-    notes = ["青の矢印は水の入り道です。青い文字は場所の名前です。"]
-    if sample["underground_feed"]:
-        notes.append("壁の穴の止水の有無は、この図から分かりません。")
-    notes += ["借室への引込みの経路は建物側から分からないので描いていません。", "ポンプの盤が浸かると給水が止まります。受電の箱とは別のものです。", "機器の構成は一例です。"]
-    yy += 4
-    for note in notes:
-        sheet.text(x, yy, note, 9, "start")
-        yy += 12
-
-
 def _pin(sheet, x, y, key):
-    sheet.circle(x, y, 11, "図枠")
-    sheet.text(x, y, key, 11, bold=True)
+    sheet.circle(x, y, 13, "図枠")
+    sheet.text(x, y, key, 13, bold=True)
+
+
+def _level_mark(sheet, x, y, key):
+    sheet.circle(x, y, 10, "水の入り道")
+    sheet.text(x, y, str(key), 10.5, color="#0277bd", bold=True)
+
+
+def _section_key(sheet, sample, x, y):
+    """断面の読み方を短く。長い説明は書かない。"""
+    sheet.text(x, y, "水の位置（画面の①②③）", 12, "start", bold=True)
+    short = {1: "道路・スロープ・壁の穴に達した", 2: "一番低い床に達した", 3: "盤・受電の箱の下端に達した"}
+    if not sample["underground_feed"]:
+        short[1], short[3] = "前の道路・坂下の扉に達した", "架台の上の盤の下端に達した"
+    for i in (1, 2, 3):
+        _level_mark(sheet, x + 10, y + 26 * i, i)
+        sheet.text(x + 28, y + 26 * i, short[i], 11, "start")
+    notes = ["破線は模式。高さの値ではありません。", "部屋ごとに同じ高さになるとは限りません。", "借室の中の機器の高さは分かりません。"]
+    if sample["underground_feed"]:
+        notes.append("壁の穴の止水の有無は図から分かりません。")
+    for i, note in enumerate(notes):
+        sheet.text(x, y + 108 + 16 * i, note, 10.5, "start", color="#0277bd", bold=i == 0)
+    entries = {"elec", "slope", "door", "tank"}
+    columns = ((x + 420, "水の入り道", [p for p in sample["pins"] if p["target"] in entries]), (x + 720, "水に弱い設備", [p for p in sample["pins"] if p["target"] not in entries]))
+    for px, heading, pins in columns:
+        sheet.text(px, y, heading, 12, "start", bold=True)
+        for i, pin in enumerate(pins):
+            _pin(sheet, px + 13, y + 28 + 30 * i, pin["key"])
+            sheet.text(px + 34, y + 28 + 30 * i, pin["title"], 11, "start")
 
 
 def section_underground(sheet, sample, view, left, base):
@@ -544,109 +537,102 @@ def section_underground(sheet, sample, view, left, base):
     X = lambda mm: left + mm * s
     Z = lambda mm: base - mm * s
     has_gen = sample["id"] == "c"
-    wall = 300
-    build_left, build_right = 10000, 37000 if has_gen else 34500
-    upper_right = 27500 if has_gen else build_right
-    floor_1, b1, slab = 500, -3800, 300
-    tops = [floor_1 + 3400, floor_1 + 6400]
-    pipe = -1500
-    # 道路と地面
-    sheet.line(X(0), Z(0), X(6000), Z(0), "道路", 1.6)
-    sheet.line(X(6000), Z(150), X(build_left), Z(150), "道路", 1.6)
-    sheet.line(X(6000), Z(0), X(6000), Z(150), "道路", 1.6)
-    sheet.text(X(3000), Z(0) - 11, "公道（前面道路）", 9.5, layer="道路", bold=True)
-    sheet.text(X(8200), Z(150) - 11, "歩道", 9.5, layer="道路", bold=True)
-    sheet.hatch(X(0), Z(0) + 2, X(7200) - X(0), Z(-5200) - Z(0) - 2, gap=18)
-    sheet.hatch(X(8300), Z(0) + 2, X(build_left) - X(8300), Z(-5200) - Z(0) - 2, gap=18)
-    # 建物の床と壁
-    sheet.solid_rect(X(build_left), Z(floor_1), X(upper_right) - X(build_left), slab * s, "壁")
-    if upper_right < build_right:
-        sheet.solid_rect(X(upper_right), Z(floor_1), X(build_right) - X(upper_right), slab * s, "壁")
-    sheet.solid_rect(X(build_left), Z(tops[0]), X(upper_right) - X(build_left), slab * s, "壁")
-    sheet.solid_rect(X(build_left), Z(b1), X(build_right) - X(build_left), slab * s, "壁")
-    sheet.solid_rect(X(build_left), Z(tops[-1]), wall * s, Z(b1 - slab) - Z(tops[-1]), "壁")
-    sheet.solid_rect(X(upper_right - wall), Z(tops[-1]), wall * s, Z(floor_1) - Z(tops[-1]), "壁")
-    # 地下の右の壁は、スロープの口を開ける。
-    sheet.solid_rect(X(build_right - wall), Z(floor_1), wall * s, Z(-900) - Z(floor_1), "壁")
-    sheet.line(X(build_left), Z(tops[-1]), X(upper_right), Z(tops[-1]), "図枠", 1)
-    middle = (X(build_left) + X(upper_right)) / 2
-    sheet.text(middle, Z(tops[-1]) - 11, f"3階より上は省略（全{sample['floors']}階建て）", 9.5)
-    sheet.text(middle, (Z(floor_1) + Z(tops[0])) / 2, "1階（管理員室、エントランス）" if not has_gen else "1階（防災センター、エントランスホール）", 10)
-    sheet.text(middle, (Z(tops[0]) + Z(tops[1])) / 2, "2階（住戸）", 10)
-    # 地下の部屋
+    wall, slab = 300, 300
+    build_left = 9000
     if has_gen:
-        walls = [(10300, "受変電室"), (17000, "借室"), (20000, "発電機室"), (23300, "給水ポンプ室"), (27500, "雨水貯留槽"), (31500, "車路")]
+        rooms = [(9300, "受変電室"), (14500, "借室"), (18000, "発電機室"), (21000, "給水ポンプ室"), (25000, "雨水貯留槽"), (28500, "車路")]
+        build_right, upper_right = 32500, 25000
     else:
-        walls = [(10300, "電気室"), (17000, "借室"), (21500, "給水ポンプ室"), (26500, "車路")]
-    for i, (x, name) in enumerate(walls):
-        room_end = walls[i + 1][0] if i + 1 < len(walls) else build_right
+        rooms = [(9300, "電気室"), (15000, "借室"), (19000, "給水ポンプ室"), (23500, "車路")]
+        build_right, upper_right = 28500, 28500
+    floor_1, top_2, b1 = 500, 4300, -4500
+    level_3 = b1 + 1300
+    pipe = -1400
+    slope_top = build_right + 5500
+    # 道路と土
+    sheet.line(X(0), Z(0), X(5000), Z(0), "道路", 2)
+    sheet.line(X(5000), Z(0), X(5000), Z(150), "道路", 2)
+    sheet.line(X(5000), Z(150), X(build_left), Z(150), "道路", 2)
+    sheet.text(X(2500), Z(0) - 14, "公道（前面道路）", 12, layer="道路", bold=True)
+    sheet.text(X(8000), Z(150) - 14, "歩道", 12, layer="道路", bold=True)
+    sheet.hatch(X(0), Z(0) + 2, X(5900) - X(0), Z(b1 - 600) - Z(0) - 2, gap=20)
+    sheet.hatch(X(7000), Z(0) + 2, X(build_left) - X(7000), Z(b1 - 600) - Z(0) - 2, gap=20)
+    # 建物
+    sheet.solid_rect(X(build_left), Z(floor_1), X(build_right) - X(build_left), slab * s, "壁")
+    sheet.solid_rect(X(build_left), Z(top_2), X(upper_right) - X(build_left), slab * s, "壁")
+    sheet.solid_rect(X(build_left), Z(b1), X(build_right) - X(build_left), slab * s, "壁")
+    sheet.solid_rect(X(build_left), Z(top_2 + 700), wall * s, Z(b1 - slab) - Z(top_2 + 700), "壁")
+    sheet.solid_rect(X(upper_right - wall), Z(top_2 + 700), wall * s, Z(floor_1) - Z(top_2 + 700), "壁")
+    sheet.solid_rect(X(build_right - wall), Z(floor_1), wall * s, Z(-1200) - Z(floor_1), "壁")
+    sheet.line(X(build_left), Z(top_2 + 700), X(upper_right), Z(top_2 + 700), "図枠", 1)
+    middle = (X(build_left) + X(upper_right)) / 2
+    sheet.text(middle, Z(top_2 + 700) - 14, f"2階より上は省略（全{sample['floors']}階建て）", 11)
+    sheet.text(middle, (Z(floor_1) + Z(top_2)) / 2, "1階", 13, bold=True)
+    for i, (x, name) in enumerate(rooms):
         if i:
             sheet.solid_rect(X(x), Z(floor_1 - slab), 150 * s, Z(b1) - Z(floor_1 - slab), "壁")
-        sheet.text((X(x) + X(room_end)) / 2, Z(-250), name, 10.5, bold=True)
+        room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
+        sheet.text((X(x) + X(room_end)) / 2, Z(-350), name, 14, bold=True)
+    sheet.text(X(build_left) + 12, Z(floor_1) - 12, "1FL", 11, "start", layer="寸法")
+    sheet.text(X(build_left) - 8, Z(b1) + 4, "地下1階FL", 11, "end", layer="寸法")
+    sheet.text(X(0) - 6, Z(0), "GL", 11, "end", layer="寸法")
     # 機器
-    cub_x = 14000
-    level_3 = b1 + 1100
-    sheet.rect(X(cub_x), Z(b1 + 2600), 2700 * s, 1500 * s, "設備")
-    sheet.line(X(cub_x + 300), Z(level_3), X(cub_x + 300), Z(b1), "設備")
-    sheet.line(X(cub_x + 2400), Z(level_3), X(cub_x + 2400), Z(b1), "設備")
-    sheet.text(X(cub_x + 1350), Z(b1 + 1850), "受電の箱\n（キュービクル）", 8.5)
-    tr_x = 17600
-    tr_w = 2000 if has_gen else 3200
-    sheet.rect(X(tr_x), Z(b1 + 2300), tr_w * s, 1200 * s, "設備")
-    sheet.text(X(tr_x + tr_w / 2 + 200), Z(b1 + 1700), "？", 14, bold=True)
-    sheet.text(X(tr_x + tr_w / 2), Z(-1000), "中は建物側から\n分からない", 8)
-    pump_start = walls[3][0] if has_gen else walls[2][0]
-    sheet.circle(X(pump_start + 900), Z(b1 + 450), 450 * s, "設備")
-    sheet.text(X(pump_start + 1700), Z(b1 + 450), "ポンプ", 8)
-    sheet.rect(X(pump_start + 2600), Z(level_3 + 1000), 900 * s, 1000 * s, "設備")
-    sheet.text(X(pump_start + 2300), Z(-1050), "制御盤（壁掛け）", 8)
+    elec_end = rooms[1][0]
+    cub_x, cub_w = elec_end - 3400, 2800
+    sheet.rect(X(cub_x), Z(level_3 + 1600), cub_w * s, 1600 * s, "設備")
+    for leg in (cub_x + 300, cub_x + cub_w - 300):
+        sheet.line(X(leg), Z(level_3), X(leg), Z(b1), "設備")
+    sheet.text(X(cub_x + cub_w / 2), Z(level_3 + 800), "受変電設備" if has_gen else "受電の箱\n（キュービクル）", 11)
+    tr_x, tr_end = rooms[1][0] + 400, rooms[2][0] - 400
+    sheet.rect(X(tr_x), Z(level_3 + 1300), (tr_end - tr_x) * s, 1300 * s, "設備")
+    sheet.text((X(tr_x) + X(tr_end)) / 2 + 16, Z(level_3 + 650), "？", 18, bold=True)
+    sheet.text((X(tr_x) + X(tr_end)) / 2, Z(-1100), "中は建物側から\n分からない", 10.5)
+    pump_room = rooms[3][0] if has_gen else rooms[2][0]
+    sheet.circle(X(pump_room + 1000), Z(b1 + 500), 500 * s, "設備")
+    sheet.text(X(pump_room + 1700), Z(b1 + 450), "ポンプ", 10.5, "start")
+    sheet.rect(X(pump_room + 2700), Z(level_3 + 1100), 1000 * s, 1100 * s, "設備")
+    sheet.text(X(pump_room + 2300), Z(level_3 + 1450), "制御盤（壁掛け）", 10.5)
     if has_gen:
-        sheet.rect(X(20400), Z(b1 + 1300), 2500 * s, 1300 * s, "設備")
-        sheet.text(X(21650), Z(b1 + 650), "発電機", 8.5)
-        _water_lines(sheet, X(27650), Z(b1 + 2000), X(31500) - X(27650), 2000 * s)
-    # 引込
-    hh_x, hh_top, hh_bottom = 7300, 150, -2000
-    sheet.rect(X(hh_x), Z(hh_top), 900 * s, (hh_top - hh_bottom) * s, "引込", 1.6)
-    sheet.text(X(hh_x + 900), Z(hh_top) - 27, "歩道ぎわの蓋（HH）", 9, "end", layer="寸法", bold=True)
-    sheet.line(X(hh_x + 900), Z(pipe), X(build_left), Z(pipe), "引込")
-    sheet.text(X(9100), Z(pipe) + 14, "電線の管", 8.5, layer="寸法")
-    sheet.circle(X(build_left + 150), Z(pipe), 6, "引込")
-    sheet.text(X(build_left + 400), Z(-2340), "ケーブルを通す壁の穴", 8.5, "start", layer="寸法", bold=True)
-    sheet.line(X(build_left + 300), Z(pipe), X(cub_x), Z(pipe), "引込")
+        sheet.rect(X(18400), Z(b1 + 1500), 2200 * s, 1500 * s, "設備")
+        sheet.text(X(19500), Z(b1 + 750), "発電機", 11)
+        _water_lines(sheet, X(25150), Z(b1 + 2200), X(28400) - X(25150), 2200 * s, 11)
+    # 引込（HH → 管 → 壁の穴 → 受電の箱）
+    hh_x, hh_w = 5900, 1100
+    sheet.rect(X(hh_x), Z(150), hh_w * s, 2100 * s, "引込", 2)
+    sheet.text(X(hh_x + hh_w / 2), Z(150) - 34, "歩道ぎわの蓋（HH）", 11.5, layer="寸法", bold=True)
+    sheet.line(X(hh_x + hh_w), Z(pipe), X(build_left), Z(pipe), "引込", 2.4)
+    sheet.text(X(8000), Z(pipe) + 30, "電線の管", 11, layer="寸法")
+    sheet.circle(X(build_left + 150), Z(pipe), 7, "引込")
+    sheet.line(X(build_left + 300), Z(pipe), X(cub_x + 300), Z(pipe), "引込", 2.4)
+    sheet.line(X(cub_x + 300), Z(pipe), X(cub_x + 300), Z(level_3 + 1600), "引込", 2.4)
+    sheet.text(X(build_left + 500), Z(pipe) - 14, "ケーブルを通す壁の穴", 11, "start", layer="寸法", bold=True)
     # 水の入り道
-    sheet.arrow(X(4200), Z(0) + 8, X(7100), Z(-1100), "水の入り道")
-    sheet.arrow(X(hh_x + 950), Z(pipe - 230), X(build_left + 1000), Z(pipe - 230), "水の入り道")
-    _pin(sheet, X(build_left + 1700), Z(pipe - 230), "ア")
-    _pin(sheet, X(tr_x + tr_w / 2 - 500), Z(b1 + 1700), "エ")
-    _pin(sheet, X(pump_start + 2000), Z(level_3 + 500), "イ")
-    # スロープ
-    slope_top = 40000
-    sheet.line(X(build_right), Z(b1 + 200), X(slope_top), Z(150), "道路", 1.6)
-    sheet.line(X(slope_top), Z(150), X(slope_top + 2300), Z(150), "道路", 1.6)
-    sheet.text(X(slope_top + 1100), Z(150) - 12, "車路の入口", 9, layer="道路", bold=True)
-    mx, mz = (X(build_right) + X(slope_top)) / 2, (Z(b1 + 200) + Z(150)) / 2
-    sheet.text(mx + 16, mz + 26, "車路スロープ", 9, "start", layer="道路", bold=True)
-    sheet.arrow(X(slope_top) - 6, Z(150) - 8, X(build_right) - 6, Z(b1 + 900), "水の入り道")
+    sheet.arrow(X(3900), Z(0) + 10, X(hh_x + 300), Z(-600), "水の入り道", 12)
+    sheet.arrow(X(hh_x + hh_w + 100), Z(pipe - 350), X(build_left + 1700), Z(pipe - 350), "水の入り道", 12)
+    _pin(sheet, X(build_left + 2200), Z(pipe - 350), "ア")
+    _pin(sheet, (X(tr_x) + X(tr_end)) / 2 - 22, Z(level_3 + 650), "エ")
+    _pin(sheet, X(pump_room + 2100), Z(level_3 + 500), "イ")
+    sheet.line(X(build_right), Z(b1 + 300), X(slope_top), Z(150), "道路", 2)
+    sheet.line(X(slope_top), Z(150), X(slope_top + 2200), Z(150), "道路", 2)
+    sheet.text(X(slope_top + 1100), Z(150) - 14, "車路の入口", 12, layer="道路", bold=True)
+    mx, mz = (X(build_right) + X(slope_top)) / 2, (Z(b1 + 300) + Z(150)) / 2
+    sheet.text(mx + 20, mz + 30, "車路スロープ", 12, "start", layer="道路", bold=True)
+    sheet.arrow(X(slope_top) - 8, Z(150) - 10, X(build_right) - 10, Z(b1 + 1100), "水の入り道", 12)
     if has_gen:
-        basin = X(31000)
-        sheet.rect(basin - 9, Z(floor_1) - 12, 18, 12, "寸法", 1.6)
-        sheet.text(basin, Z(floor_1) - 24, "敷地の雨水ます", 8.5, layer="寸法", bold=True)
-        sheet.arrow(basin, Z(floor_1 - slab) + 2, basin, Z(b1 + 2100), "水の入り道")
-        _pin(sheet, basin - 26, Z(-1400), "ウ")
+        basin = X(27600)
+        sheet.rect(basin - 11, Z(floor_1) - 14, 22, 14, "寸法", 2)
+        sheet.text(basin, Z(floor_1) - 28, "敷地の雨水ます", 11.5, layer="寸法", bold=True)
+        sheet.arrow(basin, Z(floor_1 - slab) + 2, basin, Z(b1 + 2300), "水の入り道", 12)
+        _pin(sheet, basin - 32, Z(-1600), "ウ")
+        sheet.text(basin + 14, Z(-2100), "満水で\nあふれる", 10, "start", layer="寸法")
+        sheet.text(mx + 20, mz + 48, "（ここからも入る）", 11, "start", layer="寸法")
     else:
-        _pin(sheet, mx - 24, mz - 22, "ウ")
+        _pin(sheet, mx - 30, mz - 26, "ウ")
     # 水の位置
-    marker = walls[-1][0] + 1400
-    for key, z in ((2, b1 + 120), (3, level_3)):
+    for key, z in ((2, b1 + 150), (3, level_3)):
         sheet.line(X(build_left + 300), Z(z), X(build_right - 300), Z(z), "水の位置")
-        sheet.circle(X(marker), Z(z), 8.5, "水の入り道")
-        sheet.text(X(marker), Z(z), str(key), 8.5, color="#0277bd", bold=True)
-    sheet.circle(X(5200), Z(0) - 15, 8.5, "水の入り道")
-    sheet.text(X(5200), Z(0) - 15, "1", 8.5, color="#0277bd", bold=True)
-    # 高さの記号
-    sheet.text(X(0) - 6, Z(0), "GL", 9, "end", layer="寸法")
-    sheet.text(X(build_left) - 6, Z(floor_1) - 8, "1FL", 9, "end", layer="寸法")
-    sheet.text(X(build_left) - 6, Z(b1) + 2, "地下1階FL", 9, "end", layer="寸法")
+        _level_mark(sheet, X(rooms[-1][0] + 1600), Z(z), key)
+    _level_mark(sheet, X(4500), Z(0) - 16, 1)
 
 
 def section_hillside(sheet, sample, view, left, base):
@@ -654,110 +640,230 @@ def section_hillside(sheet, sample, view, left, base):
     s = view.scale
     X = lambda mm: left + mm * s
     Z = lambda mm: base - mm * s
-    build_left, build_right = 7000, 28000
-    floor_1 = 300
-    wall = 300
-    # 地面
-    sheet.line(X(0), Z(0), X(4500), Z(0), "道路", 1.6)
-    sheet.line(X(4500), Z(100), X(build_left), Z(200), "道路", 1.6)
-    sheet.line(X(4500), Z(0), X(4500), Z(100), "道路", 1.6)
-    sheet.line(X(build_right), Z(1000), X(32000), Z(1800), "道路", 1.6)
-    sheet.line(X(32000), Z(1800), X(39000), Z(6000), "道路", 1.6)
-    sheet.text(X(2900), Z(0) - 12, "前の道路（低い）", 9.5, layer="道路", bold=True)
-    sheet.text(X(5700), Z(100) + 14, "敷地内通路", 9, layer="道路", bold=True)
-    sheet.text(X(36500), Z(6000) - 8, "丘の側（高い）", 9.5, layer="道路", bold=True)
-    sheet.hatch(X(0), Z(-400), X(39000) - X(0), 46, gap=14)
-    # 建物
-    tops = [floor_1 + 3300 * i for i in range(1, 3)]
-    for z in (floor_1, *tops[:-1]):
-        sheet.solid_rect(X(build_left), Z(z), X(build_right) - X(build_left), 300 * s, "壁")
+    build_left, build_right, floor_1, wall = 7000, 28000, 300, 300
+    top_2 = floor_1 + 3300
+    sheet.line(X(0), Z(0), X(4500), Z(0), "道路", 2)
+    sheet.line(X(4500), Z(0), X(4500), Z(100), "道路", 2)
+    sheet.line(X(4500), Z(100), X(build_left), Z(200), "道路", 2)
+    sheet.line(X(build_right), Z(1000), X(32000), Z(1800), "道路", 2)
+    sheet.line(X(32000), Z(1800), X(38500), Z(5500), "道路", 2)
+    sheet.text(X(2600), Z(0) - 14, "前の道路（低い）", 12, layer="道路", bold=True)
+    sheet.text(X(5700), Z(100) + 16, "敷地内通路", 11, layer="道路", bold=True)
+    sheet.text(X(37000), Z(5500) - 10, "丘の側（高い）", 12, layer="道路", bold=True)
+    sheet.hatch(X(0), Z(-400), X(38500) - X(0), 50, gap=16)
+    sheet.solid_rect(X(build_left), Z(floor_1), X(build_right) - X(build_left), 300 * s, "壁")
+    sheet.solid_rect(X(build_left), Z(top_2), X(build_right) - X(build_left), 300 * s, "壁")
     for x in (build_left, build_right - wall):
-        sheet.solid_rect(X(x), Z(tops[-1]), wall * s, Z(floor_1) - Z(tops[-1]), "壁")
-    sheet.line(X(build_left), Z(tops[-1]), X(build_right), Z(tops[-1]), "図枠", 1)
-    sheet.text((X(build_left) + X(build_right)) / 2, Z(tops[-1]) - 11, f"3階より上は省略（全{sample['floors']}階建て）", 9.5)
-    sheet.text((X(build_left) + X(build_right)) / 2, (Z(tops[0]) + Z(tops[1])) / 2, "2階（住戸）", 10)
-    # 1階の部屋
+        sheet.solid_rect(X(x), Z(top_2 + 700), wall * s, Z(floor_1) - Z(top_2 + 700), "壁")
+    sheet.line(X(build_left), Z(top_2 + 700), X(build_right), Z(top_2 + 700), "図枠", 1)
+    sheet.text((X(build_left) + X(build_right)) / 2, Z(top_2 + 700) - 14, f"2階より上は省略（全{sample['floors']}階建て）", 11)
     rooms = [(7300, "共用分電盤室"), (13000, "借室"), (18000, "給水ポンプ室"), (23000, "エントランス")]
     for i, (x, name) in enumerate(rooms):
-        end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
         if i:
-            sheet.solid_rect(X(x), Z(tops[0] - 300), 150 * s, Z(floor_1) - Z(tops[0] - 300), "壁")
-        sheet.text((X(x) + X(end)) / 2, Z(tops[0] - 300) + 13, name, 10.5, bold=True)
-    # 機器
-    for x, w, name in ((9000, 2600, "共用部の盤"), (19500, 2200, "制御盤")):
-        sheet.path([(X(x), Z(floor_1)), (X(x), Z(floor_1 + 500))], "設備")
-        sheet.path([(X(x + w), Z(floor_1)), (X(x + w), Z(floor_1 + 500))], "設備")
+            sheet.solid_rect(X(x), Z(top_2 - 300), 150 * s, Z(floor_1) - Z(top_2 - 300), "壁")
+        room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
+        sheet.text((X(x) + X(room_end)) / 2, Z(top_2 - 300) + 18, name, 14, bold=True)
+    for x, w, name in ((8800, 2800, "スイッチ盤"), (19400, 2400, "制御盤")):
+        sheet.line(X(x), Z(floor_1), X(x), Z(floor_1 + 500), "設備")
+        sheet.line(X(x + w), Z(floor_1), X(x + w), Z(floor_1 + 500), "設備")
         sheet.rect(X(x), Z(floor_1 + 1900), w * s, 1400 * s, "設備")
-        sheet.text(X(x + w / 2), Z(floor_1 + 1200), f"{name}\n（架台の上）", 8)
-    sheet.rect(X(13800), Z(floor_1 + 2000), 2600 * s, 1500 * s, "設備")
-    sheet.text(X(15700), Z(floor_1 + 1250), "？", 14, bold=True)
-    sheet.text(X(15100), Z(floor_1 + 2280), "中は建物側から分からない", 8)
-    # 扉と換気口
-    sheet.solid_rect(X(build_left) - 1, Z(floor_1 + 2100), 5, 1900 * s, "図枠", "#ffffff")
-    sheet.line(X(build_left), Z(floor_1 + 2100), X(build_left), Z(floor_1 + 200), "建具", 2)
-    sheet.rect(X(build_left) - 2, Z(floor_1 + 80) - 8, 8, 8, "設備")
-    sheet.text(X(build_left) - 8, Z(floor_1 + 1900), "坂下側出入口\n足元換気口", 8.5, "end", layer="寸法", bold=True)
-    # 引込
-    sheet.line(X(800), Z(0), X(800), Z(6200), "設備", 1.6)
+        sheet.text(X(x + w / 2), Z(floor_1 + 1200), f"{name}\n（架台の上）", 10)
+    sheet.rect(X(13800), Z(floor_1 + 2000), 3200 * s, 1500 * s, "設備")
+    sheet.text(X(15400), Z(floor_1 + 1750), "？", 18, bold=True)
+    sheet.text(X(15400), Z(floor_1 + 1050), "中は建物側から\n分からない", 10)
+    sheet.line(X(build_left), Z(floor_1 + 2100), X(build_left), Z(floor_1 + 200), "建具", 2.4)
+    sheet.rect(X(build_left) - 3, Z(floor_1 + 80) - 9, 9, 9, "設備")
+    sheet.text(X(build_left) - 10, Z(floor_1 + 1700), "坂下側出入口\n足元換気口", 11.5, "end", layer="寸法", bold=True)
     attach = floor_1 + 2600
-    sheet.line(X(800), Z(5800), X(build_left), Z(attach), "引込")
-    sheet.solid_rect(X(build_left) - 4, Z(attach) - 4, 8, 8, "図枠")
-    sheet.text(X(800) + 6, Z(6000), "電柱（空中からの引込み）", 8.5, "start", layer="寸法")
-    sheet.text(X(1200), Z(2300), "外壁の取付点（例）。\n借室までの経路は\n建物側から分からない", 8, "start", layer="寸法")
-    # 水の入り道
-    sheet.arrow(X(38000), Z(5400) - 12, X(30000), Z(1450) - 12, "水の入り道")
-    sheet.arrow(X(6200), Z(600), X(build_left) + 2, Z(500), "水の入り道")
-    sheet.text(X(28800), Z(5300), "雨水が坂を下り、\n建物の脇を回って低い側へ", 9, "start", layer="寸法", bold=True)
-    _pin(sheet, X(5900), Z(1250), "ウ")
-    _pin(sheet, X(8200), Z(floor_1 + 1500), "ア")
-    _pin(sheet, X(18800), Z(floor_1 + 1500), "イ")
-    _pin(sheet, X(14600), Z(floor_1 + 1250), "エ")
-    # 水の位置
+    sheet.line(X(800), Z(0), X(800), Z(6200), "設備", 2)
+    sheet.line(X(800), Z(5800), X(build_left), Z(attach), "引込", 2.4)
+    sheet.solid_rect(X(build_left) - 5, Z(attach) - 5, 10, 10, "図枠")
+    sheet.text(X(800) + 8, Z(6100), "電柱（空中からの引込み）", 11.5, "start", layer="寸法", bold=True)
+    sheet.text(X(1300), Z(3100), "外壁の取付点（例）。\nその先の経路は\n図から分からない", 10.5, "start", layer="寸法")
+    sheet.arrow(X(37500), Z(5000) - 14, X(30000), Z(1450) - 14, "水の入り道", 12)
+    sheet.arrow(X(5800), Z(650), X(build_left) + 2, Z(520), "水の入り道", 12)
+    sheet.text(X(29000), Z(5600), "雨水が坂を下り、\n建物の脇を回って低い側へ", 11.5, "start", layer="寸法", bold=True)
+    _pin(sheet, X(4600), Z(1000), "ウ")
+    _pin(sheet, X(8100), Z(floor_1 + 1500), "ア")
+    _pin(sheet, X(18700), Z(floor_1 + 1500), "イ")
+    _pin(sheet, X(14200), Z(floor_1 + 2350), "エ")
     for key, z in ((2, floor_1 + 120), (3, floor_1 + 500)):
         sheet.line(X(build_left + 300), Z(z), X(build_right - 300), Z(z), "水の位置")
-        sheet.circle(X(26500), Z(z), 8.5, "水の入り道")
-        sheet.text(X(26500), Z(z), str(key), 8.5, color="#0277bd", bold=True)
-    sheet.circle(X(3000), Z(0) - 34, 8.5, "水の入り道")
-    sheet.text(X(3000), Z(0) - 34, "1", 8.5, color="#0277bd", bold=True)
-    sheet.text(X(0) - 6, Z(0), "GL", 9, "end", layer="寸法")
+        _level_mark(sheet, X(24200 if key == 2 else 26200), Z(z), key)
+    _level_mark(sheet, X(1600), Z(0) - 36, 1)
 
 
-def section_sheet(sample, world_y=0.0):
-    W, H = sample["plan_size"]
+def section_sheet(sample):
     number = {"a": "A-201", "b": "A-211", "c": "A-221"}[sample["id"]]
-    typical = next((v for v in sample["views"] if v["name"] == "基準階平面図"), None)
-    name = "竣工図 基準階平面図・模式断面図（水の入り道）"
-    if sample["id"] == "a":
-        sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, 840 / W, world_y)
-        frame_and_title(sheet, sample, name, number, "S=1/100、断面は模式")
-        PlanView(sheet, typical, 130, 110, 840 / W, (W, H), sample["grid"]).draw("S=1/100")
-        title_of(sheet, 550, 436, typical["name"], "S=1/100")
-        north(sheet, 1060, 130)
-        _levels(sheet, 1010, 170, sample)
-    elif sample["id"] == "b":
-        sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, 720 / W, world_y)
+    if sample["id"] == "b":
+        scale = 0.0335
+        sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, scale)
         frame_and_title(sheet, sample, "竣工図 模式断面図（水の入り道）", number, "模式")
-        section = View(100, 510, 0.0325)
-        sheet.use(section)
-        section_hillside(sheet, sample, section, 100, 510)
-        sheet.use(None)
-        title_of(sheet, 590, 670, "模式断面図（水の入り道）", "部屋は順に並べた展開")
-        _levels(sheet, 130, 705, sample, second=(520, 705))
-        sheet.text(520, 850, "基準階の平面図は、平面図の用紙（A-111）にあります。", 10, "start")
-        return sheet
+        view = View(80, 560, scale)
+        sheet.use(view)
+        section_hillside(sheet, sample, view, 80, 560)
     else:
-        scale = 330 / W
-        sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, scale, world_y)
-        frame_and_title(sheet, sample, name, number, "S=1/100、断面は模式")
-        PlanView(sheet, typical, 120, 110, scale, (W, H), sample["grid"]).draw("S=1/100")
-        title_of(sheet, 285, 470, typical["name"], "S=1/100")
-        north(sheet, 560, 150)
-        _levels(sheet, 620, 90, sample)
-    section = View(110, 745, 0.027)
-    sheet.use(section)
-    section_underground(sheet, sample, section, 110, 745)
+        width = 40500 if sample["id"] == "c" else 36500
+        scale = 1260 / width
+        sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, scale)
+        frame_and_title(sheet, sample, "竣工図 模式断面図（水の入り道）", number, "模式")
+        view = View(80, 470, scale)
+        sheet.use(view)
+        section_underground(sheet, sample, view, 80, 470)
     sheet.use(None)
-    title_of(sheet, 500, 950, "模式断面図（水の入り道）", "部屋は順に並べた展開")
+    title_of(sheet, 520, 720, "模式断面図（水の入り道）", "部屋は順に並べた展開")
+    _section_key(sheet, sample, 80, 770)
+    return sheet
+
+
+# 電気と給水の系統図
+
+def _box(sheet, x, y, w, label, floor=None, pin=None, unknown=False, water=False):
+    h = 58
+    if unknown:
+        sheet.rect(x, y, w, h, "引込", 1.6)
+    else:
+        sheet.rect(x, y, w, h, "図枠", 1.6)
+    sheet.text(x + w / 2, y + h / 2 - (6 if floor else 0), label, 13, bold=True, color="#0277bd" if water else None)
+    if floor:
+        sheet.text(x + w / 2, y + h - 12, floor, 10.5, color="#0277bd" if "地下" in floor else "#5a5a60", bold="地下" in floor)
+    if pin:
+        _pin(sheet, x + w - 16, y - 16, pin)
+    return (x, y, w, h)
+
+
+def _flow(sheet, a, b, layer="図枠", label=None, width=1.8):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    if abs((ay + ah / 2) - (by + bh / 2)) < 2:
+        x1, y1, x2, y2 = ax + aw, ay + ah / 2, bx, by + bh / 2
+    elif bx >= ax + aw:
+        x1, y1, x2, y2 = ax + aw, ay + ah / 2, bx, by + bh / 2
+        mid = (x1 + x2) / 2
+        sheet.line(x1, y1, mid, y1, layer, width)
+        sheet.line(mid, y1, mid, y2, layer, width)
+        sheet.arrow(mid, y2, x2, y2, layer, 9)
+        if label:
+            sheet.text(mid + 6, (y1 + y2) / 2, label, 10.5, "start", layer="寸法")
+        return
+    else:
+        x1, y1, x2, y2 = ax + aw / 2, ay + ah, bx + bw / 2, by
+    sheet.line(x1, y1, x2, y2, layer, width)
+    sheet.arrow((x1 + x2) / 2 if x1 == x2 else x2 - 1, y2 - 1 if x1 == x2 else y2, x2, y2, layer, 9)
+    if label:
+        sheet.text((x1 + x2) / 2, (y1 + y2) / 2 - 10, label, 10.5, layer="寸法")
+
+
+def system_sheet(sample):
+    number = {"a": "E-101", "b": "E-111", "c": "E-121"}[sample["id"]]
+    sheet = Sheet(PLAN_WIDTH, PLAN_HEIGHT, 0.02)
+    frame_and_title(sheet, sample, "竣工図 電気・給水の系統図（模式）", number, "なし（系統図）")
+    sid = sample["id"]
+    basement = sid != "b"
+    floor = "地下1階" if basement else "1階"
+    sheet.text(70, 92, "電気の系統", 16, "start", bold=True)
+    sheet.line(70, 104, 1330, 104, "図枠", 1)
+    # 電気
+    line = _box(sheet, 70, 150, 170, "東京電力の配電線", "道路")
+    if sample["underground_feed"]:
+        hh = _box(sheet, 300, 150, 170, "歩道ぎわの蓋（HH）", "歩道の下")
+        _flow(sheet, line, hh)
+        hole = _box(sheet, 530, 150, 190, "ケーブルを通す壁の穴", floor, pin="ア")
+        _flow(sheet, hh, hole, "引込", "地中の管")
+        sheet.text(385, 226, "電力会社と建物の境目は書類で確かめる", 10.5, layer="寸法")
+        entry = hole
+    else:
+        pole = _box(sheet, 300, 150, 170, "電柱", "敷地の外")
+        _flow(sheet, line, pole)
+        entry = _box(sheet, 530, 150, 190, "外壁の取付点", "1階の外壁")
+        _flow(sheet, pole, entry, "引込", "空中の線")
+    tr = _box(sheet, 530, 290, 190, "借室（東京電力の変圧器）", floor, pin="エ")
+    sheet.text(625, 362, "借室の位置と数は図から分からない" if sid == "c" else "中の機器は建物側から分からない", 10.5, layer="寸法")
+    homes = _box(sheet, 790, 290, 170, "各戸の分電盤", "各階")
+    sheet.line(155, 208, 155, 319, "引込", 1.6)
+    sheet.arrow(155, 319, 530, 319, "引込", 9)
+    sheet.text(170, 336, "借室までの経路は建物側から分からない", 10.5, "start", layer="寸法")
+    sheet.text(170, 352, "上の引込みと同じか別かも図から分からない", 10.5, "start", layer="寸法")
+    _flow(sheet, tr, homes)
+    if sample["has_chief_engineer"]:
+        hv = _box(sheet, 790, 150, 170, "受変電設備" if sid == "c" else "受電の箱", floor)
+        _flow(sheet, entry, hv)
+        panel = _box(sheet, 1030, 150, 170, "共用の分電盤", floor)
+        _flow(sheet, hv, panel)
+        loads = [(1220, 290, 110, "エレベーター", floor), (1220, 360, 110, "共用照明", "各階")]
+        pump_panel = _box(sheet, 1030, 430, 170, "給水ポンプの制御盤", floor, pin="イ")
+        px, py, pw, ph = panel
+        sheet.line(px + pw / 2, py + ph, px + pw / 2, 420, "図枠", 1.8)
+        sheet.arrow(px + pw / 2, 420, px + pw / 2, 430, "図枠", 9)
+        bus = px + pw + 10
+        sheet.line(px + pw, py + ph / 2, bus, py + ph / 2, "図枠", 1.8)
+    else:
+        sheet.text(625, 230, "受電設備なし。借室から先は低圧（例）", 10.5, layer="寸法")
+        panel = _box(sheet, 790, 420, 170, "共用部のおおもとの\nスイッチ盤", floor, pin="ア")
+        sheet.line(625, 378, 625, 449, "引込", 1.6)
+        sheet.arrow(625, 449, 790, 449, "引込", 9)
+        sheet.line(720, 179, 745, 179, "引込", 1.6)
+        sheet.line(745, 179, 745, 430, "引込", 1.6)
+        sheet.arrow(745, 430, 790, 430, "引込", 8)
+        sheet.text(735, 398, "共用部をどこから受けるかは書類で確かめる", 10.5, "end", layer="寸法")
+        loads = [(1030, 300, 170, "エレベーター", floor), (1030, 370, 170, "共用照明", "各階")]
+        pump_panel = _box(sheet, 1030, 440, 170, "給水ポンプの制御盤", floor, pin="イ")
+        px, py, pw, ph = panel
+        bus = 1000
+        sheet.line(px + pw, py + ph / 2, bus, py + ph / 2, "図枠", 1.8)
+        sheet.line(bus, py + ph / 2, bus, 469, "図枠", 1.8)
+        sheet.arrow(bus, 469, 1030, 469, "図枠", 8)
+    for lx, ly, lw, name, where in loads:
+        target = _box(sheet, lx, ly, lw, name, where)
+        tx, ty, tw, th = target
+        sheet.line(bus, py + ph / 2, bus, ty + th / 2, "図枠", 1.8)
+        sheet.arrow(bus, ty + th / 2, tx, ty + th / 2, "図枠", 8)
+    if sid == "c":
+        gen = _box(sheet, 530, 430, 190, "非常用発電機", floor)
+        backup = _box(sheet, 790, 430, 170, "非常用の設備の一部", "建物による", unknown=True)
+        sheet.line(720, 459, 760, 459, "引込", 1.6)
+        sheet.arrow(760, 459, 790, 459, "引込", 8)
+        sheet.text(625, 506, "どの設備へ送るかは、管理会社と主任技術者に書類で確かめる", 10.5, layer="寸法")
+    # 給水
+    top = 540
+    sheet.text(70, top + 2, "給水の系統", 16, "start", bold=True, color="#0277bd")
+    sheet.line(70, top + 14, 1330, top + 14, "水の入り道", 1)
+    main = _box(sheet, 70, top + 60, 170, "水道の本管", "道路の下", water=True)
+    if basement:
+        tank = _box(sheet, 300, top + 60, 170, "受水槽", floor, water=True)
+        _flow(sheet, main, tank, "水の入り道")
+        pump = _box(sheet, 530, top + 60, 190, "給水ポンプ", floor, water=True)
+        _flow(sheet, tank, pump, "水の入り道")
+    else:
+        pump = _box(sheet, 300, top + 60, 190, "増圧の給水ポンプ", floor, water=True)
+        _flow(sheet, main, pump, "水の入り道")
+    taps = _box(sheet, 790, top + 60, 170, "各戸の蛇口", "各階", water=True)
+    _flow(sheet, pump, taps, "水の入り道")
+    drain = _box(sheet, 790, top + 180, 170, "トイレ・排水", "各階", water=True)
+    sewer = _box(sheet, 300, top + 180, 170, "下水道", "道路の下", water=True)
+    sheet.arrow(790, top + 209, 470, top + 209, "水の入り道", 9)
+    lift = _box(sheet, 530, top + 280, 190, "汲み上げポンプ", "有無は未確認", unknown=True)
+    sheet.text(625, top + 360, "地下の排水を汲み上げる建物の場合（停電で止まる）", 10.5, layer="寸法")
+    # 電気が止まると水も止まる
+    ppx, ppy, ppw, pph = pump_panel
+    pux, puy, puw, puh = pump
+    sheet.line(ppx + ppw / 2, ppy + pph, ppx + ppw / 2, puy - 20, "図枠", 2.4)
+    sheet.line(ppx + ppw / 2, puy - 20, pux + puw / 2, puy - 20, "図枠", 2.4)
+    sheet.arrow(pux + puw / 2, puy - 20, pux + puw / 2, puy, "図枠", 10)
+    stop = "電気が止まると給水ポンプも止まる" + ("（発電機から送るかは書類で確認）" if sid == "c" else "")
+    sheet.text(ppx + ppw / 2 - 8, puy - 30, stop, 11.5, "end", color="#b91c1c", bold=True)
+    # 凡例
+    lx, ly = 1010, 700
+    sheet.text(lx, ly, "凡例", 12, "start", bold=True)
+    sheet.line(lx, ly + 24, lx + 40, ly + 24, "図枠", 1.8)
+    sheet.text(lx + 50, ly + 24, "電気の流れ", 11, "start")
+    sheet.line(lx, ly + 46, lx + 40, ly + 46, "水の入り道", 1.8)
+    sheet.text(lx + 50, ly + 46, "水の流れ", 11, "start")
+    sheet.line(lx, ly + 68, lx + 40, ly + 68, "引込", 1.8)
+    sheet.text(lx + 50, ly + 68, "引込み・つながり・未確認", 11, "start")
+    sheet.text(lx, ly + 94, "赤い文字は停電で止まるつながり", 11, "start", color="#b91c1c", bold=True)
+    sheet.text(lx, ly + 116, "青い階名は浸水しうる地下の階", 11, "start", color="#0277bd", bold=True)
+    sheet.text(lx, ly + 138, "機器の構成は一例です", 11, "start")
     return sheet
 
 
@@ -815,15 +921,12 @@ def main() -> None:
     names = []
     for sample in SAMPLES.values():
         sid = sample["id"]
-        plan = plan_sheet(sample)
-        # DXF では 2 枚を上下に並べる。平面図の下に余白を空ける。
-        section = section_sheet(sample, world_y=-(PLAN_HEIGHT + 100) / plan.paper.scale)
-        for name, sheet in ((f"plan_{sid}", plan), (f"section_{sid}", section)):
+        for name, sheet in ((f"plan_{sid}", plan_sheet(sample)), (f"section_{sid}", section_sheet(sample)), (f"system_{sid}", system_sheet(sample))):
             with open(os.path.join(OUT_DIR, f"{name}.svg"), "w", encoding="utf-8") as handle:
                 handle.write(svg(sheet))
+            with open(os.path.join(OUT_DIR, f"{name}.dxf"), "wb") as handle:
+                handle.write(dxf([sheet]))
             names.append(name)
-        with open(os.path.join(OUT_DIR, f"drawings_{sid}.dxf"), "wb") as handle:
-            handle.write(dxf([plan, section]))
         with open(os.path.join(OUT_DIR, f"report_{sid}.txt"), "w", encoding="utf-8") as handle:
             handle.write(REPORTS[sid])
     if not os.path.exists(CHROME):

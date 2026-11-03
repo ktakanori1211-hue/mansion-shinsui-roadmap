@@ -649,6 +649,38 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 .legal-footer b { flex: none; color: var(--navy); font-size: 10.5px; }
 .stage-tabs .chat-toggle { position: static; z-index: auto; flex: 0 0 auto; padding: 7px 14px; box-shadow: none; font-size: 13px; }
 
+/* 最初の画面：何のためのサイトか */
+body { display: flex; flex-direction: column; min-height: 100vh; }
+body > .stages { flex: 1 0 auto; width: 100%; }
+.hero { margin: 0 0 10px; padding: 14px 22px; border-radius: 10px; background: linear-gradient(120deg, #12263f, #1d3b63); color: #fff; }
+.hero-question { margin: 0; font-size: 26px; font-weight: 800; line-height: 1.3; }
+.hero-lead { margin: 4px 0 8px; font-size: 15px; }
+.hero-lead b { color: #ffd9a8; }
+.hero-steps { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; list-style: none; font-size: 14px; font-weight: 700; }
+.hero-steps li { display: flex; align-items: center; gap: 6px; }
+.hero-steps b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: var(--navy); font-size: 12px; }
+.map-more { margin: 0 0 5px; }
+.map-more .map-tools { margin: 4px 0 0; }
+.plan-read { margin-top: 4px; }
+.lower-more { margin-top: 6px; }
+.lower-more > summary { font-size: 13px; }
+
+.plan-fit img { cursor: zoom-in; }
+.drawing-zoom { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16, 24, 40, .82); }
+.drawing-zoom img { max-width: 100%; max-height: 100%; background: #fff; border-radius: 6px; box-shadow: 0 6px 30px rgba(0,0,0,.4); }
+.drawing-zoom-close { position: absolute; top: 14px; right: 18px; padding: 6px 14px; font-weight: 700; }
+
+/* 近い形を選ぶ */
+.type-chooser h2 { margin-bottom: 2px; font-size: 18px; }
+.type-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 10px 0; }
+.type-option { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); text-align: left; }
+.type-option:hover { border-color: var(--accent); }
+.type-option img { width: 100%; aspect-ratio: 1.41; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.type-option strong { font-size: 16px; }
+.type-option span { color: var(--ink-muted); font-size: 13px; line-height: 1.45; }
+.type-upload { display: flex; align-items: center; gap: 10px; }
+#type-file { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
 /* 上の帯：土地 × 大雨 ＝ 止まるもの */
 .why-bar { grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 8px; }
 .why-op { align-self: center; color: var(--navy); font-size: 30px; font-weight: 800; line-height: 1; }
@@ -789,6 +821,8 @@ button:hover:not(:disabled) { border-color: var(--accent); }
   .stage2-grid { grid-template-columns: minmax(0, 1fr); }
   .top-banner-lead { font-size: 26px; }
   .stage3-top, .sim-grid, .consult-docs { grid-template-columns: 1fr; }
+  .type-options { grid-template-columns: 1fr; }
+  .hero-question { font-size: 21px; }
   .sim-result { position: static; max-height: none; }
   .legal-footer { position: static; flex-direction: column; gap: 6px; padding: 8px 16px; }
   .legal-footer p { padding: 0; border: 0; }
@@ -804,6 +838,7 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 @media print {
   .legal-footer { display: none !important; }
   .stage3-top, .exit-doc { display: none !important; }
+  .hero, .type-chooser { display: none !important; }
   .sheets .sheet { zoom: 1 !important; }
   body { padding: 0; background: #fff; }
 }

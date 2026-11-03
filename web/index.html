@@ -33,11 +33,10 @@
   </header>
 
   <nav class="stage-tabs" id="stage-tabs" aria-label="4つの段階">
-    <button type="button" data-tab="1"><b>1</b>立地<small>ハザード×土地の形</small></button>
-    <button type="button" data-tab="2"><b>2</b>建物<small>平面図・3D・質問</small></button>
-    <button type="button" data-tab="3"><b>3</b>資料<small>AI相談・A4・共有</small></button>
-    <button type="button" data-tab="4"><b>4</b>費用と相談<small>補助・専門家へ</small></button>
-    <button type="button" data-tab="all" class="tab-all">すべて縦に並べて見る</button>
+    <button type="button" data-tab="1"><b>1</b>場所<small>土地の弱さ</small></button>
+    <button type="button" data-tab="2"><b>2</b>建物<small>図面と3D</small></button>
+    <button type="button" data-tab="3"><b>3</b>資料<small>A4・共有</small></button>
+    <button type="button" data-tab="4"><b>4</b>費用<small>補助・相談</small></button>
     <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   </nav>
 
@@ -64,6 +63,15 @@
   </section>
 
   <main class="stages">
+    <section class="hero" id="hero" aria-label="このサイトでできること">
+      <p class="hero-question">水が引いた翌朝、このマンションは何日で水が出るか</p>
+      <p class="hero-lead">住所かマンション名を入れるだけで、浸水で止まりうる水と電気を整理し、<b>理事会に出せるA4一枚</b>を作ります。</p>
+      <ol class="hero-steps">
+        <li><b>1</b>場所を入れる</li>
+        <li><b>2</b>建物の形を選ぶ</li>
+        <li><b>3</b>A4を印刷・共有する</li>
+      </ol>
+    </section>
     <section class="stage" data-stage="1" aria-label="第1段階">
       <div class="stage1-grid">
         <div class="stage1-left">
@@ -94,12 +102,15 @@
 
         <section class="card map-card" id="map-card" aria-label="地図">
           <div class="layer-choices" id="layer-choices" role="radiogroup" aria-label="重ねる地図"></div>
-          <div class="map-tools">
-            <label class="control-inline"><input type="checkbox" id="relief-toggle"> 色別標高図</label>
-            <button type="button" id="tap-water">水が来そうな側を押す</button>
-            <button type="button" id="tap-door">電気室の扉の側を押す</button>
-            <span class="tap-status" id="tap-status"></span>
-          </div>
+          <details class="fold map-more">
+            <summary>地図で詳しく調べる（色別標高図、水が来そうな側）</summary>
+            <div class="map-tools">
+              <label class="control-inline"><input type="checkbox" id="relief-toggle"> 色別標高図</label>
+              <button type="button" id="tap-water">水が来そうな側を押す</button>
+              <button type="button" id="tap-door">電気室の扉の側を押す</button>
+              <span class="tap-status" id="tap-status"></span>
+            </div>
+          </details>
           <div id="map" class="map"></div>
           <div class="map-legend" id="map-legend"></div>
           <p class="map-fixed">地図に色がないことは、安全という意味ではありません。斜線はデータが取れていない所です。</p>
@@ -124,6 +135,15 @@
         <details class="top-banner-more"><summary>根拠と補足</summary><p class="top-banner-notes" id="top-banner-notes"></p></details>
       </div>
       <p class="hint stage-empty" id="stage2-empty">①で場所を選ぶと、ここが出ます。</p>
+      <section class="card type-chooser" id="type-chooser" hidden aria-label="建物の形を選ぶ">
+        <h2>あなたの建物に近い形を選んでください</h2>
+        <p class="hint">図面がなくても大丈夫です。選んだ形の見本の図面と3Dで説明します。あとで質問に答えると、形が変わることがあります。</p>
+        <div class="type-options" id="type-options"></div>
+        <div class="type-upload">
+          <label class="plan-file-label" for="type-file">図面を持っていれば入れる（PDFか画像）</label>
+          <input type="file" id="type-file" accept="application/pdf,image/png,image/jpeg">
+        </div>
+      </section>
 
       <div class="stage2-grid">
         <section class="card" id="plan-card" aria-label="平面図" hidden>
@@ -139,7 +159,10 @@
             </div>
           </div>
           <div class="pin-card" id="pin-card" hidden></div>
-          <div class="plan-actions" id="plan-actions"></div>
+          <details class="fold plan-read">
+            <summary>図面を読み取る・自分の図面を入れる</summary>
+            <div class="plan-actions" id="plan-actions"></div>
+          </details>
           <div id="plan-rooms"></div>
         </section>
 
@@ -171,9 +194,12 @@
 
       <div class="card" id="model-lower" hidden>
         <div class="fixed-block" id="model-fixed"></div>
-        <div class="chain" id="chain"></div>
-        <div class="table-scroll"><div id="timeline"></div></div>
-        <div class="fixed-block" id="timeline-below"></div>
+        <details class="fold lower-more">
+          <summary>停電の連鎖と、水が引いたあとの時間の流れを開く</summary>
+          <div class="chain" id="chain"></div>
+          <div class="table-scroll"><div id="timeline"></div></div>
+          <div class="fixed-block" id="timeline-below"></div>
+        </details>
       </div>
 
       <div class="stage-next"><button type="button" class="primary" data-go="3">次へ：③AIに相談し資料を出す</button></div>

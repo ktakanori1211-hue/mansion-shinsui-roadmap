@@ -845,14 +845,39 @@ class DrawingTest(unittest.TestCase):
             for word in words:
                 self.assertIn(word, body, f"{sid} {word}")
 
-    def test_dxf_is_written_for_each_type(self):
+    def test_each_drawing_is_its_own_dxf(self):
+        """平面図、断面図、系統図を 1 枚ずつ、CAD で開ける形で書き出す。"""
+        words = {"plan": "平面図", "section": "模式断面図（水の入り道）", "system": "電気・給水の系統図"}
         for sid in samples.SAMPLES:
-            with open(os.path.join(self.ROOT, "web", "samples", f"drawings_{sid}.dxf"), "rb") as file:
-                body = file.read().decode("cp932")
-            self.assertTrue(body.startswith("0\nSECTION"))
-            self.assertTrue(body.rstrip().endswith("EOF"))
-            for word in ("AC1009", "ANSI_932", "水の入り道", "引込" if sid != "b" else "借室", "模式断面図（水の入り道）", "架空の見本"):
+            for kind, word in words.items():
+                with open(os.path.join(self.ROOT, "web", "samples", f"{kind}_{sid}.dxf"), "rb") as file:
+                    body = file.read().decode("cp932")
+                self.assertTrue(body.startswith("0\nSECTION"))
+                self.assertTrue(body.rstrip().endswith("EOF"))
+                for needed in ("AC1009", "ANSI_932", word, "架空の見本"):
+                    self.assertIn(needed, body, f"{kind}_{sid} {needed}")
+
+    def test_typical_floor_and_long_notes_are_gone(self):
+        for sid, sample in samples.SAMPLES.items():
+            self.assertNotIn("基準階平面図", [view["name"] for view in sample["views"]])
+            with open(os.path.join(self.ROOT, "web", "samples", f"section_{sid}.svg"), encoding="utf-8") as file:
+                texts = re.findall(r"<text[^>]*>([^<]*)</text>", file.read())
+            self.assertFalse([text for text in texts if len(text) > 30], sid)
+
+    def test_system_sheet_ties_power_to_water(self):
+        for sid in samples.SAMPLES:
+            with open(os.path.join(self.ROOT, "web", "samples", f"system_{sid}.svg"), encoding="utf-8") as file:
+                body = file.read()
+            for word in ("借室", "給水ポンプの制御盤", "電気が止まると給水ポンプも止まる", "建物側から分からない"):
                 self.assertIn(word, body, f"{sid} {word}")
+
+    def test_chosen_shape_picks_the_drawing(self):
+        for shape in "abc":
+            sample = samples.apply_answers(None, {"type": shape}, "どこかの住所")
+            self.assertEqual(sample["plan"]["png"], f"samples/plan_{shape}.png")
+        # 質問の答えは、選んだ形より強い手がかり。
+        sample = samples.apply_answers(None, {"type": "a", "rooms_floor": "ground"}, "どこかの住所")
+        self.assertEqual(sample["plan"]["png"], "samples/plan_b.png")
 
     def test_water_section_shows_no_height_values(self):
         """断面の水の位置は模式で、cm や m の値を書かない。"""
