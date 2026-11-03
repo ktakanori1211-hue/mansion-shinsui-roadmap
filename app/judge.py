@@ -425,5 +425,5 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             row.verdict_label = "問題なし"
             row.confirm_by = None
             row.confirm_short = None
-            row.details.append("五つの項目がそろって当たらなかったので問題なしとしています。現地を確かめたものではありません。")
+            row.details.append("五つの項目のどれにも当たらなかったので、問題なしとしています。現地は見ていません。")
     return rows

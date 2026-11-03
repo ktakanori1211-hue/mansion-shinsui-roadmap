@@ -106,7 +106,7 @@ class OutsideAreaLineTest(unittest.TestCase):
         self.assertIn('!document.querySelector("#sheet-basis .scope-outside")', panels)
         line = re.search(r'"(東京電力パワーグリッドの区域の外では[^"]+)"', panels).group(1)
         self.assertIn("借室の照会先", line)
-        self.assertIn("区域の都道府県の一覧は確かめていません", line)
+        self.assertIn("区域に入る都道府県の一覧は、まだ確かめていません", line)
         # 都道府県の名前と数字は出さない。
         self.assertIsNone(re.search(r"\d", line))
         rest = line.replace("都道府県", "")

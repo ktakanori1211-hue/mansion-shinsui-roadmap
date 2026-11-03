@@ -59,7 +59,7 @@ MEMO_FREE_SURVEY = "止水板メーカーの中には、無料の現地診断を
 # 水（全戸）の行の二段目に添える一文。階数の閾値は置かない。
 WATER_SUPPLY_NOTE = "給水がポンプによる方式なら、ポンプと制御盤は低い階にあることがあり、一番低い盤が床の近くにある可能性があります。方式は竣工図の給水設備図で確かめます。"
 # オートロック・インターホンの行。機種によるので決めつけない。
-LOCK_HEADLINE = "共用部の電気が止まったとき、オートロックの扉とインターホンがどう動くかが確かめられていません。"
+LOCK_HEADLINE = "共用部の電気が止まったとき、オートロックの扉とインターホンがどう動くかは、まだ分かっていません。"
 # 「長引くおそれ」の注記に足す目安（経産省の検討会資料、facts の済の行。一般的な目安で、特定の建物の実績ではない）。
 TOP_NOTE_GUIDE_DAYS = "供給用変圧器や受電設備が浸かった場合、排水開始から仮復旧まで4〜7日程度（経産省の検討会資料。一般的な目安で、特定の建物の実績ではない）。"
 # A4 だけに出す千葉の見通し（共同通信 2026/8/22。見通しで実績ではないので「かかった」とは書かない）。
@@ -67,7 +67,7 @@ A4_NOTE_CHIBA = "2026年8月の千葉では断水が1週間以上続き、復旧
 STREET_VIEW_NOTE = "スロープや出入口の段差は、敷地の外からの写真（ストリートビューなど）でも見られます。"
 DAMP_CONFIRM = "管理会社から建物・防水の業者へ現地調査を依頼します（部屋の中の確認は主任技術者が立ち会い、業者は盤に触れません）。"
 DAMP_CONFIRM_NO_ENGINEER = "管理会社から防水の業者へ現地調査を依頼します（盤の部屋では電気工事の業者が立ち会い、防水業者は目で見るだけです）。"
-GEN_HEADLINE_ANSWERED = "非常用発電機があるとの答えです。置き場所の階と床の高さが確かめられていません。火災のときのための設備で、水害の長い停電に足りるとは言えません。"
+GEN_HEADLINE_ANSWERED = "非常用発電機があるとの答えです。置き場所の階と床の高さは、まだ分かっていません。火災のときのための設備で、水害の長い停電に足りるとは言えません。"
 # 地中引込の高圧ケーブルの確認先。主任技術者のいない建物（借室のみ型）は東京電力パワーグリッドへの照会にする。
 MEMO_CABLE_NO_ENGINEER = "管理会社から東京電力パワーグリッドに、引込みの高圧ケーブルと管路がどちらの持ち物か、大雨や浸水のあとにどんな確認をするかを照会します。歩道ぎわの蓋は開けません。"
 MEMO_FEED_FORM = "管理会社が単線結線図で、電気の引込みが地中か空中かを確かめます。"
@@ -80,7 +80,7 @@ RAIN_TANK_VALVE = "雨水の導入管の止水弁も、事前に決めた担当�
 CLEAR_NOT_ENTRY = "「問題なし」は、部屋への立ち入りを許すという意味ではありません。"
 ABSENT_HEADLINE = "該当する設備図に描かれていないことを、図面の読み取りのあとに人が確かめました。"
 UPPER_HEADLINE = "想定の深さより明確に上の階（2階以上・屋上）にあることを、図面の読み取りのあとに人が確かめました。"
-SEALED_HEADLINE = "修繕履歴か竣工図に、この穴の止水施工済みと明記されています。この穴の行だけの読みで、部屋全体の対策済みとは読みません。後の点検報告書に湿気や漏水の指摘があれば、未確認に戻します。"
+SEALED_HEADLINE = "修繕履歴か竣工図に、この穴の止水施工済みと明記されています。対策済みとみるのはこの穴だけで、部屋全体ではありません。後の点検報告書に湿気や漏水の指摘があれば、未確認に戻します。"
 TR_ABSENT_HEADLINE = "東京電力の変圧器の部屋は、電気設備図に描かれていないことを人が確かめました。各戸へ電気を送る東京電力の設備がどこにあるかは分かっていません。"
 TR_ABSENT_CONFIRM = "管理会社が、各戸へ電気を送る設備の種類と位置を東京電力パワーグリッドに照会します。"
 # 高圧一括受電の建物（借室なし。各戸もマンション側の受電設備から）。書類と図面で分かったときだけ。
@@ -112,7 +112,7 @@ SCALE_FOCUS = {
     "large": _SCALE_MID + [("tank", "雨水ますから地下の貯留槽への導入管の止水バルブ"), ("tank", "マンホールの蓋のロック"), ("tr", "水防ラインの東京電力パワーグリッドとの協議")],
 }
 SCALE_OUTSIDE_CONFIRM = "管理会社が外から見える所を見て、入口や換気口の高さと止水板を置けるかを確かめます。冠水中は近づきません。"
-SCALE_TANK_HEADLINE = "この規模の建物で重点に確かめる候補です。雨水を地下にためる槽があるか、あれば導入管の止水バルブとマンホールの蓋のロックが確かめられていません。"
+SCALE_TANK_HEADLINE = "この規模の建物で重点に確かめる候補です。雨水を地下にためる槽があるか、あれば導入管の止水バルブとマンホールの蓋のロックがどうなっているかは、まだ分かっていません。"
 # 大雨が近づいたときの手順の三行目。A4（web/panels.js の rain[2]）と同じ文を、ここに写して両方で使う（文は変えない）。
 RAIN_THIRD = {
     "unsure": "電気の部屋や変圧器の部屋に水が来そうになったら：管理員か理事長が東京電力パワーグリッドと管理会社と、いれば主任技術者に連絡します。部屋に入りません。在宅で医療機器を使う人へ先に知らせ、全戸へ排水しないよう放送します。",
@@ -134,7 +134,7 @@ RAIN_SET_OF_THREE = {
     "no_engineer": "手順には、在宅で医療機器を使う住民への配慮（本人の同意を得た事前の把握）、全戸への排水禁止の連絡、前もって電気を止めるかの判断（東京電力パワーグリッドと電気工事の業者に相談）の三つを組にして決めておきます。",
 }
 # 下水の逆流の行。書類（竣工図）で確かめる行の形だけにする。止まる設備の数には入れない。
-BACKFLOW_HEADLINE = "下水の水位が上がったとき、低い階のトイレや排水口から水が逆流するかが確かめられていません。"
+BACKFLOW_HEADLINE = "下水の水位が上がったとき、低い階のトイレや排水口から水が逆流するかは、まだ分かっていません。"
 BACKFLOW_CONFIRM = "管理会社が竣工図で、下水道が雨水と汚水を一緒に流す方式（合流式）か、排水管に逆止弁があるか、あれば平時に動作を確かめたかを確かめます。"
 LOCK_CONFIRM = "管理会社が、オートロックの保守会社に、停電のときの扉の動き（開いたままか、閉じたままか）と、電池で動く時間を確かめます。"
 
@@ -346,7 +346,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
             "water",
             "水（全戸）",
             UNCONFIRMED,
-            f"ポンプのスイッチ盤の場所（{place_word}）と高さが確かめられていません（盤の形：{mount}）。盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。" + ("床に近い位置にある盤は、浅い浸水でも浸かるおそれがあると考えられます。" if mount == "床置き" else ""),
+            f"ポンプのスイッチ盤の場所（{place_word}）と高さは、まだ確かめていません（盤の形：{mount}）。盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。" + ("床に近い位置にある盤は、浅い浸水でも浸かるおそれがあると考えられます。" if mount == "床置き" else ""),
             f"ポンプの部屋（{place_word}）の盤（{mount}）。高さは未確認",
             "管理会社が、給水ポンプの保守業者に、スイッチ盤の下の端の高さと部屋の床の高さを測ってもらいます。",
             "管理会社→ポンプの保守業者",
@@ -364,7 +364,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "power",
                 "電気（共用部）",
                 UNCONFIRMED,
-                "マンション側で電気を受ける部屋があるか、主任技術者がいるかが、書類で確かめられていません。受電の箱か、おおもとのスイッチ盤が浸かると、共用部が停電し、給水ポンプも止まって断水します。",
+                "マンション側で電気を受ける部屋があるか、主任技術者がいるかは、まだ書類で確かめていません。受電の箱か、おおもとのスイッチ盤が浸かると、共用部が停電し、給水ポンプも止まって断水します。",
                 "受電の部屋と主任技術者の有無が未確認",
                 "管理会社が、点検報告書か保安規程、竣工図、共用部の電気代の明細で確かめます。",
                 "管理会社（書類）",
@@ -377,7 +377,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
         known = (document_read or drawing("elec")) and in_basement_known is True
         verdict = RISK if known and location_risk else UNCONFIRMED
         source = "図面で確かめました" if drawing("elec") else "書類で読めました" if document_read else "聞いていますが、書類や図面ではまだ確かめていません"
-        where = f"{place_word}にあると{source}" if in_basement_known is not None else "どの階にあるか確かめられていません"
+        where = f"{place_word}にあると{source}" if in_basement_known is not None else "どの階にあるかは、まだ分かっていません"
         rows.append(
             _item(
                 "power",
@@ -652,7 +652,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "drain",
                 "トイレ・排水",
                 UNCONFIRMED,
-                "汚水を汲み上げるポンプがあるか、どの階にあるかが確かめられていません。止まるとトイレや生活排水が使えなくなり、低い階へ逆流することがあります。",
+                "汚水を汲み上げるポンプがあるか、どの階にあるかは、まだ分かっていません。止まるとトイレや生活排水が使えなくなり、低い階へ逆流することがあります。",
                 "汲み上げポンプの有無と階が未確認",
                 "管理会社が竣工図で確かめます。",
                 "管理会社（竣工図）",
@@ -678,7 +678,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "park",
                 "機械式駐車場",
                 UNCONFIRMED,
-                "装置の下の掘り込みに水がたまると車が水没します。" if not sample.get("custom") else "機械式駐車場があるか確かめられていません。あれば、装置の下の掘り込みに水がたまると車が水没します。",
+                "装置の下の掘り込みに水がたまると車が水没します。" if not sample.get("custom") else "機械式駐車場があるかは、まだ分かっていません。あれば、装置の下の掘り込みに水がたまると車が水没します。",
                 "掘り込みの深さと排水ポンプが未確認",
                 "駐車場の保守会社に、掘り込みの深さと排水ポンプの有無を確認します。",
                 "駐車場の保守会社",
@@ -696,7 +696,7 @@ def _apply_heights(rows: List[dict], given: dict, mount: str) -> None:
     water = by_key.get("water")
     if water and "panel_bottom" in given:
         text = given["panel_bottom"]["text"]
-        water["headline"] = water["headline"].replace(f"と高さが確かめられていません（盤の形：{mount}）。", f"が確かめられていません（盤の形：{mount}。盤の下の端の高さは{text}）。")
+        water["headline"] = water["headline"].replace(f"と高さは、まだ確かめていません（盤の形：{mount}）。", f"は、まだ確かめていません（盤の形：{mount}。盤の下の端の高さは{text}）。")
         water["summary"] = water["summary"].replace("高さは未確認", f"高さは{text}")
     if water and "pump_floor" in given:
         water["details"].append(f"ポンプの部屋の床：{given['pump_floor']['text']}")
@@ -733,7 +733,7 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
     elif any(item["verdict"] == "risk" for item in equipment) or is_basement:
         lead = "このままなら、長引くおそれがある。"
         if not location_risk:
-            notes.append("建物の位置まで水が来るかは、まだ確かめていない。管理会社が立地の表の確認先で確かめる。")
+            notes.append("建物の位置まで水が来るかは、まだ確かめていない。立地の表に書いた確認先に、管理会社が確かめる。")
         basement_keys = {"elec", "tr", "pump"}
         if not basement_keys.issubset(confirmed):
             notes.append("地下にあるのは書類や聞き取りによるもので、図面ではまだ確かめていない。管理会社が竣工図で確かめる。")
@@ -1174,7 +1174,7 @@ def scale_focus(sample: dict, equipment: List[dict], location_rows: List[dict]) 
             focus += "（主任技術者は技術面で同席）"
         row = by_key.get(key)
         if row is None and key == "outside":
-            row = _item("outside", "外から見える入口", UNCONFIRMED, f"この規模の建物で重点に確かめる候補です。{focus}の高さと止水板を置けるかが確かめられていません。", focus, SCALE_OUTSIDE_CONFIRM, "管理会社（外から）", 1, evidence=QUESTION)
+            row = _item("outside", "外から見える入口", UNCONFIRMED, f"この規模の建物で重点に確かめる候補です。{focus}の高さと止水板を置けるかは、まだ分かっていません。", focus, SCALE_OUTSIDE_CONFIRM, "管理会社（外から）", 1, evidence=QUESTION)
             equipment.append(row)
             by_key[key] = row
         elif row is None and key == "tank" and answers.get("tank") != "no":

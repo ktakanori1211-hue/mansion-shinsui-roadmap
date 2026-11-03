@@ -132,7 +132,7 @@ const SimPanel = (() => {
       }
       box.append(
         table,
-        element("p", "計算の例で、交付額ではありません。見積り額が補助対象経費と同じとは限らず、消費税の扱いは確かめていません。", "fixed-note strong"),
+        element("p", "計算の例で、交付額ではありません。見積り額がそのまま補助対象経費になるとは限りません。消費税の扱いも、まだ確かめていません。", "fixed-note strong"),
       );
     } else {
       box.append(element("p", "手を選んで見積り額を入れるか、見本の金額のボタンを押すと出ます。", "hint"));

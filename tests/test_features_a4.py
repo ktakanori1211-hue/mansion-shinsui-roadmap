@@ -44,7 +44,7 @@ class EngineerSectionTest(unittest.TestCase):
         self.assertIn("保安管理業務の契約によります", PANELS)
         self.assertIn("単線結線図と、東京電力パワーグリッドへの書面での確認", PANELS)
         # 今の地中引込の文は消さずに残す
-        self.assertIn("一度の冠水でどの程度進むかは確かめていません。歩道ぎわの蓋は開けないでください。", PANELS)
+        self.assertIn("一度の冠水で劣化がどこまで進むかは、まだ確かめていません。歩道ぎわの蓋は開けないでください。", PANELS)
 
 
 class FrontSideTest(unittest.TestCase):
