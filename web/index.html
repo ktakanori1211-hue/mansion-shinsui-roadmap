@@ -37,6 +37,7 @@
     <button type="button" data-tab="2"><b>2</b>建物<small>図面と3D</small></button>
     <button type="button" data-tab="3"><b>3</b>資料<small>A4・共有</small></button>
     <button type="button" data-tab="4"><b>4</b>費用<small>補助・相談</small></button>
+    <button type="button" data-tab="kb"><b>＋</b>調べたこと<small>根拠・本音・判定表・出典</small></button>
     <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   </nav>
 
@@ -299,6 +300,28 @@
         <div id="consult-body"></div>
       </section>
     </section>
+
+    <section class="stage" data-stage="kb" aria-label="調べたこと">
+      <section class="card kb-card">
+        <h2>調べたこと全部（なぜ・何を・市場とモデル・どう作るか・判定表・数字と出典）</h2>
+        <p class="hint">本人が調べた中身を、薄めずに並べています。数字は出典を確かめたものだけです。「仮説」は本人の見立てで、事実ではありません。この段階は場所を選ばなくても読めます。</p>
+        <div id="kb-coverage"></div>
+        <div class="kb-controls">
+          <div class="kb-areas" id="kb-areas" role="group" aria-label="領域で絞る"></div>
+          <input type="search" id="kb-search" placeholder="言葉で絞る（例：52%、管路口、理事長）" aria-label="言葉で絞る">
+          <span class="kb-count" id="kb-count"></span>
+        </div>
+        <div id="kb-entries"></div>
+        <h2>ノートに書かれた機能と、アプリでの状態</h2>
+        <div class="table-scroll" id="kb-feature-list"></div>
+        <h2>入れなかった項目（理由の区分ごとの数）</h2>
+        <div id="kb-excluded"></div>
+        <details class="fold kb-req">
+          <summary>要件定義の全文を開く（docs/REQUIREMENTS.md と同じ内容。画面に出さない段取りや、入れなかった理由もここにあります）</summary>
+          <div class="kb-requirements" id="kb-requirements"></div>
+        </details>
+      </section>
+    </section>
   </main>
 
   <footer class="legal-footer" id="legal-footer" aria-label="必ず読む文">
@@ -329,6 +352,7 @@
   <script src="plan.js"></script>
   <script src="panels.js"></script>
   <script src="sim.js"></script>
+  <script src="knowledge.js"></script>
   <script src="chat.js"></script>
   <script src="share-crypto.js"></script>
   <script src="share.js"></script>

@@ -364,7 +364,8 @@ const App = {
       button.classList.toggle("active", button.dataset.tab === this.stage);
     });
     document.getElementById("why-bar").classList.toggle("is-hidden", this.stage !== "1" || !this.locationState);
-    document.getElementById("hero").classList.toggle("is-hidden", Boolean(this.locationState));
+    document.getElementById("hero").classList.toggle("is-hidden", Boolean(this.locationState) || this.stage === "kb");
+    if (this.stage === "kb") Knowledge.load();
     HazardMap.refresh();
     this.fitStage2();
     window.dispatchEvent(new Event("resize"));
