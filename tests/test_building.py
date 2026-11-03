@@ -1223,3 +1223,23 @@ class GuardRoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StopCountTest(unittest.TestCase):
+    """止まる設備の数は、水位を上げると減らず、住民が使う4つだけを数える。"""
+
+    def test_count_never_drops_as_water_rises(self):
+        for sample_id, sample in samples.SAMPLES.items():
+            table = building.scenarios(sample)
+            for measure in [m["key"] for m in building.measures_for_model(sample)]:
+                counts = [
+                    sum(1 for item in table[f"{water}:{measure}"]["services"] if item["state"] == "stopped")
+                    for water in (1, 2, 3)
+                ]
+                self.assertEqual(counts, sorted(counts), (sample_id, measure, counts))
+                self.assertEqual(len(table[f"3:{measure}"]["services"]), 4)
+
+    def test_homes_are_unknown_unless_stopped(self):
+        result = building.services({"ev"})
+        states = {item["key"]: item["state"] for item in result}
+        self.assertEqual(states, {"pump": "running", "ev": "stopped", "light": "running", "homes": "unknown"})

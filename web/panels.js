@@ -130,8 +130,40 @@ const ModelPanel = (() => {
     );
   }
 
+  // 水位に合わせて「止まる設備」の数と、どれが止まるかを並べる。
+  let lastCount = null;
+  function renderStopCount(scenario) {
+    const box = document.getElementById("stop-count");
+    const count = scenario.services.filter((item) => item.state === "stopped").length;
+    const number = element("strong", String(count), "stop-number");
+    if (lastCount !== null && lastCount !== count) number.classList.add("stop-changed");
+    lastCount = count;
+    const head = element("p", undefined, "stop-head");
+    head.append(element("span", "止まる設備", "stop-kicker"), number, element("span", `／${scenario.services.length}`, "stop-total"));
+    const chips = element("ul", undefined, "stop-chips");
+    scenario.services.forEach((item) => {
+      const mark = { stopped: "止まる", running: "—", unknown: "建物側から分からない" }[item.state];
+      const chip = element("li", undefined, `stop-chip stop-${item.state}`);
+      chip.append(element("b", item.label), element("span", mark));
+      chips.append(chip);
+    });
+    box.replaceChildren(head, chips);
+  }
+
+  // ①で選んだ場面と、この建物で確かめる入り道（地図には出ないパターン）。
+  function renderSceneContext() {
+    const box = document.getElementById("scene-context");
+    const scene = typeof Scenes !== "undefined" && Scenes.SCENES.find((item) => item.key === App.scene);
+    box.hidden = !scene;
+    if (!scene) return;
+    const routes = scene.patterns.filter((pattern) => Scenes.BUILDING_PATTERNS.includes(pattern)).map((pattern) => Scenes.PATTERNS[pattern]);
+    box.replaceChildren(element("b", `①の場面：${scene.name}`), ` ${scene.line}。`, routes.length ? `この建物で確かめる入り道：${routes.join("／")}` : "");
+  }
+
   function render(scenario) {
     const fixed = App.building.fixed;
+    renderStopCount(scenario);
+    renderSceneContext();
     renderCaption();
     document.getElementById("model-fixed").replaceChildren(
       ...scenario.notes.map((line) => element("p", line, "fixed-note strong")),

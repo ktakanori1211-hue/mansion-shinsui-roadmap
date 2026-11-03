@@ -620,7 +620,7 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 .top-banner-lead { margin: 0 0 2px; font-size: 36px; font-weight: 800; line-height: 1.25; letter-spacing: -.01em; }
 .top-banner-dir { margin: 0 0 3px; font-size: 15px; font-weight: 700; color: #ffd9a8; }
 .top-banner-notes { font-size: 12.5px; line-height: 1.5; opacity: .85; }
-.stage2-grid { gap: 10px; }
+.stage2-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 10px; }
 .stage2-grid .card { margin-bottom: 0; padding: 10px 12px; }
 .stage2-grid .card h2 { margin-bottom: 6px; }
 .plan-stage { margin-top: 0; border-radius: 8px; overflow: hidden; }
@@ -723,6 +723,22 @@ body > .stages { flex: 1 0 auto; width: 100%; }
 .scene-result[hidden] { display: none; }
 .scene-result p { margin: 0; }
 .scene-result .scene-result-head { font-weight: 800; }
+/* ②の止まる設備の数 */
+.stop-count { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 2px 0 6px; }
+.stop-head { display: flex; align-items: baseline; gap: 6px; margin: 0; }
+.stop-kicker { color: var(--ink-muted); font-size: 13px; font-weight: 700; }
+.stop-number { color: var(--hot-deep); font-size: 40px; font-weight: 800; line-height: 1; }
+.stop-total { color: var(--ink-muted); font-size: 15px; font-weight: 700; }
+.stop-changed { animation: stop-pop .45s ease-out; }
+@keyframes stop-pop { 0% { transform: scale(1.5); } 100% { transform: scale(1); } }
+.stop-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.stop-chip { display: flex; flex-direction: column; padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; background: #f6f6f8; font-size: 11px; line-height: 1.35; }
+.stop-chip b { font-size: 12.5px; }
+.stop-chip.stop-stopped { border-color: var(--hot-deep); background: var(--hot-deep-bg); color: var(--hot-deep); }
+.stop-chip.stop-running span { color: var(--ink-muted); }
+.stop-chip.stop-unknown { border-style: dashed; color: var(--ink-muted); }
+.scene-context { margin: 0 0 6px; padding: 4px 8px; border-left: 3px solid var(--accent); background: #eef4fc; font-size: 12px; line-height: 1.5; }
+.scene-context[hidden] { display: none; }
 .scene-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .scene-swatch { display: inline-block; width: 22px; height: 11px; border-radius: 2px; }
 .swatch-map { background: linear-gradient(90deg, rgb(170, 205, 245), rgb(15, 35, 110)); }

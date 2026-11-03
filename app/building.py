@@ -518,6 +518,29 @@ def measures_for_model(sample: dict) -> List[dict]:
     ]
 
 
+# 「止まる設備の数」で数えるのは、住民が使えなくなるものだけ。受電の箱や制御盤は止まる原因として別に見せる。
+SERVICES = [
+    ("pump", "給水（全戸の水）"),
+    ("ev", "エレベーター"),
+    ("light", "廊下の照明"),
+    ("homes", "各戸の電気"),
+]
+
+
+def services(stopped: set) -> List[dict]:
+    """各戸の電気は東京電力の設備しだいで、止まらない想定のときも建物側からは分からない。"""
+    result = []
+    for key, label in SERVICES:
+        if key in stopped:
+            state = "stopped"
+        elif key == "homes":
+            state = "unknown"
+        else:
+            state = "running"
+        result.append({"key": key, "label": label, "state": state})
+    return result
+
+
 def scenario(sample: dict, water: int, measure: str) -> dict:
     """水の位置と対策の組合せごとに、浸かる想定、止まる想定、表のマス、固定の文を作る。"""
     answers = sample.get("answers") or {}
@@ -657,6 +680,7 @@ def scenario(sample: dict, water: int, measure: str) -> dict:
         "measure": measure,
         "wet": sorted(wet),
         "stopped": sorted(stopped),
+        "services": services(stopped),
         "tr_state": "stopped" if tr_wet else "unknown",
         "notes": notes,
         "below": below,
