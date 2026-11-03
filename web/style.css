@@ -649,6 +649,23 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 .legal-footer b { flex: none; color: var(--navy); font-size: 10.5px; }
 .stage-tabs .chat-toggle { position: static; z-index: auto; flex: 0 0 auto; padding: 7px 14px; box-shadow: none; font-size: 13px; }
 
+/* 上の帯：土地 × 大雨 ＝ 止まるもの */
+.why-bar { grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 8px; }
+.why-op { align-self: center; color: var(--navy); font-size: 30px; font-weight: 800; line-height: 1; }
+.why-land { border-top-color: var(--hot); }
+.why-rain { border-top-color: #0b4fa8; }
+.why-stop { border-top-color: var(--hot-deep); }
+.why-card.why-rain .why-big { color: #0b4fa8; }
+.why-card.why-stop .why-big { color: var(--hot-deep); }
+.why-card .why-big { font-size: 20px; line-height: 1.25; }
+.why-card { position: relative; padding-right: 76px; }
+.why-card .why-more { position: absolute; top: 8px; right: 10px; max-width: calc(100% - 20px); text-align: right; }
+.why-card .why-more[open] { z-index: 5; width: min(420px, calc(100% - 20px)); padding: 4px 8px; background: var(--surface); border-radius: 6px; box-shadow: var(--card-shadow); text-align: left; }
+.why-chips { display: flex; flex-wrap: wrap; gap: 3px 4px; margin: 3px 0; }
+.why-chip { padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; background: #f1f2f5; color: var(--ink-muted); font-size: 12px; font-weight: 700; line-height: 1.5; white-space: nowrap; }
+.why-chip-hot { background: var(--hot); border-color: var(--hot); color: #fff; }
+.why-chip-risk { background: var(--hot-deep); border-color: var(--hot-deep); color: #fff; }
+
 /* 第2段階の結論の帯を低くし、平面図と模型に高さを回す */
 .top-banner { padding: 8px 18px; }
 .top-banner-question { font-size: 12.5px; }
@@ -765,6 +782,7 @@ button:hover:not(:disabled) { border-color: var(--accent); }
   .stage2-grid { grid-template-columns: minmax(0, 1fr); }
   .top-banner-lead { font-size: 26px; }
   .stage3-top, .sim-grid, .consult-docs { grid-template-columns: 1fr; }
+  .why-op { justify-self: center; }
   .sim-result { position: static; max-height: none; }
   .legal-footer { position: static; flex-direction: column; gap: 6px; padding: 8px 16px; }
   .legal-footer p { padding: 0; border: 0; }

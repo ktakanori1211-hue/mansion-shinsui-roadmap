@@ -41,26 +41,25 @@
     <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
   </nav>
 
-  <section class="why-bar" id="why-bar" aria-label="なぜこの道具が要るか">
-    <article class="why-card why-map">
-      <p class="why-kicker">ハザードマップ外での浸水被害</p>
-      <div class="why-numbers">
-        <p><strong>55.7%</strong><span>被害報告が想定区域・低い土地の外</span></p>
-        <p><strong>64%</strong><span>浸水・道路冠水447件が洪水マップの色の外</span></p>
-      </div>
-      <details class="why-more"><summary>出典と補足</summary><p>55.7%は2026年8月の千葉豪雨、64%は9月の台風25号で、どちらもウェザーニューズ。千葉県で内水の地図の公表義務がある38自治体のうち19が公表していなかった（FNNの調べ、2026年10月28日。調査の時点は記事に書かれていません）。</p></details>
+  <section class="why-bar" id="why-bar" aria-label="土地と大雨が重なると何が止まるか">
+    <article class="why-card why-land">
+      <p class="why-kicker">この土地（洪水・高潮・満潮のハザード）</p>
+      <div class="why-chips" id="why-chips"><span class="why-chip">場所を選ぶと、ここに色が出ます</span></div>
+      <details class="why-more"><summary>補足</summary><p>オレンジは地図に色がある項目、赤は記録がある項目で、判定の札を変えるものではありません。色がないことは安全という意味ではありません。川や海の水位が高いと、下水や水路から雨水を流せなくなって浸水します（神戸市）。満潮はその一つと考えられますが、大雨との重なりを「満潮」と書いた公的なページは確かめられていません。</p></details>
     </article>
-    <article class="why-card why-gap">
-      <p class="why-kicker">建物と電気の境目の盲点</p>
-      <p class="why-big">壁の穴とポンプ制御盤</p>
-      <p class="why-sub">止水が管理会社の仕事にも点検の項目にも入っていないことがある。</p>
-      <details class="why-more"><summary>補足</summary><p>地中から高圧のケーブルで電気を引き込む建物の話で、書類で確かめます。給水ポンプの制御盤が浸かると、受電が生きていても断水につながることがあります。</p></details>
+    <span class="why-op" aria-hidden="true">×</span>
+    <article class="why-card why-rain">
+      <p class="why-kicker">大雨（線状降水帯）</p>
+      <p class="why-big">地図の色の外でも浸水</p>
+      <p class="why-sub">被害報告の55.7%が、想定区域や低い土地の外でした（2026年8月の千葉豪雨）。</p>
+      <details class="why-more"><summary>出典と補足</summary><p>線状降水帯は、線状に伸びる強い降水をともなう雨域です（気象庁）。55.7%と、2026年9月の台風25号で浸水・道路冠水447件の64%が洪水マップの色の外だった件は、どちらもウェザーニューズ。千葉県で内水の地図の公表義務がある38自治体のうち19が公表していなかった（FNNの調べ、2026年10月28日。調査の時点は記事に書かれていません）。</p></details>
     </article>
-    <article class="why-card why-cost">
-      <p class="why-kicker">理事会・管理費でできる場合がある最初の手</p>
-      <p class="why-big">数万〜十数万円</p>
-      <p class="why-sub">桁の目安。見積りで確かめます。</p>
-      <details class="why-more"><summary>補足</summary><p>建物の規約と予算によっては、マンション側の部屋の壁の穴の止水などを理事会で決められる場合があります。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p></details>
+    <span class="why-op" aria-hidden="true">＝</span>
+    <article class="why-card why-stop">
+      <p class="why-kicker">電気室やポンプに水が入ると</p>
+      <p class="why-big">水と電気が止まるおそれ</p>
+      <p class="why-sub">入り道は壁の穴とポンプ制御盤。最初の手は数万〜十数万円（桁の目安）。</p>
+      <details class="why-more"><summary>補足</summary><p>壁の穴とポンプ制御盤の止水は、管理会社の仕事にも点検の項目にも入っていないことがあります。壁の穴は、地中から高圧のケーブルで電気を引き込む建物の話で、書類で確かめます。給水ポンプの制御盤が浸かると、受電が生きていても断水につながることがあります。建物の規約と予算によっては、マンション側の部屋の壁の穴の止水などを理事会で決められる場合があります。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p></details>
     </article>
   </section>
 
@@ -77,7 +76,7 @@
               </div>
               <div class="search-tools">
                 <button type="button" id="geo-button">現在地から</button>
-                <details class="fold fold-inline"><summary>入れた言葉の扱い</summary><p>「調べる」を押したときに1回だけ探します。入れた言葉は国土地理院、OpenStreetMap、郵便番号の検索サービスに送ります（API キーがあるときは Claude にも）。地図を押して場所を選ぶこともできます。</p></details>
+                <details class="fold fold-inline"><summary>入れた言葉の扱い</summary><p>「調べる」を押したときに1回だけ探します。入れた言葉は国土地理院、OpenStreetMap、郵便番号の検索サービスに送ります（API キーがあるときは Claude と、その Web 検索にも）。地図を押して場所を選ぶこともできます。</p></details>
               </div>
             </form>
             <p class="search-message" id="search-message" hidden></p>

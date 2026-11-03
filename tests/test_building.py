@@ -701,14 +701,92 @@ class SearchTest(unittest.TestCase):
             search.search("261-0001")
         postal.assert_called_once_with("2610001")
 
-    def test_claude_guess_is_marked(self):
-        guess = {"address": "千葉県市川市", "floors": 10, "built_year": 1999, "confident": False}
+    def osm_results(self, results):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(results).encode("utf-8")
+
+        return mock.patch("urllib.request.urlopen", return_value=Response())
+
+    def test_address_from_the_input_is_used(self):
+        guess = {"address": "千葉県市川市", "from_input": True, "floors": 10, "built_year": 1999, "confident": False, "source_url": ""}
         with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess), mock.patch.object(
             search, "_gsi", return_value=[{"label": "千葉県市川市", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
         ):
             result = search.search("エクセル市川")
-        self.assertIn("Claude が所在地を推定", result["message"])
+        self.assertIn("入力の文から", result["message"])
         self.assertEqual(result["hints"], {"floors": 10, "built_year": 1999})
+
+    def test_web_answer_names_the_page(self):
+        guess = {"address": "東京都中央区勝どき六丁目", "building": "見本タワー", "from_input": False, "source_url": "https://example.com/a", "floors": None, "built_year": None, "confident": True}
+        with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess), mock.patch.object(
+            search, "_gsi", return_value=[{"label": "東京都中央区勝どき六丁目", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
+        ):
+            result = search.search("見本タワー")
+        self.assertIn("example.com", result["message"])
+        self.assertEqual(result["candidates"][0]["source"], "Claude の Web 検索と国土地理院")
+
+    def test_unconfirmed_guess_is_not_shown(self):
+        guesses = [
+            {"address": "東京都港区", "from_input": False, "source_url": "", "confident": True},
+            {"address": "東京都港区", "from_input": False, "source_url": "https://example.com", "confident": False},
+            {"address": "", "from_input": False, "source_url": "https://example.com", "confident": True},
+        ]
+        for guess in guesses:
+            with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess), mock.patch.object(search, "_gsi") as gsi, mock.patch.object(search, "_gsi_raw", return_value=[]):
+                with self.assertRaises(AddressError):
+                    search.search("見本タワー")
+            gsi.assert_not_called()
+
+    def test_unspecific_building_asks_for_more(self):
+        guess = {"address": "神奈川県川崎市中原区", "from_input": False, "source_url": "https://example.com", "confident": False}
+        with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess):
+            with self.assertRaisesRegex(AddressError, "棟の名前か町名"):
+                search.search("見本タワー")
+
+    def test_map_result_with_another_name_is_dropped(self):
+        results = [
+            {"display_name": "別のタワー, 大阪市", "name": "別のタワー", "lon": "135", "lat": "34", "category": "building"},
+            {"display_name": "見本・タワー 東棟, 東京", "name": "見本・タワー 東棟", "lon": "139", "lat": "35", "category": "building"},
+        ]
+        with self.osm_results(results):
+            found = search._osm("見本タワー", "", ["見本タワー"])
+        self.assertEqual([c["label"] for c in found], ["見本・タワー 東棟, 東京"])
+
+    def test_similar_place_is_not_taken_for_a_building_name(self):
+        place = [{"label": "東京都江東区有明一丁目", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
+        with mock.patch.object(search, "_gsi", return_value=place), mock.patch.object(search, "_osm", return_value=[]) as osm, mock.patch.object(search, "_claude_infer", return_value=None):
+            with self.assertRaises(AddressError):
+                search.search("ブリリア有明")
+        osm.assert_called_once()
+
+    def test_place_name_alone_still_finds_the_place(self):
+        place = [{"label": "千葉県浦安市新浦安", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
+        with mock.patch.object(search, "_gsi", return_value=place), mock.patch.object(search, "_osm") as osm:
+            result = search.search("新浦安")
+        self.assertEqual(result["candidates"], place)
+        osm.assert_not_called()
+
+    def test_address_detection(self):
+        for text in ("千葉市幸町", "東京都江東区大島2丁目", "大島2丁目", "東京都江東区大島2-15", "幸町"):
+            self.assertTrue(search._looks_like_address(text), text)
+        for text in ("プラウド市川", "ブリリア有明", "東京ツインパークス", "勝どきザ・タワー"):
+            self.assertFalse(search._looks_like_address(text), text)
+
+    def test_web_search_reads_the_last_json_and_resumes(self):
+        paused = {"content": [{"type": "text", "text": "調べます"}], "stop_reason": "pause_turn"}
+        done = {"content": [{"type": "text", "text": '調べました。\n{"address": "東京都港区", "from_input": false, "source_url": "https://example.com", "confident": true}'}], "stop_reason": "end_turn"}
+        with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}), mock.patch.object(claude, "create", side_effect=[paused, done]) as create:
+            inferred = search._claude_infer("見本タワー")
+        self.assertEqual(inferred["address"], "東京都港区")
+        self.assertEqual(create.call_count, 2)
+        self.assertEqual(create.call_args.kwargs["tools"], [search.WEB_SEARCH])
 
     def test_osm_is_only_used_when_address_search_fails(self):
         with mock.patch.object(search, "_gsi", return_value=[{"label": "x"}]) as gsi, mock.patch.object(search, "_osm") as osm:
@@ -893,7 +971,7 @@ class TokenBudgetTest(unittest.TestCase):
 
     def test_light_uses(self):
         self.assertEqual(self.budget(lambda: assistant.chat("この建物のことを教えて", [], {"sample_id": "a"})), (1024, "low"))
-        self.assertEqual(self.budget(lambda: search._claude_infer("うみかぜコート")), (1024, "low"))
+        self.assertEqual(self.budget(lambda: search._claude_infer("うみかぜコート")), (2048, "low"))
         self.assertEqual(self.budget(lambda: assistant.rephrase_pins([{"key": "ア", "how_water": "穴"}], {})), (1024, "low"))
 
     def test_document_uses(self):

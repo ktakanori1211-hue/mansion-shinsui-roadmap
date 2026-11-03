@@ -359,8 +359,28 @@ const App = {
 };
 window.App = App;
 
+// 土地の弱さの札。文より先に、どこに色が付いているかを見せる。判定の札は変えない。
+const LAND_NAMES = [["flood", "洪水"], ["surge", "高潮"], ["inland", "内水"], ["ground", "土地"], ["record", "記録"]];
+
+function landChips(rows) {
+  return LAND_NAMES.map(([key, name]) => {
+    const row = rows.find((item) => item.key === key);
+    return row && { row, text: /記録|標高/.test(row.value) ? row.value : `${name} ${row.value}` };
+  }).filter(Boolean);
+}
+
+function renderWhyChips(rows) {
+  document.getElementById("why-chips").replaceChildren(
+    ...landChips(rows).map(({ row, text }) => {
+      const tone = row.verdict === "risk" ? "why-chip-risk" : row.accent ? "why-chip-hot" : "";
+      return element("span", text, `why-chip ${tone}`);
+    }),
+  );
+}
+
 function renderLocation(state) {
   const { site, location } = state;
+  renderWhyChips(location.rows);
   locationBody.replaceChildren(...location.rows.map(locationCard), fold("札の見方", verdictLegend()));
   document.getElementById("legal-basis").textContent = location.basis_note;
   document.getElementById("legal-basis-box").hidden = false;

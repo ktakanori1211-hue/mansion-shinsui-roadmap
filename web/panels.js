@@ -193,6 +193,8 @@ const SheetPanel = (() => {
 
     const top = document.getElementById("sheet-top");
     top.replaceChildren(element("p", building.top_line.lead, "top-lead"));
+    const land = landChips(App.locationState.location.rows).map((chip) => chip.text).join("／");
+    top.append(element("p", `この土地（${land}）× 大雨（線状降水帯）＝ 電気室やポンプに水が入ると、水と電気が止まるおそれ`, "top-notes strong"));
     if (building.top_line.notes.length) {
       const notes = element("p", building.top_line.notes.join(""), "top-notes");
       notes.dataset.polish = "top";
