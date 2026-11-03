@@ -12,7 +12,10 @@ const SectionAnim = (() => {
   const PLAY_SECONDS = 9;
   // 入り道の矢印を出し始める水の位置（続いた値）。外の水が入口に届いてから矢印を出す。
   const ROUTE_FROM = { hill: 0.15, slope: 0.85, hole: 0.85, door: 0.85, basin: 1.5 };
-  const FALLBACK_NAMES = { 1: "前の道路に達した", 2: "一番低い床に達した", 3: "盤・受電の箱の下端に達した" };
+  const RAISED_TEXT = "付け替えた盤（高さは見積りと現地調査で決める）";
+  const DRY_TEXT = "盤は浸からない";
+  const PROTECTED_TEXT = "守られる（壁の穴を塞いだ）";
+  const FALLBACK_NAMES ={ 1: "前の道路に達した", 2: "一番低い床に達した", 3: "盤・受電の箱の下端に達した" };
 
   let t = 3;
   let playing = false;
@@ -96,7 +99,6 @@ const SectionAnim = (() => {
       ["swatch-water", "水"],
       ["swatch-wet", "浸かる"],
       ["swatch-stopped", "止まる"],
-      ["swatch-sealed", "塞いだ所"],
     ].forEach(([name, text]) => {
       const swatch = document.createElement("span");
       swatch.className = `timeline-swatch ${name}`;
@@ -104,6 +106,13 @@ const SectionAnim = (() => {
       label.textContent = text;
       row.append(swatch, label);
     });
+    // 破線の輪郭は二つの意味で使う。1行で言う。
+    const dashed = document.createElement("span");
+    dashed.className = "timeline-legend-line";
+    const swatch = document.createElement("span");
+    swatch.className = "timeline-swatch swatch-sealed";
+    dashed.append(swatch, " 破線の輪郭：付け替える前の盤の位置／壁の穴を塞いで守られる部屋");
+    row.append(dashed);
     return row;
   }
 
@@ -197,9 +206,50 @@ const SectionAnim = (() => {
       svg("circle", { cx: x, cy: y, r: 9 }, block);
       svg("path", { d: `M${x - 5},${y - 5} L${x + 5},${y + 5} M${x + 5},${y - 5} L${x - 5},${y + 5}` }, block);
     });
+    // 盤を高くするとき：元の位置は破線の輪郭にし、水面より上に描き直す。高さの数字は出さない。
+    const raised = buildRaised(root);
+    // 壁の穴を塞いで乾いたままの部屋に出す印。
+    rooms.forEach((item) => {
+      if (item.room.role !== "power") return;
+      const width = item.room.x1 - item.room.x0;
+      const band = anchors.floor_y - anchors.levels["3"];
+      const size = Math.max(9, Math.min(15, (width * 0.92) / PROTECTED_TEXT.length, band * 0.95 || 15));
+      item.badge = svg("text", { class: "ov-badge", x: (item.room.x0 + item.room.x1) / 2, y: (anchors.levels["3"] + anchors.floor_y) / 2, "font-size": size.toFixed(1) }, root);
+      item.badge.textContent = PROTECTED_TEXT;
+    });
     fit.append(root);
-    overlay = { root, outside, handhole, rooms, equipment, routes };
+    overlay = { root, outside, handhole, rooms, equipment, routes, raised };
     return overlay;
+  }
+
+  // 付け替えた盤の位置。水の位置③の線より上で、部屋の天井（と部屋の名前）にかからない所に置く。
+  // 図の上の置き場所で、付け替える高さを示すものではない。
+  function raisedRect() {
+    const [x, , w, h] = anchors.equipment.panel.rect;
+    const water = anchors.levels["3"];
+    const limit = anchors.ceiling_y + 30;
+    // 部屋が低い見本（B）では、盤の箱を小さめにして、水面との間をはっきり空ける。
+    const height = Math.max(8, Math.min(h, (water - limit) * 0.6));
+    return [x, limit, w, height];
+  }
+
+  function buildRaised(root) {
+    if (!anchors.equipment.panel || !anchors.equipment.panel.rect) return null;
+    const [ox, oy, ow, oh] = anchors.equipment.panel.rect;
+    const [x, y, w, h] = raisedRect();
+    const group = svg("g", { class: "ov-raised" }, root);
+    svg("rect", { class: "ov-raised-ghost", x: ox, y: oy, width: ow, height: oh }, group);
+    const box = svg("rect", { class: "ov-raised-box", x, y, width: w, height: h }, group);
+    const center = x + w / 2;
+    const labelY = Math.max(anchors.floor_y + 42, 655);
+    // 札は建物の下に置き、盤の右の端から細い線でつなぐ（図の文字に重ねない）。
+    svg("polyline", { class: "ov-raised-leader", points: `${x + w},${y + h / 2} ${x + w + 5},${y + h / 2} ${x + w + 5},${labelY - 14}` }, group);
+    const tag = svg("text", { class: "ov-tag", x: center, y: labelY, "font-size": 16 }, group);
+    tag.textContent = RAISED_TEXT;
+    // 「盤は浸からない」は札の下に出す（盤と水面の間には図のピンがあり、重なるため）。
+    const dry = svg("text", { class: "ov-badge", x: center, y: labelY + 20, "font-size": 15 }, group);
+    dry.textContent = DRY_TEXT;
+    return { group, box, dry, bottom: y + h };
   }
 
   function drawOverlay(state) {
@@ -241,10 +291,23 @@ const SectionAnim = (() => {
       if (sealed) Object.entries({ x: room.x0 + 1, y: anchors.ceiling_y + 1, width: room.x1 - room.x0 - 2, height: anchors.floor_y - anchors.ceiling_y - 2 }).forEach(([key, value]) => seal.setAttribute(key, String(value)));
     });
     // 設備：止まる想定は橙、浸かる想定は斜線。どちらも今の水の位置の scenario のまま。
+    const raising = App.measure === "raise" && Boolean(overlay.raised);
     overlay.equipment.forEach(({ key, node }) => {
-      node.classList.toggle("is-stopped", stopped.has(key));
-      node.classList.toggle("is-wet", wet.has(key));
-      node.classList.toggle("is-raised", key === "panel" && App.measure === "raise");
+      const moved = key === "panel" && raising;
+      node.classList.toggle("is-stopped", !moved && stopped.has(key));
+      node.classList.toggle("is-wet", !moved && wet.has(key));
+    });
+    // 盤を高くする：付け替えた盤に、止まる・浸かるを scenario のまま付ける。水がその高さに届かないあいだ「盤は浸からない」。
+    if (overlay.raised) {
+      const { group, box, dry, bottom } = overlay.raised;
+      group.style.display = raising ? "" : "none";
+      box.classList.toggle("is-stopped", stopped.has("panel"));
+      box.classList.toggle("is-wet", wet.has("panel"));
+      dry.style.display = raising && flow > 1 && !wet.has("panel") && (surface === null || surface > bottom) ? "" : "none";
+    }
+    // 壁の穴を塞いで乾いたままの部屋に「守られる」。建物に水が来てから出す。
+    overlay.rooms.forEach(({ room, badge }) => {
+      if (badge) badge.style.display = room.role === "power" && powerDry && flow >= 1 ? "" : "none";
     });
     // 入り道の矢印。塞いだ壁の穴は、穴の手前で止めて × を出す。スロープと扉からの道は、対策にかかわらず流す。
     overlay.routes.forEach(({ route, node, block }) => {

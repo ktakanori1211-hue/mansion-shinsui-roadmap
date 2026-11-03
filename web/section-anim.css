@@ -17,6 +17,7 @@
 .timeline-stage.is-not-reached.is-current { background: #6b6b73; }
 .timeline-note { margin: 0; color: var(--ink-muted); font-size: 11px; }
 .timeline-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; color: var(--ink-muted); font-size: 11px; }
+.timeline-legend-line { display: inline-flex; align-items: center; gap: 4px; }
 .timeline-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
 .swatch-water { background: rgba(41, 128, 214, .55); }
 .swatch-wet { background: repeating-linear-gradient(45deg, rgba(41, 128, 214, .75) 0 2px, rgba(232, 133, 58, .35) 2px 5px); }
@@ -38,7 +39,15 @@
 .section-overlay .ov-eq { fill: none; stroke: none; }
 .section-overlay .ov-eq.is-stopped { fill: rgba(232, 133, 58, .32); stroke: #c2410c; stroke-width: 2.5; }
 .section-overlay .ov-eq.is-wet { fill: url(#wet-hatch); }
-.section-overlay .ov-eq.is-raised:not(.is-wet) { stroke-dasharray: 5 3; }
+.section-overlay .ov-raised-ghost { fill: rgba(255, 255, 255, .88); stroke: #5a5a60; stroke-width: 1.5; stroke-dasharray: 5 3; }
+.section-overlay .ov-raised-box { fill: rgba(238, 246, 240, .55); stroke: #1c6b3a; stroke-width: 2.5; }
+.section-overlay .ov-raised-box.is-stopped { fill: rgba(232, 133, 58, .32); stroke: #c2410c; }
+.section-overlay .ov-raised-box.is-wet { fill: url(#wet-hatch); }
+.section-overlay .ov-raised-leader { fill: none; stroke: #1c6b3a; stroke-width: 1.2; stroke-dasharray: 3 2; }
+.section-overlay .ov-tag,
+.section-overlay .ov-badge { font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif; font-weight: 700; text-anchor: middle; dominant-baseline: middle; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.section-overlay .ov-tag { fill: #1a1a1c; }
+.section-overlay .ov-badge { fill: #1c6b3a; }
 .section-overlay .wet-hatch-bg { fill: rgba(232, 133, 58, .32); }
 .section-overlay .wet-hatch-line { stroke: rgba(29, 111, 196, .85); stroke-width: 3; }
 .section-overlay .ov-seal { fill: rgba(28, 107, 58, .06); stroke: #1c6b3a; stroke-width: 2; stroke-dasharray: 6 4; }

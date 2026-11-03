@@ -982,12 +982,13 @@ body > .stages { flex: 1 0 auto; width: 100%; }
 .sheet-fold summary { display: inline; color: var(--ink-muted); cursor: pointer; }
 .sheet-fold[open] > span { display: block; margin-top: 0.5mm; }
 .sheet-fold-print { font-size: 7pt; color: var(--ink-muted); }
-#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(1) { width: 7%; white-space: nowrap; }
-#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(2) { width: 37%; }
-#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(3) { width: 21%; white-space: normal; }
-#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(4) { width: 10%; white-space: nowrap; }
-#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(5) { width: 13%; white-space: normal; font-size: 7pt; }
-#sheet-front #sheet-measures .slim-table.measure-table td:nth-child(6) { width: 12%; white-space: normal; font-size: 7pt; }
+/* 処置の表の6列の版は、別紙（おもての表のくわしい版）に置く。 */
+.sheet .slim-table.measure-table td:nth-child(1) { width: 7%; white-space: nowrap; }
+.sheet .slim-table.measure-table td:nth-child(2) { width: 37%; }
+.sheet .slim-table.measure-table td:nth-child(3) { width: 21%; white-space: normal; }
+.sheet .slim-table.measure-table td:nth-child(4) { width: 10%; white-space: nowrap; }
+.sheet .slim-table.measure-table td:nth-child(5) { width: 13%; white-space: normal; font-size: 7pt; }
+.sheet .slim-table.measure-table td:nth-child(6) { width: 12%; white-space: normal; font-size: 7pt; }
 .scale-tag { display: inline-block; padding: 0 3px; border: 1px solid var(--stopped); border-radius: 2px; color: var(--stopped); font-size: 7pt; white-space: nowrap; }
 .scale-focus { display: block; color: var(--ink-muted); font-size: 7pt; }
 .memo-no { display: inline-block; min-width: 2.6em; color: var(--accent); }
@@ -1014,3 +1015,33 @@ body > .stages { flex: 1 0 auto; width: 100%; }
 @media print { .sheet .slim-table tr { break-inside: avoid; } }
 /* メモ番号を足した「誰が確かめるか」の列は折り返し、「分かったこと」の列を潰さない。 */
 #sheet-front div#sheet-equipment > .slim-table td:last-child { width: 22%; white-space: normal; }
+
+/* A4 を表裏1枚に収める（おもての表は1行ずつ。くわしい版は別紙、主任技術者の方への欄は依頼メモの側） */
+#sheet-front div#sheet-equipment > table.equipment-front td:first-child { width: auto; white-space: nowrap; }
+#sheet-front div#sheet-equipment > table.equipment-front td:nth-child(2) { width: 1%; white-space: nowrap; }
+#sheet-front div#sheet-equipment > table.equipment-front td:last-child { width: auto; white-space: normal; }
+#sheet-front #sheet-measures .slim-table.measure-front { table-layout: fixed; font-size: 7.5pt; }
+#sheet-front #sheet-rain .sheet-list { font-size: 7.5pt; }
+#sheet-front #sheet-measures .slim-table.measure-front th:nth-child(1) { width: 9%; }
+#sheet-front #sheet-measures .slim-table.measure-front th:nth-child(2) { width: 46%; }
+#sheet-front #sheet-measures .slim-table.measure-front th:nth-child(3) { width: 30%; }
+#sheet-front #sheet-measures .slim-table.measure-front th:nth-child(4) { width: 15%; }
+#sheet-front #sheet-measures .slim-table.measure-front td { width: auto; white-space: normal; }
+.measure-front .range-part { display: block; }
+.sheet .slim-table.equipment-detail td:first-child { width: 27%; }
+.sheet .slim-table.equipment-detail td:nth-child(2) { width: 1%; white-space: nowrap; }
+.sheet .slim-table.equipment-detail td:last-child { width: auto; }
+.back-pointer { margin-top: 3mm; }
+#sheet-front .slim-table th, #sheet-front .slim-table td { padding: 0.35mm 1mm; line-height: 1.2; }
+#sheet-front .sheet-list, #sheet-front #sheet-rain .sheet-list { line-height: 1.2; }
+#sheet-front h3 { margin-top: 1.2mm; }
+#sheet-front { padding-top: 6mm; padding-bottom: 6mm; }
+#sheet-front .sheet-face { float: right; margin-left: 4mm; line-height: 1.6; }
+#sheet-front .sheet-address { margin-bottom: 1.5mm !important; }
+#sheet-front .sheet-pointer { margin-top: 0.6mm; line-height: 1.2; }
+#sheet-front .top-notes { line-height: 1.2; }
+/* 別紙の二つ（くわしい版と条件と出典）は、紙では続けて流し、ページを増やしすぎない。 */
+@media print {
+  .sheets #sheet-detail { min-height: 0; padding-bottom: 6mm; break-after: auto; }
+  .sheets #sheet-detail + #sheet-basis { min-height: 0; padding-top: 6mm; border-top: 1px solid var(--line); }
+}

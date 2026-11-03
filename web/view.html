@@ -35,6 +35,7 @@
     table.slim { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
     table.slim th, table.slim td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
     table.slim th { background: var(--page); }
+    .face { margin: 26px 0 4px; padding: 4px 10px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -62,14 +63,26 @@
       return node;
     }
 
-    function card(item) {
+    // おもての行：判定の札と名前と、誰が確かめるか（A4 のおもてと同じ分け方）。分かったことは別紙の側に出す。
+    function card(item, withText) {
       const box = el("article", undefined, "card");
       box.append(el("span", item.verdict_label, `tag ${item.verdict}`));
       // 規模の重点の札（A4 の「何が止まるか」の行の先頭の札）。前に発行したリンクには無い。
       (item.badges || []).forEach((badge) => box.append(" ", el("span", badge, "tag badge")));
+      box.append(el("h3", item.label));
+      if (withText) box.append(el("p", item.text));
+      if (withText && item.scale_focus?.length) box.append(el("p", `（重点：${item.scale_focus.join("／")}）`, "muted"));
+      if (item.confirm) box.append(el("p", `誰が確かめるか：${item.confirm}${item.memo_no ? `（メモ${item.memo_no}）` : ""}`, "muted"));
+      return box;
+    }
+
+    // 分かったことだけのカード（A4 の別紙「何が止まるか（分かったこと）」）。
+    function detailCard(item) {
+      const box = el("article", undefined, "card");
+      box.append(el("span", item.verdict_label, `tag ${item.verdict}`));
+      (item.badges || []).forEach((badge) => box.append(" ", el("span", badge, "tag badge")));
       box.append(el("h3", item.label), el("p", item.text));
       if (item.scale_focus?.length) box.append(el("p", `（重点：${item.scale_focus.join("／")}）`, "muted"));
-      if (item.confirm) box.append(el("p", `誰が確かめるか：${item.confirm}${item.memo_no ? `（メモ${item.memo_no}）` : ""}`, "muted"));
       return box;
     }
 
@@ -79,7 +92,7 @@
       return node;
     }
 
-    // 水に浸かった機器の表（A4 の裏、主任技術者の方への欄）。
+    // 水に浸かった機器の表（A4 の依頼メモ（電気主任技術者の方へ））。
     function table(head, rows) {
       const node = el("table", undefined, "slim");
       const line = node.createTHead().insertRow();
@@ -92,19 +105,49 @@
       return node;
     }
 
+    // A4 と同じ分け方（おもて／裏／別紙／依頼メモ）で並べる。前に発行したリンクの中身でも同じ順に出す。
     function render(data) {
       main.replaceChildren(el("h1", data.name), el("p", data.address, "muted"));
+
+      main.append(el("p", "おもて（事前）", "face"));
       const top = el("section", undefined, "card");
-      top.append(el("p", data.question), el("p", data.lead, "lead"), el("p", data.notes, "muted"));
+      top.append(el("p", data.question), el("p", data.lead, "lead"));
       if (data.direction) top.append(el("p", data.direction));
       main.append(top);
-      main.append(el("h2", "どこから水が来るか"), ...data.location.map(card));
-      main.append(el("h2", "何が止まるか"), ...data.equipment.map(card));
-      (data.equipment_notes || []).forEach((line) => main.append(el("p", line, "muted")));
+      main.append(el("h2", "どこから水が来るか"), ...data.location.map((item) => card(item, true)));
+      main.append(el("h2", "何が止まるか"), ...data.equipment.map((item) => card(item, false)));
       main.append(el("h2", "いくらで、誰が決めるか"));
       data.measures.forEach((item) => {
         const box = el("article", undefined, "card");
         box.append(el("p", `${item.tier}：${item.label}`), el("p", `${item.decision}／${item.account}／${item.range}`, "muted"));
+        main.append(box);
+      });
+      main.append(el("h2", "大雨が近づいたら"));
+      main.append(list(data.rain));
+
+      main.append(el("p", "裏（事後）", "face"));
+      main.append(el("h2", "水が来ている間と、水が引いた翌朝"));
+      const during = el("ul");
+      data.during.forEach((line) => during.append(el("li", line)));
+      main.append(during);
+      // 大雨の手順の三点セット（医療機器の住民・排水禁止・電気を止める判断）。A4 では裏のこの欄の下。
+      if (data.set_of_three) main.append(el("p", data.set_of_three, "strong"));
+      main.append(el("h2", "何日で戻るか"), el("p", data.days_top), el("p", data.days));
+      // A4 の裏に足した欄。前に発行したリンクには無いので、あるときだけ出す。
+      if (data.after?.length) main.append(el("h2", "水が引いたあと、管理組合がすること"), list(data.after));
+      main.append(el("h2", "この資料について"));
+      const notes = el("ul");
+      data.disclaimers.forEach((line) => notes.append(el("li", line)));
+      main.append(notes);
+
+      main.append(el("p", "別紙（おもての表のくわしい版と、条件と出典）", "face"));
+      if (data.notes) main.append(el("h2", "一行目の根拠と補足"), el("p", data.notes, "muted"));
+      main.append(el("h2", "何が止まるか（分かったこと）"), ...data.equipment.map(detailCard));
+      (data.equipment_notes || []).forEach((line) => main.append(el("p", line, "muted")));
+      main.append(el("h2", "いくらで、誰が決めるか（担当・補助と、決め方の補足）"));
+      data.measures.forEach((item) => {
+        const box = el("article", undefined, "card");
+        box.append(el("p", `${item.tier}：${item.label}`));
         // 「担当」「補助」の列。前に発行したリンクには無いので、あるときだけ出す。
         if (item.owner !== undefined) box.append(el("p", `担当：${item.owner}`, "muted"));
         if (item.mark) box.append(el("p", `補助：${item.mark}`, "muted"));
@@ -118,17 +161,16 @@
       if (data.measure_tepco) main.append(el("p", data.measure_tepco, "muted"));
       main.append(el("p", data.measure_note, "muted"));
       if (data.mark_note) main.append(el("p", data.mark_note, "muted"));
-      main.append(el("h2", "大雨が近づいたら"));
-      main.append(list(data.rain));
-      // 大雨の手順の三点セット（医療機器の住民・排水禁止・電気を止める判断）。
-      if (data.set_of_three) main.append(el("p", data.set_of_three, "strong"));
-      main.append(el("h2", "水が来ている間と、水が引いた翌朝"));
-      const during = el("ul");
-      data.during.forEach((line) => during.append(el("li", line)));
-      main.append(during);
-      main.append(el("h2", "何日で戻るか"), el("p", data.days_top), el("p", data.days));
-      // A4 の裏に足した欄。前に発行したリンクには無いので、あるときだけ出す。
-      if (data.after?.length) main.append(el("h2", "水が引いたあと、管理組合がすること"), list(data.after));
+      // 対象の範囲と、区域の外の一行。
+      (data.scope || []).forEach((line) => main.append(el("p", line, "muted")));
+
+      main.append(el("p", "依頼メモ", "face"));
+      data.memos.forEach((section) => {
+        main.append(el("h3", `依頼メモ${section.label}　${section.title}`));
+        const list = el("ul");
+        section.items.forEach((item) => list.append(el("li", `${item.from}：${item.text}`)));
+        main.append(list);
+      });
       const engineer = data.engineer;
       if (engineer && (engineer.lines?.length || engineer.reuse_rows?.length)) {
         main.append(el("h2", "電気主任技術者の方へ"));
@@ -140,23 +182,12 @@
           main.append(wrap);
         }
       }
-      main.append(el("h2", "依頼メモ"));
-      data.memos.forEach((section) => {
-        main.append(el("h3", `依頼メモ${section.label}　${section.title}`));
-        const list = el("ul");
-        section.items.forEach((item) => list.append(el("li", `${item.from}：${item.text}`)));
-        main.append(list);
-      });
+
+      main.append(el("p", "そのほかの資料", "face"));
       main.append(el("h2", "理事会の議題のたたき台"), Object.assign(el("div", undefined, "card"), { innerHTML: "" }));
       main.lastChild.append(el("pre", data.board));
       main.append(el("h2", "補助と手続きの順番のメモ"), Object.assign(el("div", undefined, "card"), { innerHTML: "" }));
       main.lastChild.append(el("pre", data.procedure));
-      main.append(el("h2", "この資料について"));
-      const notes = el("ul");
-      data.disclaimers.forEach((line) => notes.append(el("li", line)));
-      main.append(notes);
-      // 対象の範囲と、区域の外の一行。
-      (data.scope || []).forEach((line) => main.append(el("p", line, "muted")));
       main.append(el("p", `この資料は ${data.expires} まで開けます。`, "muted"));
     }
 

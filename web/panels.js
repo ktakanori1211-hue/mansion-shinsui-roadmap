@@ -250,6 +250,15 @@ const SheetPanel = (() => {
     return box;
   }
 
+  // おもての「止まるもの」の欄。規模の重点の札は名前の後ろに付け、行を増やさない（重点の中身は別紙の表）。
+  function labelCell(item) {
+    const badges = item.badges || [];
+    if (!badges.length) return item.label;
+    const box = element("span", item.label);
+    badges.forEach((badge) => box.append(" ", element("b", badge, "scale-tag")));
+    return box;
+  }
+
   // 「更新と一緒」の段は1行にまとめる。
   function renewalRow(items, region) {
     const names = items.map((m) => m.label.replace(/（設備の更新に合わせて）$/, ""));
@@ -292,6 +301,8 @@ const SheetPanel = (() => {
       scopeLine.after(element("p", "東京電力パワーグリッドの区域の外では、借室の照会先はその地域の電力会社（一般送配電事業者）になり、この道具の文はそのままでは当てはまりません（区域の都道府県の一覧は確かめていません）。", "sheet-pointer scope-outside"));
     }
     document.getElementById("sheet-memo-address").textContent = label;
+    document.getElementById("sheet-detail-address").textContent = label;
+    document.getElementById("sheet-engineer-address").textContent = label;
 
     document.querySelectorAll(".disclaimer li:first-child").forEach((node) => {
       node.textContent = App.disclaimerText();
@@ -301,14 +312,18 @@ const SheetPanel = (() => {
     top.replaceChildren(element("p", building.top_line.lead, "top-lead"));
     const land = landChips(App.locationState.location.rows).map((chip) => chip.text).join("／");
     top.append(element("p", `この土地（${land}）× 大雨（線状降水帯）＝ 電気室やポンプに水が入ると、水と電気が止まるおそれ`, "top-notes strong"));
+    if (building.direction_line) top.append(element("p", building.direction_line, "top-notes strong"));
+    // 一行目の根拠と補足（画面では「根拠と補足」の折りたたみ）は、別紙の先頭へ移す。
+    const topNotes = document.getElementById("sheet-detail-notes");
+    topNotes.replaceChildren();
     if (building.top_line.notes.length) {
       const notes = element("p", building.top_line.notes.join(""), "top-notes");
       notes.dataset.polish = "top";
-      top.append(notes);
+      topNotes.append(notes);
     }
     // A4 と共有の画面だけに出す文（千葉の見通し）。Claude の整形に渡さないよう data-polish を付けない。
-    (building.top_line.a4_notes || []).forEach((line) => top.append(element("p", line, "top-notes a4-note")));
-    if (building.direction_line) top.append(element("p", building.direction_line, "top-notes strong"));
+    (building.top_line.a4_notes || []).forEach((line) => topNotes.append(element("p", line, "top-notes a4-note")));
+    if (topNotes.childElementCount) topNotes.prepend(element("h3", "一行目の根拠と補足"));
 
     const equipmentBelow = [];
     if (building.heights?.length) {
@@ -317,43 +332,60 @@ const SheetPanel = (() => {
     if (building.scale?.shown) {
       equipmentBelow.push(element("p", `規模（${building.scale.label}）の「この規模で重点」の札：${building.scale.note}${building.scale.out_of_scope}`, "sheet-pointer"));
     }
-    document.getElementById("sheet-equipment").replaceChildren(
-      slim(
-        ["止まるもの", "判定", "分かったこと", "誰が確かめるか"],
-        building.equipment.map((item) => [item.label, verdictTag(item.verdict, item.verdict_label), summaryCell(item), `${item.confirm_short || "—"}${item.memo_no ? `（メモ${item.memo_no}）` : ""}`]),
-      ),
-      ...equipmentBelow,
+    // おもては「止まるもの・判定・誰が確かめるか」の1行ずつにし、分かったことと高さ・規模の一行は別紙へ移す（表裏1枚に収めるため）。
+    const frontEquipment = slim(
+      ["止まるもの", "判定", "誰が確かめるか"],
+      building.equipment.map((item) => [labelCell(item), verdictTag(item.verdict, item.verdict_label), `${item.confirm_short || "—"}${item.memo_no ? `（メモ${item.memo_no}）` : ""}`]),
     );
+    frontEquipment.classList.add("equipment-front");
+    document.getElementById("sheet-equipment").replaceChildren(frontEquipment);
+    const detailEquipment = slim(
+      ["止まるもの", "判定", "分かったこと"],
+      building.equipment.map((item) => [item.label, verdictTag(item.verdict, item.verdict_label), summaryCell(item)]),
+    );
+    detailEquipment.classList.add("equipment-detail");
+    document.getElementById("sheet-detail-equipment").replaceChildren(detailEquipment, ...equipmentBelow);
 
     // 段の順に並べ、電源車の受け口は A4 では出さない。「更新と一緒」の段は1行にまとめる。
     const region = sample.subsidy;
     const measures = SimPanel.byTier(building.measures.filter((m) => m.key !== "power"));
     const renewal = measures.filter((m) => m.tier === "更新と一緒");
-    const measureRows = [];
-    measures.forEach((m) => {
-      if (m.tier === "更新と一緒") {
-        if (m === renewal[0]) measureRows.push(renewalRow(renewal, region));
-        return;
-      }
-      measureRows.push([
-        m.tier,
-        withNote(SHEET_LABELS[m.key] || m.label, m.note, "止水材の使い分け"),
-        `${m.decision.replace("（建物の規約と予算による）", "＊").replace("理事会で申し入れる。工事になるときの決め方は内容が分かってから", "理事会で申し入れる。工事は内容が分かってから")}・${m.account}`,
-        m.range,
-        m.owner || "—",
-        SimPanel.markFor(m, region)[0],
-      ]);
-    });
-    const measureTable = slim(["いつ", "何をするか", "決め方・お金の出どころ", "桁", "担当", "補助"], measureRows);
-    measureTable.classList.add("measure-table");
+    // 表の行は、別紙の表（6列）とおもての表（先頭の4列）で別々に作る（同じ要素を二つの表に入れないため）。
+    const measureRows = (front) => {
+      const rows = [];
+      measures.forEach((m) => {
+        if (m.tier === "更新と一緒") {
+          if (m === renewal[0]) rows.push(renewalRow(renewal, region));
+          return;
+        }
+        rows.push([
+          m.tier,
+          front ? SHEET_LABELS[m.key] || m.label : withNote(SHEET_LABELS[m.key] || m.label, m.note, "止水材の使い分け"),
+          `${m.decision.replace("（建物の規約と予算による）", "＊").replace("理事会で申し入れる。工事になるときの決め方は内容が分かってから", "理事会で申し入れる。工事は内容が分かってから")}・${m.account}`,
+          m.range,
+          m.owner || "—",
+          SimPanel.markFor(m, region)[0],
+        ]);
+      });
+      return front ? rows.map((cells) => cells.slice(0, 4)) : rows;
+    };
+    // おもては「いつ・何をするか・決め方・桁」の4列。担当・補助の列と止水材の使い分け、規約と予算の長い補足は別紙へ移す。
+    const frontMeasures = slim(["いつ", "何をするか", "決め方・お金の出どころ", "桁"], measureRows(true));
+    frontMeasures.classList.add("measure-front");
     document.getElementById("sheet-measures").replaceChildren(
+      frontMeasures,
+      // おもてから別紙へ移したものの案内も、この一行にまとめる。
+      element("p", "＊建物の規約と予算による（条件は別紙）。別紙には、一行目の根拠と補足、止まるものごとの分かったこと、担当と補助の列もあります。", "sheet-pointer front-footer"),
+    );
+    const measureTable = slim(["いつ", "何をするか", "決め方・お金の出どころ", "桁", "担当", "補助"], measureRows(false));
+    measureTable.classList.add("measure-table");
+    document.getElementById("sheet-detail-measures").replaceChildren(
       measureTable,
       ...(building.equipment.find((item) => item.key === "tr").verdict !== "risk"
         ? [element("p", "東京電力の変圧器の部屋が地下にあり、そこまで水が来るおそれがあると図面と立地で確かめられたら、扉と穴の浸水対策を東京電力パワーグリッドに申し入れます。", "sheet-pointer")]
         : []),
-      ...(building.rain?.set_of_three ? [element("p", building.rain.set_of_three, "sheet-pointer strong")] : []),
       element("p", "＊建物の規約と予算による。総会から任されている、規約に定めがある、その年の予算に入っている、のどれかに当たるときのことで、予算だけで足りるかは規約の書き方により確かめていません。当たるかは管理会社に規約・予算書・議事録で確かめてもらい、当たらなければ総会で決めるか任せてもらいます。管理費か修繕積立金かも確かめます。屋上移設（数千万〜1億円超）と枠ごとの防水扉（300万円〜）は総会の特別決議です。", "sheet-pointer"),
-      element("p", "補助の列は、この住所の制度で当たりうるかの印です。申請を勧めるものではありません。条件は④費用の欄の折りたたみ（補助の条件）にあります。", "sheet-pointer"),
+      element("p", "補助の列は、この住所の制度で当たりうるかの印です。申請を勧めるものではありません。条件は、画面の③の折りたたみ「費用の桁と補助・専門家への相談」にあります。", "sheet-pointer"),
     );
 
     const reading = App.locationState.location.reading;
@@ -381,13 +413,17 @@ const SheetPanel = (() => {
     last.rain = rain;
     const list = element("ul", undefined, "sheet-list");
     rain.forEach((line) => list.append(element("li", line)));
-    document.getElementById("sheet-rain").replaceChildren(list, element("p", "合図は自治体や気象庁が出す警戒レベルです。予報ではありません。", "sheet-pointer"));
+    document.getElementById("sheet-rain").replaceChildren(
+      list,
+      element("p", "合図は自治体や気象庁が出す警戒レベルです。予報ではありません。", "sheet-pointer"),
+    );
 
     const scenario = building.scenarios["3:plate"];
     const during = element("ul", undefined, "sheet-list");
     last.during = [`水が来た当日：${scenario.table[scenario.table.length - 1].cells[1]}`, `水が引いた翌朝：${scenario.table[scenario.table.length - 1].cells[2]}`];
     last.during.forEach((line) => during.append(element("li", line)));
-    document.getElementById("sheet-during").replaceChildren(during);
+    // 大雨の手順の三点セットは、おもてから裏の「水が来ている間」の下へ移す（表裏1枚に収めるため）。
+    document.getElementById("sheet-during").replaceChildren(during, ...(building.rain?.set_of_three ? [element("p", building.rain.set_of_three, "sheet-pointer strong")] : []));
 
     last.days = `給水・排水の制御盤は製作に約2か月（建築設備技術者協会の報告書）。供給用変圧器${hasEngineer ? "・受電設備" : ""}が浸かった場合、排水開始から仮復旧まで4〜7日程度（経産省の検討会資料、一般的な目安）。${hasEngineer ? "受変電の特注品は復旧に1年以上の場合も（同協会の報告書）。" : ""}武蔵小杉は停電5日・断水8日・トイレ11日、本復旧6〜8か月（建築設備技術者協会の調査など。ほかの建物の例）。`;
     document.getElementById("sheet-days").replaceChildren(
@@ -465,7 +501,9 @@ const SheetPanel = (() => {
       memo.append(element("p", xref.map((item) => `${item.label} → ${item.memo_no}`).join("／"), "sheet-text memo-xref"));
     }
     memo.append(element("p", "追加の費用がかかるかは、管理委託契約と保守の契約によります。", "sheet-pointer"));
-    document.getElementById("sheet-memo").hidden = false;
+    ["sheet-detail", "sheet-memo", "sheet-engineer-memo"].forEach((id) => {
+      document.getElementById(id).hidden = false;
+    });
   }
 
   function shareData() {
@@ -487,12 +525,12 @@ const SheetPanel = (() => {
       direction: building.direction_line,
       location: App.locationState.location.rows.map(toCard),
       equipment: building.equipment.map(toCard),
-      // 高さの入力値と規模の一行（A4 の「何が止まるか」の表の下）。
-      equipment_notes: texts("#sheet-equipment > p"),
+      // 高さの入力値と規模の一行（A4 の別紙「何が止まるか（分かったこと）」の表の下）。
+      equipment_notes: texts("#sheet-detail-equipment > p"),
       // 「担当」「補助」の列と、穴の行の「止水材の使い分け」の補足（A4 の処置の表と同じ値）。
       measures: SimPanel.byTier(building.measures).map((m) => ({ tier: m.tier, label: m.label, decision: m.decision, account: m.account, range: m.range, owner: m.owner || "—", mark: SimPanel.markFor(m, region)[0], note: m.note || "" })),
       measure_tepco: trRisk ? "" : "東京電力の変圧器の部屋が地下にあり、そこまで水が来るおそれがあると図面と立地で確かめられたら、扉と穴の浸水対策を東京電力パワーグリッドに申し入れます。",
-      // A4 の補助の一行の前の二文（共有の画面には④費用の欄がないので、その案内の文は入れない）。
+      // A4 の別紙の補助の一行の前の二文（共有の画面には③の折りたたみ「費用の桁と補助・専門家への相談」がないので、その案内の文は入れない）。
       mark_note: "補助の列は、この住所の制度で当たりうるかの印です。申請を勧めるものではありません。",
       set_of_three: building.rain?.set_of_three || "",
       measure_note: "「理事会で決められる場合がある」は、総会から任されている、規約に定めがある、その年の予算に入っている、のどれかに当たるときのことです。予算だけで足りるかは規約の書き方により確かめていません。管理会社に規約・予算書・総会の議事録で確かめてもらい、当たらなければ総会で決めるか任せてもらいます。",

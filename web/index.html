@@ -279,8 +279,7 @@
           <div id="sheet-days"><p class="placeholder">ほかの建物の例と一般的な目安を、出典つきで出します。</p></div>
           <h3>水が引いたあと、管理組合がすること</h3>
           <div id="sheet-after"><p class="placeholder">記録写真、費用の出どころ、泊まる先が出ます。</p></div>
-          <h3>電気主任技術者の方へ</h3>
-          <div id="sheet-engineer"><p class="placeholder">確認していただく項目が出ます。</p></div>
+          <p class="sheet-pointer back-pointer">電気主任技術者の方へ確かめていただく項目と、水に浸かった機器の表は、後ろの「依頼メモ（電気主任技術者の方へ）」のページにあります。</p>
           <section class="disclaimer" aria-label="この一枚について">
             <h3>この一枚について</h3>
             <ul>
@@ -290,6 +289,16 @@
               <li>費用は桁の目安で、保安法人・工事業者の見積りに置き換えること</li>
             </ul>
           </section>
+        </article>
+
+        <article class="sheet" id="sheet-detail" hidden>
+          <p class="sheet-face">別紙（おもての表のくわしい版）</p>
+          <p class="sheet-address" id="sheet-detail-address"></p>
+          <div id="sheet-detail-notes"></div>
+          <h3>何が止まるか（分かったこと）</h3>
+          <div id="sheet-detail-equipment"></div>
+          <h3>いくらで、誰が決めるか（担当・補助と、決め方の補足）</h3>
+          <div id="sheet-detail-measures"></div>
         </article>
 
         <article class="sheet" id="sheet-basis" hidden>
@@ -304,6 +313,13 @@
           <p class="sheet-face">依頼メモ（未確認を、確認する先ごとに）</p>
           <p class="sheet-address" id="sheet-memo-address"></p>
           <div id="sheet-memo-body"></div>
+        </article>
+
+        <article class="sheet" id="sheet-engineer-memo" hidden>
+          <p class="sheet-face">依頼メモ（電気主任技術者の方へ）</p>
+          <p class="sheet-address" id="sheet-engineer-address"></p>
+          <h3>電気主任技術者の方へ</h3>
+          <div id="sheet-engineer"><p class="placeholder">確認していただく項目が出ます。</p></div>
         </article>
       </div>
     </section>
