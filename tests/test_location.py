@@ -81,3 +81,20 @@ class GeometryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SceneLayerTest(unittest.TestCase):
+    """場面のカードが重ねる地図は、どれもサーバーが値を読む地図であること。"""
+
+    def test_scene_layers_are_read_by_the_server(self):
+        import pathlib
+        import re
+
+        source = (pathlib.Path(__file__).resolve().parent.parent / "web" / "scenes.js").read_text(encoding="utf-8")
+        used = set(re.findall(r'"(0\d_[a-z0-9_]+)"', source))
+        read = {layer for _, _, layer in location.HAZARD_LAYERS}
+        self.assertTrue(used)
+        self.assertLessEqual(used, read)
+
+    def test_tsunami_is_read(self):
+        self.assertIn("tsunami", [key for key, _, _ in location.HAZARD_LAYERS])

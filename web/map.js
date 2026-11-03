@@ -27,6 +27,7 @@ const HazardMap = (() => {
     flood_max: "洪水（想定最大規模）",
     inland: "内水",
     storm_surge: "高潮",
+    tsunami: "津波",
   };
   const COMPASS = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
   const OFFSET = { 北: [1, 0], 東: [0, 1], 南: [-1, 0], 西: [0, -1] };
@@ -126,6 +127,7 @@ const HazardMap = (() => {
         input.checked = hazard.key === selectedKey;
         input.addEventListener("change", () => {
           selectedKey = hazard.key;
+          stopScene();
           showLayer(hazard);
         });
         const name = document.createElement("span");
@@ -236,6 +238,7 @@ const HazardMap = (() => {
 
   function show(state, elements, moved) {
     onPinMoved = moved;
+    stopScene();
     current = state;
     const { site, location } = state;
     elements.card.hidden = false;
@@ -266,11 +269,188 @@ const HazardMap = (() => {
     drawTaps({});
   }
 
+  // 場面の再生。地図の色がある所は深い区分から順に、色がない所は標高の低い所から順に水を広げる。
+  // 色がない所の水は、建物の地面の高さまで水位を上げたときの模式で、水の量や流れは計算しない。
+  const HAZARD_RANK = {
+    "220,122,220": 8,
+    "242,133,201": 7,
+    "255,145,145": 6,
+    "255,183,183": 5,
+    "255,216,192": 4,
+    "248,225,166": 3,
+    "247,245,169": 2,
+    "255,255,179": 1,
+  };
+  // 区分ごとの水の色。浅い区分ほど薄く、深い区分ほど濃い青にする。
+  const WATER_COLORS = [
+    null,
+    [170, 205, 245],
+    [140, 185, 240],
+    [105, 160, 230],
+    [75, 135, 220],
+    [45, 105, 200],
+    [30, 80, 175],
+    [20, 55, 145],
+    [15, 35, 110],
+  ];
+  const DEM5_URL ="https://cyberjapandata.gsi.go.jp/xyz/dem5a_png/{z}/{x}/{y}.png";
+  const DEM10_URL = "https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png";
+  const SIM_RADIUS_M = 700;
+  const SIM_SECONDS = 3.2;
+  let sim = null;
+
+  function tileUrl(template, coords, layer) {
+    return template.replace("{layer}", layer || "").replace("{z}", coords.z).replace("{x}", coords.x).replace("{y}", coords.y);
+  }
+
+  function loadPixels(url) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 256;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        context.drawImage(image, 0, 0, 256, 256);
+        resolve(context.getImageData(0, 0, 256, 256).data);
+      };
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
+  }
+
+  // 標高タイルの値。データのない所は NaN にする。
+  function elevationAt(data, i) {
+    if (data[i + 3] === 0) return NaN;
+    const value = data[i] * 65536 + data[i + 1] * 256 + data[i + 2];
+    if (value === 8388608) return NaN;
+    return (value < 8388608 ? value : value - 16777216) * 0.01;
+  }
+
+  async function readTile(coords, layers, useDem) {
+    const rank = new Uint8Array(65536);
+    const elevation = new Float32Array(65536).fill(NaN);
+    const hazards = await Promise.all(layers.map((layer) => loadPixels(tileUrl(HAZARD_URL, coords, layer))));
+    hazards.filter(Boolean).forEach((data) => {
+      for (let p = 0; p < 65536; p += 1) {
+        const i = p * 4;
+        if (!data[i + 3]) continue;
+        const r = HAZARD_RANK[`${data[i]},${data[i + 1]},${data[i + 2]}`] || 0;
+        if (r > rank[p]) rank[p] = r;
+      }
+    });
+    if (useDem) {
+      const dem = await loadPixels(tileUrl(coords.z >= 15 ? DEM5_URL : DEM10_URL, coords));
+      if (dem) for (let p = 0; p < 65536; p += 1) elevation[p] = elevationAt(dem, p * 4);
+    }
+    return { rank, elevation };
+  }
+
+  function paint(tile, progress) {
+    const { rank, elevation } = tile.data;
+    const image = tile.context.createImageData(256, 256);
+    const pixels = image.data;
+    const rankLine = sim.maxRank - progress * (sim.maxRank - 1);
+    const level = sim.low + progress * (sim.high - sim.low);
+    for (let p = 0; p < 65536; p += 1) {
+      const i = p * 4;
+      if (rank[p] && rank[p] >= rankLine) {
+        const [r, g, b] = WATER_COLORS[rank[p]];
+        pixels[i] = r;
+        pixels[i + 1] = g;
+        pixels[i + 2] = b;
+        pixels[i + 3] = 200;
+      } else if (sim.useDem && elevation[p] <= level) {
+        pixels[i] = 40;
+        pixels[i + 1] = 170;
+        pixels[i + 2] = 210;
+        pixels[i + 3] = 130;
+      }
+    }
+    tile.context.putImageData(image, 0, 0);
+  }
+
+  function stopScene() {
+    if (!sim) return;
+    cancelAnimationFrame(sim.frame);
+    map.removeLayer(sim.layer);
+    sim = null;
+  }
+
+  // scene: { layers, useDem }。終わると onDone({ hadColor, hadDem }) を呼ぶ。
+  function playScene(scene, onDone) {
+    if (!map || !current) return;
+    stopScene();
+    if (overlay) map.removeLayer(overlay);
+    overlay = null;
+    document.querySelectorAll('input[name="hazard-layer"]').forEach((input) => {
+      input.checked = false;
+    });
+    const { site, location } = current;
+    const center = L.latLng(site.latitude, site.longitude);
+    const bounds = center.toBounds(SIM_RADIUS_M * 2);
+    map.fitBounds(bounds, { maxZoom: 16 });
+    const tiles = [];
+    const Layer = L.GridLayer.extend({
+      createTile(coords, done) {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 256;
+        const tile = { canvas, context: canvas.getContext("2d"), data: null };
+        readTile(coords, scene.layers, scene.useDem).then((data) => {
+          tile.data = data;
+          tiles.push(tile);
+          // 再生のあとに地図を動かして読んだタイルは、水を広げ終えた形で描く。
+          if (sim && sim.layer === this && sim.done) paint(tile, 1);
+          done(null, canvas);
+        });
+        return canvas;
+      },
+    });
+    const layer = new Layer({ bounds, maxNativeZoom: 15, minNativeZoom: 13, maxZoom: 18, opacity: 0.85, attribution: HAZARD_CREDIT });
+    const pinElevation = location.reading.elevation.points[0].elevation_m;
+    sim = { layer, frame: 0, maxRank: 1, low: 0, high: 0, useDem: scene.useDem && pinElevation !== null };
+    const mine = sim;
+    layer.once("load", () => {
+      if (sim !== mine) return;
+      let maxRank = 0;
+      const heights = [];
+      tiles.forEach(({ data }) => {
+        for (let p = 0; p < 65536; p += 1) {
+          if (data.rank[p] > maxRank) maxRank = data.rank[p];
+          if (p % 16 === 0 && !Number.isNaN(data.elevation[p])) heights.push(data.elevation[p]);
+        }
+      });
+      heights.sort((a, b) => a - b);
+      sim.maxRank = Math.max(maxRank, 1);
+      sim.high = pinElevation ?? 0;
+      sim.low = heights.length ? Math.min(heights[Math.floor(heights.length * 0.02)], sim.high) : sim.high;
+      const start = performance.now();
+      let last = -1;
+      const step = (now) => {
+        if (sim !== mine) return;
+        const progress = Math.min(1, (now - start) / (SIM_SECONDS * 1000));
+        const frame = Math.round(progress * 24);
+        if (frame !== last) {
+          last = frame;
+          tiles.forEach((tile) => paint(tile, frame / 24));
+        }
+        if (progress < 1) {
+          sim.frame = requestAnimationFrame(step);
+          return;
+        }
+        sim.done = true;
+        onDone({ hadColor: maxRank > 0, hadDem: sim.useDem });
+      };
+      sim.frame = requestAnimationFrame(step);
+    });
+    layer.addTo(map);
+  }
+
   function refresh() {
     if (map) map.invalidateSize();
   }
 
-  return { init, show, setRelief, setTapMode, drawTaps, refresh };
+  return { init, show, setRelief, setTapMode, drawTaps, refresh, playScene, stopScene };
 })();
 
 // 土地の形のミニグラフ。地図の標高データの値で、敷地を測ったものではない。

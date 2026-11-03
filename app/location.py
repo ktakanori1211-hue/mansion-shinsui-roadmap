@@ -36,6 +36,7 @@ HAZARD_LAYERS = [
     ("flood_max", "洪水(想定最大規模)", "01_flood_l2_shinsuishin_data"),
     ("inland", "内水", "02_naisui_data"),
     ("storm_surge", "高潮", "03_hightide_l2_shinsuishin_data"),
+    ("tsunami", "津波", "04_tsunami_newlegend_data"),
 ]
 
 # 凡例画像の色と、そこに書かれた区分。完全に一致したときだけ区分を返す。

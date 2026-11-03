@@ -390,18 +390,8 @@ function landChips(rows) {
   }).filter(Boolean);
 }
 
-function renderWhyChips(rows) {
-  document.getElementById("why-chips").replaceChildren(
-    ...landChips(rows).map(({ row, text }) => {
-      const tone = row.verdict === "risk" ? "why-chip-risk" : row.accent ? "why-chip-hot" : "";
-      return element("span", text, `why-chip ${tone}`);
-    }),
-  );
-}
-
 function renderLocation(state) {
   const { site, location } = state;
-  renderWhyChips(location.rows);
   locationBody.replaceChildren(...location.rows.map(locationCard), fold("札の見方", verdictLegend()));
   document.getElementById("legal-basis").textContent = location.basis_note;
   document.getElementById("legal-basis-box").hidden = false;
@@ -420,6 +410,7 @@ function renderLocation(state) {
   HazardMap.show(state, mapElements, movePin);
   TerrainChart.render(document.getElementById("terrain"), location.reading, site);
   App.locationState = state;
+  Scenes.render(state);
   App.showStage(App.stage);
   App.startBuilding();
 }

@@ -1,0 +1,193 @@
+"use strict";
+
+// 天気の場面のカード。浸水の8つのパターンを、どの場面で重なるかで束ねる。
+// 当てはまるかは地図の色の有無だけで見て、新しい数字は作らない。
+const Scenes = (() => {
+  const PATTERNS = {
+    1: "大きな川の氾濫",
+    2: "中小の川・水路のあふれ",
+    3: "下水があふれる内水",
+    4: "高潮",
+    5: "川や海の水位で雨水を流せない",
+    6: "津波",
+    7: "道路の水がスロープや出入口から地下へ",
+    8: "下水管から建物への逆流",
+  };
+  const BUILDING_PATTERNS = [7, 8];
+
+  const SCENES = [
+    {
+      key: "typhoon",
+      name: "台風",
+      line: "高潮と大雨が重なる",
+      patterns: [4, 3, 5, 7, 8],
+      layers: ["03_hightide_l2_shinsuishin_data", "02_naisui_data"],
+      useDem: true,
+      note: "海の水位が上がり、同時に大雨が降ります。",
+    },
+    {
+      key: "rainband",
+      name: "線状降水帯",
+      line: "地図の色の外でも浸水",
+      patterns: [3, 2, 7, 8],
+      layers: ["02_naisui_data", "01_flood_l1_shinsuishin_newlegend_data"],
+      useDem: true,
+      note:
+        "被害報告の55.7%が、想定区域や低い土地の外でした（2026年8月の千葉豪雨）。2026年9月の台風25号では、浸水・道路冠水447件の64%が洪水マップの色の外でした（どちらもウェザーニューズ）。千葉県で内水の地図の公表義務がある38自治体のうち19が公表していませんでした（FNNの調べ、2026年10月28日。調査の時点は記事に書かれていません）。線状降水帯は、線状に伸びる強い降水をともなう雨域です（気象庁）。洪水の地図が作られていない小さな川もあります。",
+    },
+    {
+      key: "upstream",
+      name: "上流の大雨",
+      line: "その場の雨が弱くても川があふれる",
+      patterns: [1, 2, 7],
+      layers: ["01_flood_l2_shinsuishin_data"],
+      useDem: false,
+      note: "地図は想定最大規模の洪水です。",
+    },
+    {
+      key: "tide",
+      name: "満潮",
+      line: "雨水を川や海へ流せない",
+      patterns: [5, 3, 8],
+      layers: ["02_naisui_data"],
+      useDem: true,
+      note:
+        "川や海の水位が高いと、下水や水路から雨水を流せなくなって浸水します（神戸市）。満潮はその一つと考えられますが、大雨との重なりを「満潮」と書いた公的なページは確かめられていません。",
+    },
+    {
+      key: "tsunami",
+      name: "地震（津波）",
+      line: "海から水が来る",
+      patterns: [6, 7],
+      layers: ["04_tsunami_newlegend_data"],
+      useDem: false,
+      note: "地図は津波浸水想定です。",
+    },
+  ];
+
+  let active = null;
+
+  function colored(reading, key) {
+    const hazard = reading.hazards.find((item) => item.key === key);
+    return Boolean(hazard && (hazard.status === "color" || hazard.nearby_legend));
+  }
+
+  // そのパターンが、この土地の地図で当てはまるか。建物の側のパターンは null を返す。
+  function applies(pattern, reading) {
+    const flood = colored(reading, "flood_max") || colored(reading, "flood_planned");
+    switch (pattern) {
+      case 1:
+      case 2:
+        return flood;
+      case 3:
+        return colored(reading, "inland") || reading.basin;
+      case 4:
+        return colored(reading, "storm_surge");
+      case 5:
+        return colored(reading, "storm_surge") || flood;
+      case 6:
+        return colored(reading, "tsunami");
+      default:
+        return null;
+    }
+  }
+
+  function count(scene, reading) {
+    return scene.patterns.filter((pattern) => applies(pattern, reading)).length;
+  }
+
+  function patternList(scene, reading) {
+    const list = element("ul", undefined, "scene-patterns");
+    scene.patterns.forEach((pattern) => {
+      const hit = applies(pattern, reading);
+      const state = hit === null ? "②建物で確かめる" : hit ? "この土地に地図の色・凹み" : "地図に色なし（安全という意味ではない）";
+      const item = element("li", undefined, hit === null ? "scene-building" : hit ? "scene-hit" : "");
+      item.append(element("b", PATTERNS[pattern]), ` ${state}`);
+      list.append(item);
+    });
+    return list;
+  }
+
+  function resultText(scene, reading, outcome) {
+    const lines = [];
+    const hazards = reading.hazards.filter((item) => scene.layers.includes(item.layer) && item.status === "color");
+    if (hazards.length) lines.push(`この建物の前：${hazards.map((item) => `${item.label} ${item.legend}`).join("、")}（地図の色）`);
+    else if (outcome.hadColor) lines.push("この建物の前に地図の色はありません。周りの色は地図のとおりです。");
+    if (outcome.hadDem) lines.push("水色は、建物の地面の高さまで水位を上げたときの模式です。水の量や流れは計算していません。");
+    if (!lines.length) lines.push("この範囲に、この場面の地図の色はありません。色がないことは安全という意味ではありません。");
+    lines.push("地下への流入と下水の逆流は、②建物で確かめます。");
+    return lines;
+  }
+
+  function play(scene, card) {
+    const state = App.locationState;
+    if (!state) return;
+    active = scene.key;
+    document.querySelectorAll(".scene-card").forEach((item) => item.classList.toggle("active", item === card));
+    App.scene = scene.key;
+    if (App.building && App.scenario()) App.applyScenario();
+    const box = document.getElementById("scene-result");
+    // 結果は地図の左下に重ねる。押しても地図の場所選びにならないようにする。
+    if (box.parentElement.id !== "map") {
+      document.getElementById("map").append(box);
+      L.DomEvent.disableClickPropagation(box);
+      L.DomEvent.disableScrollPropagation(box);
+    }
+    box.hidden = false;
+    box.replaceChildren(element("p", `${scene.name}：水が広がっています。`, "scene-result-head"));
+    // 狭い画面では地図がカードの下にあるので、地図まで動かしてから広げる。
+    const mapBox = document.getElementById("map").getBoundingClientRect();
+    if (mapBox.top < 0 || mapBox.bottom > window.innerHeight) document.getElementById("map").scrollIntoView({ block: "center", behavior: "smooth" });
+    HazardMap.playScene(scene, (outcome) => {
+      if (active !== scene.key) return;
+      box.replaceChildren(
+        element("p", `${scene.name}：${scene.line}`, "scene-result-head"),
+        ...(outcome.hadColor || outcome.hadDem ? [legend(outcome)] : []),
+        ...resultText(scene, state.location.reading, outcome).map((line) => element("p", line)),
+      );
+    });
+  }
+
+  function legend(outcome) {
+    const row = element("p", undefined, "scene-legend");
+    const item = (className, text) => {
+      const swatch = element("span", undefined, `scene-swatch ${className}`);
+      row.append(swatch, element("span", text));
+    };
+    if (outcome.hadColor) item("swatch-map", "地図の色の所（深い区分ほど濃い）");
+    if (outcome.hadDem) item("swatch-dem", "凹みにたまる水（模式）");
+    return row;
+  }
+
+  // 地図の重ね方を選び直したら、場面の再生をやめた表示に戻す。
+  document.getElementById("layer-choices").addEventListener("change", () => {
+    active = null;
+    document.querySelectorAll(".scene-card").forEach((item) => item.classList.remove("active"));
+    document.getElementById("scene-result").hidden = true;
+  });
+
+  function card(scene, reading) {
+    const hits = count(scene, reading);
+    const tone = hits >= 2 ? "scene-hot" : hits === 1 ? "scene-warm" : "scene-none";
+    const box = element("article", undefined, `scene-card ${tone}`);
+    const button = element("button", undefined, "scene-play");
+    button.type = "button";
+    button.append(element("span", scene.name, "scene-name"), element("strong", scene.line, "scene-line"));
+    button.append(element("span", hits ? `この土地に当てはまる ${hits}` : "地図の色は当てはまらない", "scene-count"));
+    button.addEventListener("click", () => play(scene, box));
+    const more = element("details", undefined, "why-more");
+    more.append(element("summary", "パターンと出典"), patternList(scene, reading), element("p", scene.note));
+    box.append(button, more);
+    return box;
+  }
+
+  function render(state) {
+    const reading = state.location.reading;
+    active = null;
+    App.scene = null;
+    document.getElementById("scene-result").hidden = true;
+    document.getElementById("scene-cards").replaceChildren(...SCENES.map((scene) => card(scene, reading)));
+  }
+
+  return { render, SCENES, PATTERNS, applies, BUILDING_PATTERNS };
+})();
