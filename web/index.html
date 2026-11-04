@@ -43,11 +43,12 @@
   </nav>
 
   <section class="why-bar" id="why-bar" aria-label="天気の場面と、何が止まるか">
+    <p class="why-title"><b>地図の色がなくても浸水する。</b>この土地で重なりうる天気の場面です。押すと地図で水が広がります。</p>
     <div class="scene-cards" id="scene-cards" aria-label="天気の場面。押すと地図で水が広がります"></div>
     <span class="why-op" aria-hidden="true">＝</span>
     <article class="why-card why-stop">
-      <p class="why-kicker">どの場面でも、電気室やポンプに水が入ると</p>
-      <p class="why-big">水と電気が止まるおそれ</p>
+      <p class="why-kicker">どの場面でも、地下の電気室やポンプに水が入ると</p>
+      <p class="why-big">水・トイレ・エレベーターが止まるおそれ</p>
       <p class="why-sub">入り道は壁の穴とポンプ制御盤。最初の手は数万〜十数万円（桁の目安）。</p>
       <details class="why-more"><summary>補足</summary><p>壁の穴とポンプ制御盤の止水は、管理会社の仕事にも点検の項目にも入っていないことがあります。壁の穴は、地中から高圧のケーブルで電気を引き込む建物の話で、書類で確かめます。給水ポンプの制御盤が浸かると、受電が生きていても断水につながることがあります。建物の規約と予算によっては、マンション側の部屋の壁の穴の止水などを理事会で決められる場合があります。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p></details>
     </article>
@@ -55,8 +56,9 @@
 
   <main class="stages">
     <section class="hero" id="hero" aria-label="このサイトでできること">
-      <p class="hero-question">水が引いた翌朝、このマンションは何日で水が出るか</p>
-      <p class="hero-lead">住所かマンション名を入れるだけで、浸水で止まりうる水と電気を整理し、<b>理事会に出せるA4一枚</b>を作ります。</p>
+      <p class="hero-kicker">住民に「うちは大丈夫？」と聞かれたら</p>
+      <p class="hero-question">地図の色がなくても浸水する。</p>
+      <p class="hero-lead">だから、水が引いた翌朝に何日で水が出るかを、建物で確かめる。<br><b>水が止まればトイレも風呂も使えず、エレベーターが止まれば高い階は階段です。</b></p>
       <ol class="hero-steps">
         <li><b>1</b>場所を入れる</li>
         <li><b>2</b>建物の形を選ぶ</li>
@@ -96,7 +98,7 @@
           <div class="layer-choices" id="layer-choices" role="radiogroup" aria-label="重ねる地図"></div>
           <div class="landform-tags" id="landform-tags" hidden></div>
           <details class="fold map-more">
-            <summary>地図で詳しく調べる（色別標高図、水が来そうな側）</summary>
+            <summary>表示の設定と、地図で詳しく調べる</summary>
             <div class="map-tools">
               <label class="control-inline"><input type="checkbox" id="relief-toggle"> 色別標高図</label>
               <button type="button" id="tap-water">水が来そうな側を押す</button>
@@ -186,7 +188,7 @@
       </details>
 
       <div class="card" id="step-result" hidden>
-        <h2>何が止まるか</h2>
+        <h2>住民の暮らしで、何が止まるか</h2>
         <div id="result-body"></div>
       </div>
 
@@ -204,6 +206,11 @@
     </section>
 
     <section class="stage" data-stage="3" aria-label="第3段階">
+      <section class="card cost-tiers" id="cost-tiers" hidden aria-label="いくらで、誰が決めるか">
+        <h2>いくらで、誰が決めるか</h2>
+        <p class="cost-tiers-lead" id="cost-tiers-lead"></p>
+        <div class="cost-tier-grid" id="cost-tier-grid"></div>
+      </section>
       <div class="stage3-top">
       <div class="card" id="exits-card">
         <h2>出す資料</h2>
@@ -280,6 +287,7 @@
           <h3>水が引いたあと、管理組合がすること</h3>
           <div id="sheet-after"><p class="placeholder">記録写真、費用の出どころ、泊まる先が出ます。</p></div>
           <p class="sheet-pointer back-pointer">電気主任技術者の方へ確かめていただく項目と、水に浸かった機器の表は、後ろの「依頼メモ（電気主任技術者の方へ）」のページにあります。</p>
+          <p class="sheet-pointer back-handover"><b>この紙は防災のファイルに綴じ、依頼メモの答えと一緒に次の理事に渡します。</b></p>
           <section class="disclaimer" aria-label="この一枚について">
             <h3>この一枚について</h3>
             <ul>

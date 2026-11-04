@@ -56,6 +56,9 @@ _MEDICAL = re.compile(r"人工呼吸|呼吸器|酸素|吸引器|透析|医療機
 _SHOCK = re.compile(r"感電|しびれ|ビリ|火が|火花|燃え|煙|焦げ|バチ|ショート")
 # 建物が安全かを聞く文。言い切らず、札の意味を答える。
 _IS_SAFE = re.compile(r"(安全|大丈夫)(なん|です|だよ|なの|か|でしょ)|問題(ない|ありません)(です|よね|か)")
+# 文末の「大丈夫？」は、建物や浸水の話のときだけ札の意味の文に回す（費用・決め方・備えの段取りの問いは塞がない）。
+_IS_SAFE_END = re.compile(r"(安全|大丈夫)\s*[?？]?\s*$")
+_BUILDING_SUBJECT = re.compile(r"うち|マンション|建物|この棟")
 # 電気を戻す判断を聞く文。立入の文ではなく、誰が判断するかを答える。
 _RESTORE = re.compile(r"復電|通電|送電|電源を入れ|電気を(戻|入れ)|絶縁抵抗|メガ|(代わり|代理).{0,12}(判断|復旧)|復旧の判断")
 _WATER = re.compile(r"水|雨|浸|冠|濡れ|ぬれ|洪|台風|停電|断水")
@@ -98,6 +101,12 @@ _SAFE_WORDS = re.compile(r"ポータブル電源|モバイルバッテリー")
 _TRAPPED_PLAN = re.compile(r"閉じ込め(の|への)?(対策|備え)")
 
 
+# 「浸水しても大丈夫？」を事前の問いとして通すときだけ使う、取りこぼし防ぎの語（電気保安の専門家の指摘、2026-11-04）。
+# 進行中の浸水・停電の言い方と、排水・接近・歩行などの動作、設備の別名。どれかがあれば立入の固定文に回す。
+_NOW_MORE = re.compile(r"溢れ|水浸し|氾濫|決壊|停電(が|で|だ|のまま|続)|来て(い)?ても")
+_ACT_MORE = re.compile(r"排水|近づ|近寄|歩い|歩く|渡っ|渡る|通っ|通る|出し|流し|点検|作業|見る|見ても|操作|接続|閉め|トランス|配電|機械室|受水槽|EV|エレベータ")
+
+
 def is_preparation(message: str) -> bool:
     """事前の備えの質問か。今起きていること、危険な場所への立入や操作に触れる文は当てはめない。"""
     text = _SAFE_WORDS.sub("備品", unicodedata.normalize("NFKC", message))
@@ -124,8 +133,21 @@ def _touches_safety(message: str) -> bool:
         return False
     explaining = bool(_EXPLAIN.search(message))
     permission = bool(_PERMIT.search(message))
+    # 「浸水しても大丈夫？」のような、今起きていることも場所も操作も含まない事前の問いは、
+    # 立入の固定文に回さない（原則4）。下の is_safe の文が「この道具は安全かを言わない」と答える。
     if _WATER.search(message) and re.search(r"安全|大丈夫", message):
-        return True
+        # 「浸水しても」「来ても、うちは」の「ても」を、今の出来事（浸水して・もう）と読み違えない。
+        hypothetical = message.replace("ても", "テモ")
+        if (
+            _NOW.search(hypothetical)
+            or _NOW_MORE.search(message)
+            or _PLACE.search(message)
+            or _DANGER_PLACE.search(message)
+            or _ACT.search(message)
+            or _NO_PREPARE_ACT.search(message)
+            or _ACT_MORE.search(message)
+        ):
+            return True
     if _BARE.search(message) and not explaining:
         return True
     if act and near:
@@ -192,10 +214,11 @@ def fixed_answer(message: str, has_chief_engineer: bool = True, unsure: bool = F
                 "入るのは、その場で指示された人だけで、指示された範囲だけです。この道具は入室を許可しません。"
             ),
         }
-    if _IS_SAFE.search(message):
+    end_safe = bool(_IS_SAFE_END.search(message)) and bool(_WATER.search(message) or _BUILDING_SUBJECT.search(message)) and not prepared and not _COST.search(message)
+    if _IS_SAFE.search(message) or end_safe:
         return {
             "kind": "is_safe",
-            "text": "この道具は、建物が安全かどうかを言いません。判定は画面の札のとおりで、「未確認」はまだ確かめていないという意味です。「問題なし」の札も、立ち入ってよいという意味ではありません。未確認の行は、依頼メモで管理会社に確かめてもらいます。\n\n" + notice,
+            "text": "この道具は、建物が安全かどうかを言いません。判定は画面の札のとおりで、「未確認」はまだ確かめていないという意味です。「問題なし」の札も、立ち入ってよいという意味ではありません。未確認の行は、依頼メモで管理会社に確かめてもらいます。浸水したら何が止まりうるかは、②建物の「止まる設備」と、A4 のおもての一番上の行で見られます。浸水や停電のさなかは、電気室・地下・盤・ポンプ室に近づかず、何にも触れません。\n\n" + notice,
         }
     if _FORECAST.search(message) and not prepared:
         return {

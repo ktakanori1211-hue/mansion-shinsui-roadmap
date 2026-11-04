@@ -73,14 +73,84 @@ function locationCard(row) {
 }
 
 // 何が止まるかのカード。一段目は札と短い一行で、理由と確かめる人は開いて読む。
+// 住民の暮らしで何に関わるか（カードの太字の一行）。判定は言わず、札が判定を表す。
+// 出典：ノートの「住民から見た被害」（水・トイレ・風呂・エレベーター・車・暑さ）。新しい数字は足さない。
+const LIFE = {
+  water: "全戸の水（蛇口・トイレ・風呂）",
+  tr: "各戸の電気（照明・冷蔵庫・冷房）",
+  ev: "エレベーター（止まると高い階は階段）",
+  drain: "トイレと排水を流せるか",
+  backflow: "低い階のトイレ・排水口からの逆流",
+  lock: "停電のときの玄関の扉と呼び出し",
+  park: "駐車場の車",
+  power: "共用部の電気（廊下の照明・ポンプ）",
+  entry: "電気室へ水が入る道（壁の穴）",
+  outside: "道路の水が地下へ入る入口",
+  damp: "地下の電気の部屋の湿気",
+};
+// 暮らしに近いものから並べる。水の入り道は最後にまとめる。
+const LIFE_ORDER = ["water", "tr", "ev", "drain", "backflow", "lock", "park", "power", "entry", "outside", "damp"];
+function lifeOrder(rows) {
+  const rank = (row) => (LIFE_ORDER.includes(row.key) ? LIFE_ORDER.indexOf(row.key) : LIFE_ORDER.length);
+  return [...rows].sort((a, b) => rank(a) - rank(b));
+}
+
+// 何が止まるかのカード。札と暮らしの一行を太字に、分かったことと、誰が確かめるか（依頼メモの番号）を下に添える。
 function screenRow(row) {
   const article = element("article", undefined, `row row-${row.verdict}`);
   const head = element("div", undefined, "row-head");
-  head.append(verdictTag(row.verdict, row.verdict_label), element("span", row.label, "row-label"));
+  head.append(verdictTag(row.verdict, row.verdict_label));
   // サーバーが付けた札（規模の重点など、F-022）。文はサーバーのまま出す。
   (row.badges || []).forEach((badge) => head.append(element("span", badge, "row-badge")));
-  article.append(head, element("p", row.summary || row.headline, "row-headline"), fold("条件と出典を開く", detailItems(row, row.summary ? row.headline : "")));
+  const life = element("p", LIFE[row.key] || row.label, "row-life");
+  life.title = row.label;
+  article.append(head, life);
+  // 未確認の行は、分かったことの代わりに「誰が確かめるか」を表に出す（分かったことは開いて読む）。
+  // 確定した行（リスクあり・問題なし）は、分かったことを表に出す。
+  const who = row.confirm_short && row.verdict === "unconfirmed";
+  if (who) article.append(element("p", `確かめる：${row.confirm_short}${row.memo_no ? `（依頼メモ${row.memo_no}）` : ""}`, "row-who"));
+  else article.append(element("p", row.summary || row.headline, "row-headline"));
+  const lead = who ? row.summary || row.headline : row.summary ? row.headline : "";
+  article.append(fold("条件と出典を開く", detailItems({ ...row, details: [`見たもの：${row.label}`, ...row.details] }, lead)));
   return article;
+}
+
+// ③の面の「いくらで、誰が決めるか」。段ごとに、決める場とお金の出どころを大きく、手と桁は開いて読む。
+// 値はサーバーの手の表（A4 のおもての表と同じ）のままで、新しい数字は作らない。
+const TIERS = ["今すぐ", "工事が要る", "更新と一緒"];
+function tierSpan(items) {
+  const ranges = items.map((m) => m.range).filter((range) => range && !range.startsWith("—"));
+  if (!ranges.length) return "契約・見積りで確かめる";
+  const low = ranges[0].split("〜")[0];
+  const high = ranges[ranges.length - 1].split("〜")[1];
+  return ranges.length === 1 ? ranges[0] : `${low}〜${high || ""}`;
+}
+function renderCostTiers(building) {
+  const measures = SimPanel.byTier(building.measures.filter((m) => m.key !== "power"));
+  const lead = document.getElementById("cost-tiers-lead");
+  lead.replaceChildren(element("b", "最初の段は、建物の規約と予算によっては理事会と管理費で決められる手から。修繕積立金を使う工事は、その後の段です。"));
+  const grid = document.getElementById("cost-tier-grid");
+  grid.replaceChildren(
+    ...TIERS.map((tier) => {
+      const items = measures.filter((m) => m.tier === tier);
+      if (!items.length) return null;
+      const card = element("article", undefined, `cost-tier tier-${TIERS.indexOf(tier) + 1}`);
+      // 決める場とお金の出どころは、桁のある手（申し入れや契約次第の手ではない）から取る。
+      const priced = items.filter((m) => m.range && !m.range.startsWith("—"));
+      const basis = priced.length ? priced : items;
+      const decisions = [...new Set(basis.map((m) => m.decision.replace("（建物の規約と予算による）", "＊")))];
+      const accounts = [...new Set(basis.map((m) => m.account).filter((account) => account && account !== "—"))];
+      const list = element("ul", undefined, "row-details");
+      items.forEach((m) => list.append(element("li", `${m.label}：${m.range}`)));
+      card.append(
+        element("p", tier, "cost-tier-name"),
+        element("p", tierSpan(items), "cost-tier-big"),
+        element("p", `${decisions[0]}${decisions.length > 1 ? " ほか" : ""}・${accounts[0] || "契約による"}`, "cost-tier-line"),
+        fold(`${items.length}つの手と桁を開く`, list, element("p", "＊建物の規約と予算による。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。桁は目安で、見積りではありません。", "hint")),
+      );
+      return card;
+    }).filter(Boolean),
+  );
 }
 
 // 紙のおもては細い表にする。一番大事な「何が止まるか」以降に場所を残すため。全文は別紙に出す。
@@ -183,7 +253,7 @@ const App = {
     }
     await this.loadBuilding();
     this.shapeChosen = Boolean(this.sampleId);
-    ["stage3-cost", "sim-card", "consult-card"].forEach((id) => {
+    ["stage3-cost", "sim-card", "consult-card", "cost-tiers"].forEach((id) => {
       document.getElementById(id).hidden = false;
     });
     this.showShape();
@@ -335,8 +405,11 @@ const App = {
     document.getElementById("legal-safety").textContent = this.disclaimerText();
     const body = document.getElementById("result-body");
     const grid = element("div", undefined, "result-grid");
-    grid.append(...building.equipment.map(screenRow));
-    body.replaceChildren(grid);
+    grid.append(...lifeOrder(building.equipment).map(screenRow));
+    // 外の街より建物の復旧が長くなりうる差（ノートの「取り残される」）。数字は足さない。
+    const lead = element("p", undefined, "result-lead");
+    lead.append(element("b", "外の道路が乾いても、館内の水と電気は戻らないことがあります。"));
+    body.replaceChildren(lead, grid);
     if (building.statements.length) {
       body.append(element("p", `聞き取りとして入れた話：${building.statements.join("／")}（図面で確かめるまで未確認です）`, "hint"));
     }
@@ -344,6 +417,7 @@ const App = {
     window.Model3D?.updateTags?.();
     SimPanel.render();
     SheetPanel.render();
+    renderCostTiers(building);
     ExitPanel.render();
   },
 
@@ -392,8 +466,8 @@ const App = {
   fitStage2() {
     if (this.stage !== "2") return;
     const top = document.querySelector(".stage2-grid").getBoundingClientRect().top + window.scrollY;
-    const footer = document.getElementById("legal-footer").offsetHeight;
-    document.documentElement.style.setProperty("--stage2-room", `${Math.max(440, window.innerHeight - top - footer - 10)}px`);
+    // 免責の帯は貼り付けずページの下に出すので、高さから引かない。
+    document.documentElement.style.setProperty("--stage2-room", `${Math.max(440, window.innerHeight - top - 10)}px`);
   },
 };
 window.App = App;

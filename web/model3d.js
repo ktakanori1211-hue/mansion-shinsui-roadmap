@@ -42,6 +42,18 @@ let panelLabel = null;
 let ghostPanel = null;
 let focusKey = null;
 let raisedNow = false;
+let hoverKey = null;
+let leaderSvg = null;
+let leaderMarkup = "";
+let sizeMemo = new WeakMap();
+let placeMemo = new WeakMap();
+const candidateMemo = new Map();
+const anchor = new THREE.Vector3();
+const LAYOUT_GAP = 3;
+const LAYOUT_EDGE = 2;
+const LEADER_MIN = 6;
+// この高さより狭い模型では、焦点でない部屋の札を名前の行までに畳む。
+const ROOM_FULL_MIN_HEIGHT = 360;
 
 function box(w, h, d, color, opacity = 1) {
   const material = new THREE.MeshStandardMaterial({ color, transparent: opacity < 1, opacity, roughness: 0.85 });
@@ -63,10 +75,23 @@ function edges(mesh, color = 0x333333, dashed = false) {
 function label(text, position, className = "model-label", detailOf = null, extra = {}) {
   const node = document.createElement("div");
   node.className = className;
-  if (extra.head) node.append(extra.head, `\n${text}`);
-  else node.textContent = text;
   const object = new CSS2DObject(node);
+  if (extra.head) {
+    // 札の文は変えずに、名前の行と残りの行を分けて持つ。狭いときは残りの行から畳む（layoutLabels）。
+    const [first, ...others] = text.split("\n");
+    const name = document.createElement("span");
+    name.textContent = `\n${first}`;
+    node.append(extra.head, name);
+    let rest = null;
+    if (others.length) {
+      rest = document.createElement("span");
+      rest.textContent = `\n${others.join("\n")}`;
+      node.append(rest);
+    }
+    object.userData.parts = { name, rest };
+  } else node.textContent = text;
   object.position.copy(position);
+  object.userData.layout = { kind: detailOf ? "detail" : "misc", key: detailOf };
   group.add(object);
   if (detailOf) {
     detailLabels.push({ object, detailOf, always: extra.always, hide: extra.hide });
@@ -182,7 +207,8 @@ function buildRooms(sample) {
         head.className = "model-tag-line";
         fillRoomTag(head, room.key, sample);
         roomTags[room.key] = head;
-        label(note, place.center.clone().add(new THREE.Vector3(shift[0], place.h / 2 + shift[1], 0)), "model-label", null, { head });
+        const tag = label(note, place.center.clone().add(new THREE.Vector3(shift[0], place.h / 2 + shift[1], 0)), "model-label", null, { head });
+        tag.userData.layout = { kind: "room", key: room.key };
       }
       if (room.key === "tr" && !["no", "unknown"].includes(sample.answers?.tr)) {
         const hidden = sample.confirmedRooms.includes("tr") ? "中は建物側から分からない" : "中は建物側から分からない\n位置は図面で未確認";
@@ -336,7 +362,15 @@ function buildPins(sample) {
     node.textContent = pin.key;
     node.title = pin.title;
     node.addEventListener("click", () => window.App.selectPin(pin.key));
+    // ピンに指を乗せている間は、その部屋の札を畳まずに出す。
+    const enter = () => { hoverKey = pin.focus; };
+    const leave = () => { if (hoverKey === pin.focus) hoverKey = null; };
+    node.addEventListener("pointerenter", enter);
+    node.addEventListener("pointerleave", leave);
+    node.addEventListener("focus", enter);
+    node.addEventListener("blur", leave);
     const object = new CSS2DObject(node);
+    object.userData.layout = { kind: "pin", key: pin.focus };
     object.position.copy(point.look).add(new THREE.Vector3(0, 0.3, 0));
     group.add(object);
   });
@@ -363,6 +397,148 @@ function clear() {
   ghostPanel = null;
   focusKey = null;
   raisedNow = false;
+  hoverKey = null;
+  sizeMemo = new WeakMap();
+  placeMemo = new WeakMap();
+  leaderMarkup = "";
+  if (leaderSvg) leaderSvg.replaceChildren();
+}
+
+// 札の重なりをよける。CSS2DRenderer が置いた位置（transform）はそのままにし、
+// 画面の上のずれだけを CSS の translate で足す。文は変えず、狭いときは行を畳むか、
+// 名前のない補助の札（前の道路など）を一時的に隠す。動かした札には元の位置への細い線を引く。
+function setLevel(object, level) {
+  const parts = object.userData.parts;
+  if (!parts) return;
+  parts.name.hidden = level >= 2;
+  if (parts.rest) parts.rest.hidden = level >= 1;
+}
+
+function labelSize(object, level) {
+  const el = object.element;
+  let memo = sizeMemo.get(el);
+  if (!memo) {
+    memo = new Map();
+    sizeMemo.set(el, memo);
+  }
+  const key = `${level}|${el.textContent}`;
+  let size = memo.get(key);
+  if (!size) {
+    setLevel(object, level);
+    size = [el.offsetWidth, el.offsetHeight];
+    if (size[0] && size[1]) memo.set(key, size);
+  }
+  return size;
+}
+
+// 札を置いてみる候補のずれ。縦に少しずつ、横は札の幅の割合で動かし、近い順に並べる。
+function candidates(w, h, H) {
+  const key = `${w}|${h}|${H}`;
+  let list = candidateMemo.get(key);
+  if (list) return list;
+  list = [];
+  const xs = [0, 0.3, -0.3, 0.6, -0.6, 1, -1].map((f) => Math.round(f * (w + LAYOUT_GAP)));
+  for (let dy = -H; dy <= H; dy += 6) xs.forEach((dx) => list.push([dx, dy, Math.abs(dy) + Math.abs(dx) * 0.5]));
+  list.sort((a, b) => a[2] - b[2]);
+  if (candidateMemo.size > 400) candidateMemo.clear();
+  candidateMemo.set(key, list);
+  return list;
+}
+
+function layoutRank(object) {
+  const info = object.userData.layout || { kind: "misc" };
+  if (info.kind === "pin") return 0;
+  if (info.kind === "room") return info.key === focusKey || info.key === hoverKey ? 1 : 3;
+  if (info.kind === "detail") return 2;
+  return 4;
+}
+
+function overlapArea(rect, placed) {
+  let area = 0;
+  placed.forEach((other) => {
+    const w = Math.min(rect[2], other[2]) - Math.max(rect[0], other[0]);
+    const h = Math.min(rect[3], other[3]) - Math.max(rect[1], other[1]);
+    if (w > 0 && h > 0) area += w * h;
+  });
+  return area;
+}
+
+function layoutLabels() {
+  if (!group || !labels) return;
+  const { width: W, height: H } = labels.getSize();
+  if (!W || !H) return;
+  const items = [];
+  group.traverse((object) => {
+    if (!object.isCSS2DObject || object.element.style.display === "none") return;
+    anchor.setFromMatrixPosition(object.matrixWorld).project(camera);
+    items.push({ object, x: ((anchor.x + 1) / 2) * W, y: ((1 - anchor.y) / 2) * H, rank: layoutRank(object), order: items.length });
+  });
+  items.sort((a, b) => a.rank - b.rank || a.y - b.y || a.order - b.order);
+  const placed = [];
+  const leaders = [];
+  items.forEach((item) => {
+    const { object, x, y, rank } = item;
+    const el = object.element;
+    const info = object.userData.layout || { kind: "misc" };
+    // 元の位置が模型の外に出た札は出さない（端で切れて重なるだけなので）。
+    if (x < 0 || x > W || y < 0 || y > H) {
+      el.style.visibility = "hidden";
+      return;
+    }
+    const isRoom = info.kind === "room";
+    const firstLevel = isRoom && rank !== 1 && H < ROOM_FULL_MIN_HEIGHT ? 1 : 0;
+    const lastLevel = isRoom ? 2 : 0;
+    const memo = placeMemo.get(el);
+    let chosen = null;
+    let best = null;
+    for (let level = firstLevel; level <= lastLevel && !chosen; level += 1) {
+      const [w, h] = labelSize(object, level);
+      if (!w || !h) continue;
+      const tryOffset = (dx, dy) => {
+        const left = Math.max(LAYOUT_EDGE, Math.min(x - w / 2 + dx, W - w - LAYOUT_EDGE));
+        const top = Math.max(LAYOUT_EDGE, Math.min(y - h / 2 + dy, H - h - LAYOUT_EDGE));
+        const rect = [left, top, left + w, top + h];
+        const padded = [left - LAYOUT_GAP, top - LAYOUT_GAP, left + w + LAYOUT_GAP, top + h + LAYOUT_GAP];
+        const area = overlapArea(padded, placed);
+        const result = { level, rect, dx: left - (x - w / 2), dy: top - (y - h / 2) };
+        if (area === 0) return result;
+        if (level === lastLevel && (!best || area < best.area)) best = { ...result, area };
+        return null;
+      };
+      if (memo && memo.level === level) chosen = tryOffset(memo.dx, memo.dy);
+      if (!chosen) {
+        const list = candidates(w, h, H);
+        for (let i = 0; i < list.length && !chosen; i += 1) chosen = tryOffset(list[i][0], list[i][1]);
+      }
+    }
+    // 置き場がないとき：ピン・焦点の札・焦点の部屋の補助の札は一番重ならない所に置く。
+    // それ以外は隠す（部屋の札は、ピンの印と平面図で同じ場所を示せる）。
+    if (!chosen && rank <= 2 && best) chosen = best;
+    if (!chosen) {
+      el.style.visibility = "hidden";
+      el.style.translate = "";
+      placeMemo.delete(el);
+      return;
+    }
+    setLevel(object, chosen.level);
+    el.style.visibility = "";
+    const dx = Math.round(chosen.dx);
+    const dy = Math.round(chosen.dy);
+    el.style.translate = dx || dy ? `${dx}px ${dy}px` : "";
+    placeMemo.set(el, { level: chosen.level, dx: chosen.dx, dy: chosen.dy });
+    placed.push(chosen.rect);
+    if (Math.hypot(dx, dy) > LEADER_MIN) {
+      const [l, t, r, b] = chosen.rect;
+      const px = Math.max(l, Math.min(x, r));
+      const py = Math.max(t, Math.min(y, b));
+      if (Math.hypot(px - x, py - y) > 2) leaders.push(`<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2"/>`);
+    }
+  });
+  const markup = leaders.join("");
+  if (leaderSvg && markup !== leaderMarkup) {
+    leaderMarkup = markup;
+    leaderSvg.innerHTML = markup;
+  }
 }
 
 // 盤・受電の箱の部屋に水が入るか。サーバーの scenario（水の位置③の wet に hv があるか）のとおりにし、ここで計算し直さない。
@@ -407,6 +583,7 @@ function tick() {
   controls.update();
   renderer.render(scene, camera);
   labels.render(scene, camera);
+  layoutLabels();
 }
 
 function resize() {
@@ -416,6 +593,7 @@ function resize() {
   if (!width || !height) return;
   renderer.setSize(width, height);
   labels.setSize(width, height);
+  if (leaderSvg) leaderSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 }
@@ -425,6 +603,12 @@ function init() {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   container.append(renderer.domElement);
+  // 動かした札と元の位置を結ぶ線。札の下、模型の上に重ねる。
+  leaderSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  leaderSvg.setAttribute("class", "model-leaders");
+  leaderSvg.setAttribute("aria-hidden", "true");
+  leaderSvg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;stroke:#5b5f66;stroke-width:1;fill:#5b5f66;";
+  container.append(leaderSvg);
   labels = new CSS2DRenderer();
   labels.domElement.className = "model-labels";
   container.append(labels.domElement);

@@ -68,6 +68,17 @@ const Scenes = (() => {
   let active = null;
   let activeCard = null;
 
+  // 見方の切り替えは、地図の上に並べず「表示の設定と、地図で詳しく調べる」の折りたたみの先頭に置く（地図の上の文字を減らす）。
+  function settingsBox() {
+    let box = document.querySelector(".map-more .map-settings");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "map-settings";
+      document.querySelector(".map-more summary").after(box);
+    }
+    return box;
+  }
+
   // 「凹みの模式を出さない」の切り替え（F-045）。既定は出す（2026-11-03 の決定）。
   // 入れると、色のない所の水色（標高から凹みにたまる模式）を塗らず、公的な地図の色の所だけを広げる
   // （2026-11-02 の「ツールが計算した範囲や深さを塗らない」に合わせた見方）。カードの当てはまり（凹みを含む）は変えない。
@@ -80,7 +91,7 @@ const Scenes = (() => {
     input.id = "scene-hide-dem";
     input.checked = false;
     label.append(input, " 場面の再生で、凹みの模式（水色）を出さない（公的な地図の色の所だけ広げる）");
-    document.getElementById("map").before(label);
+    settingsBox().append(label);
     input.addEventListener("change", () => {
       // 再生中の場面があれば、切り替えた見方で再生し直す。
       const scene = SCENES.find((item) => item.key === active);
@@ -99,7 +110,7 @@ const Scenes = (() => {
     input.id = "scene-pair-section";
     label.append(input, " 地図の横に、建物の断面図（水の入り道）を並べる（②で形を選ぶか見本を開くと出ます）");
     const map = document.getElementById("map");
-    map.before(label);
+    settingsBox().append(label);
     const figure = document.createElement("figure");
     figure.className = "map-pair-section";
     figure.hidden = true;

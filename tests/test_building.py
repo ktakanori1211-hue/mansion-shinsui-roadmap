@@ -398,6 +398,33 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(answer["kind"], "is_safe")
         self.assertNotIn("安全です", answer["text"])
 
+    def test_before_flood_is_it_ok_is_not_the_entry_text(self):
+        # 原則4：事前の「うちは大丈夫？」は立入の固定文で塞がず、札の意味と見る場所を返す。
+        for message in ["うちのマンションは浸水しても大丈夫？", "大雨のとき、うちは大丈夫なの？", "台風が来てもうちは安全?"]:
+            with self.subTest(message):
+                answer = guard.fixed_answer(message)
+                self.assertEqual(answer["kind"], "is_safe")
+                self.assertIn("止まる設備", answer["text"])
+                self.assertNotIn("安全です", answer["text"])
+                self.assertIn("何にも触れません", answer["text"])
+
+    def test_preparing_questions_ending_in_is_it_ok_go_to_the_answer(self):
+        for message in ["理事会で決めても大丈夫？", "費用は管理費から出して大丈夫？", "止水板を置く段取りはこれで大丈夫？", "車を上の階へ移す準備で大丈夫？"]:
+            with self.subTest(message):
+                self.assertIsNone(guard.fixed_answer(message))
+
+    def test_now_or_place_with_is_it_ok_stays_the_entry_text(self):
+        for message in [
+            "水が引いたからもう大丈夫?", "浸水しても電気室は大丈夫？", "今、水が来ているけど大丈夫？", "浸水してもう大丈夫？",
+            # 電気保安の専門家が挙げた取りこぼしの例（2026-11-04）
+            "排水しても大丈夫？", "浸水したら、排水してもうちは大丈夫？", "浸水したら操作しても大丈夫？", "浸水したら接続しても大丈夫？",
+            "水が来たら閉めても大丈夫？", "浸水したらトランスに近づいても大丈夫？", "水が来たら配電室を見るだけなら大丈夫？",
+            "水たまりを歩いても大丈夫？", "冠水してないけど水の上を渡っても大丈夫？", "水を流しても大丈夫？",
+            "水が溢れそうだけど大丈夫？", "水浸しだけど大丈夫？", "停電が続いているけど大丈夫？", "水が来ていても大丈夫？",
+        ]:
+            with self.subTest(message):
+                self.assertEqual(guard.fixed_answer(message)["kind"], "safety")
+
     def test_drain_without_engineer_is_decided_by_the_association(self):
         text = guard.fixed_answer("排水を始めてもいいですか", False)["text"]
         self.assertIn("電気工事の業者に電気が切れていて排水を始めてよいと確かめたうえで、管理組合が排水を始めます", text)

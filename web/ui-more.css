@@ -53,3 +53,47 @@
 .map-pair-section img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 .map-pair-section figcaption { color: var(--ink-muted); font-size: 11.5px; line-height: 1.45; }
 @media (max-width: 1100px) { .map-pair.is-paired { grid-template-columns: 1fr; } }
+
+/* ===== 2026-11-04 当事者の目で読める画面に（一言・暮らしの一行・費用の段・免責の帯） ===== */
+.hero-kicker { margin: 0 0 2px; color: #ffd9a8; font-size: 14px; font-weight: 700; }
+.hero-question { font-size: 30px; }
+.hero-lead { line-height: 1.6; }
+
+.why-title { grid-column: 1 / -1; margin: 0; color: var(--ink-muted); font-size: 13px; }
+.why-title b { margin-right: 6px; color: var(--navy, #12263f); font-size: 16px; }
+
+#step-result .result-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+#step-result .result-lead b { font-size: 15px; }
+#step-result .row-life { margin: 5px 0 0; font-size: 15.5px; font-weight: 800; line-height: 1.4; }
+#step-result .row-headline { margin-top: 2px; color: #3c3f46; font-size: 13px; }
+#step-result .row-who { margin: 4px 0 0; color: var(--accent); font-size: 12.5px; font-weight: 600; }
+#step-result .row-clear { border-left-color: #2e7d4f; }
+#step-result .row-risk { border-left-color: var(--risk); }
+
+.cost-tiers h2 { margin: 0 0 4px; }
+.cost-tiers-lead { margin: 0 0 10px; font-size: 14.5px; }
+.cost-tier-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cost-tier { padding: 10px 14px; border: 1px solid var(--line); border-top: 5px solid var(--accent); border-radius: 8px; background: var(--surface); }
+.cost-tier.tier-2 { border-top-color: #c46a00; }
+.cost-tier.tier-3 { border-top-color: var(--risk); }
+.cost-tier-name { margin: 0; color: var(--ink-muted); font-size: 13px; font-weight: 700; }
+.cost-tier-big { margin: 2px 0; font-size: 24px; font-weight: 800; line-height: 1.25; }
+.cost-tier-line { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+@media (max-width: 760px) { .cost-tier-grid { grid-template-columns: 1fr; } }
+
+/* 地図の上の切り替えは折りたたみへ移した */
+.map-more .map-settings { display: grid; gap: 4px; margin: 6px 0; }
+
+/* 免責の3行：文言はそのまま、折りたたまずに、ページの一番下に1回だけ出す（貼り付けない） */
+.legal-footer { position: static; box-shadow: none; margin-top: 8px; padding: 10px 24px 14px; }
+.legal-footer p, .legal-footer b { font-size: 11.5px; }
+
+/* 3つのタブは、狭い幅でも1行に並べる */
+.stage-tabs button[data-tab="1"], .stage-tabs button[data-tab="2"], .stage-tabs button[data-tab="3"] { flex: 1 1 0; min-width: 0; }
+.stage-tabs .materials-link, .stage-tabs .chat-toggle { flex: 0 0 auto; }
+@media (max-width: 1000px) { .stage-tabs small { display: none; } }
+@media (max-width: 760px) {
+  .stage-tabs button[data-tab="1"], .stage-tabs button[data-tab="2"], .stage-tabs button[data-tab="3"] { flex: 1 1 30%; }
+  .stage-tabs .materials-link, .stage-tabs .chat-toggle { flex: 1 1 45%; }
+}
+@media (min-width: 1101px) { .why-bar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 300px); } }

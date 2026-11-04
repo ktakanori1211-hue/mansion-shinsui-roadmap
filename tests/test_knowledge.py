@@ -83,6 +83,51 @@ class MaterialsWordsTest(unittest.TestCase):
         self.assertNotIn("1,000万", (ROOT / "docs" / "REQUIREMENTS.md").read_text(encoding="utf-8"))
 
 
+class MaterialsWhyWhatTest(unittest.TestCase):
+    """今の流れ・住民が失うもの・お金の流れ・行政との接点・既存との違いの節。"""
+
+    NEW_IDS = ["flow", "loss", "market", "gyosei", "hikaku"]
+
+    def sections(self):
+        return {section["id"]: section for section in MATERIALS["sections"]}
+
+    def test_new_sections_exist_with_one_face_line(self):
+        sections = self.sections()
+        for section_id in self.NEW_IDS:
+            self.assertIn(section_id, sections)
+            section = sections[section_id]
+            self.assertTrue(section["lead"])
+            self.assertNotIn("\n", section["lead"])
+            # 表面は太字の一行と、多くても大きな値一つ。12段階などの詳しい文は折りたたみへ。
+            self.assertNotIn("steps", section)
+            self.assertLessEqual(len(section.get("figures", [])), 1)
+            self.assertTrue(section.get("body") or section.get("parts"))
+
+    def test_new_sections_avoid_banned_claims(self):
+        sections = self.sections()
+        for section_id in self.NEW_IDS:
+            text = "\n".join(body_texts(sections[section_id]))
+            for word in ["世界初", "唯一", "日本初", "分からない＝危険", "データが外に出ない", "安心"]:
+                self.assertNotIn(word, text, f"{section_id}: {word}")
+
+    def test_absence_claims_carry_the_survey_date(self):
+        for text in screen_texts():
+            for sentence in re.split(r"(?<=。)", text):
+                if "見当たら" in sentence or "見つけられなかった" in sentence:
+                    self.assertIn("調べた範囲（10/21 時点）で", sentence)
+
+    def test_flow_covers_twelve_steps_and_says_which_the_tool_takes(self):
+        flow = self.sections()["flow"]
+        self.assertIn("1〜5と12", flow["lead"])
+        for number in range(1, 13):
+            self.assertTrue(any(line.startswith(f"{number} ") for line in flow["body"]), number)
+
+    def test_market_states_no_referral_fee_and_undecided_price(self):
+        text = "\n".join(body_texts(self.sections()["market"]))
+        self.assertIn("紹介料は取りません", text)
+        self.assertIn("値段は、まだ決めていません", text)
+
+
 class MaterialsNumbersTest(unittest.TestCase):
     def test_numbers_come_from_checked_facts(self):
         allowed = set()

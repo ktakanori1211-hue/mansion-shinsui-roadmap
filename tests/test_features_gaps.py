@@ -74,7 +74,9 @@ class DemToggleTest(unittest.TestCase):
     def test_toggle_defaults_to_showing_the_model(self):
         self.assertIn('input.type = "checkbox"', self.scenes)
         self.assertIn("input.checked = false;", self.scenes)
-        self.assertIn('document.getElementById("map").before(label)', self.scenes)
+        # 切り替えは地図の上に並べず、「表示の設定と、地図で詳しく調べる」の折りたたみに置く（2026-11-04）。
+        self.assertIn("settingsBox().append(label)", self.scenes)
+        self.assertIn('document.querySelector(".map-more summary").after(box)', self.scenes)
         # scenes.js は app.js より前に読まれるので、element() を初期化の中で使わない。
         toggle = block(self.scenes, "const demToggle", "})();")
         self.assertNotIn("element(", toggle)
