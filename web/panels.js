@@ -177,9 +177,27 @@ const ModelPanel = (() => {
     box.replaceChildren(element("b", `①の場面：${scene.name}`), ` ${scene.line}。`, routes.length ? `この建物で確かめる入り道：${routes.join("／")}` : "");
   }
 
+  // 対策のボタンに、今の水の位置でその対策を選んだときの「止まる」の数を添える（押す前に何が変わるか分かるように）。
+  // 数はサーバーの scenario（水の位置と対策の組み合わせ）の services のままで、画面では計算し直さない。
+  function renderMeasureCounts() {
+    document.querySelectorAll('#measure-controls label').forEach((label) => {
+      const input = label.querySelector("input");
+      const scenario = App.building.scenarios[`${App.water}:${input.value}`];
+      if (!scenario) return;
+      const stopped = scenario.services.filter((item) => item.state === "stopped").length;
+      let badge = label.querySelector(".measure-count");
+      if (!badge) {
+        badge = element("small", undefined, "measure-count");
+        label.append(badge);
+      }
+      badge.textContent = `止まる${stopped}`;
+    });
+  }
+
   function render(scenario) {
     const fixed = App.building.fixed;
     renderStopCount(scenario);
+    renderMeasureCounts();
     renderSceneContext();
     renderCaption();
     // 「本シートは予報ではなく〜」はページの一番下の免責に同じ文があるので、ここでは繰り返さない（2026-11-04）。

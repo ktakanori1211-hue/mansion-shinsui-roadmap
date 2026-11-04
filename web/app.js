@@ -33,6 +33,45 @@ function element(tag, text, className) {
   return node;
 }
 
+// 専門用語に、指を置くと読める言葉の意味を付ける（#4。2026-11-04）。文は変えず、語に点線の下線と title を足すだけ。
+// 数字は入れない。安全に関わる語は「入らない・触らない」の側で書く。
+const TERMS = {
+  // 電気保安の専門家のレビュー（2026-11-04）を受けた言い方。安全に関わる語は「入らない・触らない」でそろえる。
+  "借室": "東京電力PGの変圧器などが入る部屋。立入は禁止です。浸水時も近づかず、東京電力PGへ連絡します",
+  "キュービクル": "受電設備を金属の箱に収めたもの。高い電圧の電気を、建物で使える電気に変えます。開けず、触りません",
+  "受電の箱": "受電設備を収めた箱。建物によっては箱ではなく専用の部屋（受変電室）のこともあります",
+  "受電設備": "電力会社から電気を受け、建物で使える形にして配る設備。箱型（キュービクル）や専用の部屋の型があります",
+  "架台": "盤や機器を床からかさ上げして載せる台",
+  "高圧": "電柱の電線や地中のケーブルで受ける、家庭のコンセントよりずっと高い電圧の電気。感電の危険が大きく、近づかず触りません",
+  "制御盤": "ポンプを動かすスイッチや部品が入った箱。浸かるとポンプが止まるおそれがあります。浸かった盤は触らず、電気の専門家を呼びます",
+  "スイッチ盤": "ポンプや設備に電気を送り、動かすスイッチや部品が入った箱。浸かったら触りません",
+  "電気主任技術者": "受電設備の保安を受け持つ国家資格の人。外部の保安会社に委託していることも多い。点検をし、浸水後は電気を戻してよいか確認します",
+  "主任技術者": "電気主任技術者のこと。浸水後に電気を戻してよいか、設備を確認します",
+  "竣工図": "建物ができたときの図面。その後の改修は載っていないことがあります。管理組合か管理会社が保管していることが多い",
+  "逆止弁": "下水が逆向きに建物へ流れ込むのを防ぐ弁。ごみ噛みや劣化で効かないことがあります",
+  "合流式": "雨水と汚水を同じ下水管で流す方式。大雨で管がいっぱいになると、下水が逆流したりあふれたりするおそれがあります",
+  "東京電力PG": "東京電力パワーグリッド。電柱・電線・変圧器など送配電設備を受け持つ会社。停電や復旧の連絡先です",
+  "ピット": "床より下に掘り下げた部分（ポンプの水槽やケーブルの通り道など）。水がたまると危険なので入りません",
+  "汲み上げポンプ": "地下の汚水や雨水を、下水管の高さまで汲み上げるポンプ。非常用電源がなければ停電で止まります",
+};
+const TERM_PATTERN = new RegExp(Object.keys(TERMS).sort((a, b) => b.length - a.length).join("|"), "g");
+function withTerms(text, tag = "span", className) {
+  const node = element(tag, undefined, className);
+  const value = String(text ?? "");
+  let last = 0;
+  value.replace(TERM_PATTERN, (word, at) => {
+    if (at > last) node.append(value.slice(last, at));
+    const term = element("abbr", word, "term");
+    term.title = TERMS[word];
+    term.tabIndex = 0;
+    node.append(term);
+    last = at + word.length;
+    return word;
+  });
+  if (last < value.length) node.append(value.slice(last));
+  return node;
+}
+
 function verdictTag(verdict, label) {
   return element("span", label, `tag tag-${verdict}`);
 }
@@ -67,7 +106,7 @@ function locationCard(row) {
   face.append(element("span", row.value, "loc-value"));
   (accent?.badges || []).forEach((badge) => face.append(element("span", badge, "accent-badge")));
   const foot = element("div", undefined, "loc-foot");
-  foot.append(element("p", row.conclusion, "loc-line"), fold("条件と出典を開く", detailItems(row, row.headline)));
+  foot.append(withTerms(row.conclusion, "p", "loc-line"), fold("条件と出典を開く", detailItems(row, row.headline)));
   card.append(head, face, foot);
   return card;
 }
@@ -96,20 +135,23 @@ function lifeOrder(rows) {
 }
 
 // 何が止まるかのカード。札と暮らしの一行を太字に、分かったことと、誰が確かめるか（依頼メモの番号）を下に添える。
-function screenRow(row) {
-  const article = element("article", undefined, `row row-${row.verdict}`);
+function screenRow(row, keyRows = []) {
+  // ②の頭の「次の3つ」に入っている行は、未確認の中でも答えに効くものとして枠と札で目立たせる（全部が同じ橙に見えないように）。
+  const key = keyRows.includes(row.key);
+  const article = element("article", undefined, `row row-${row.verdict}${key ? " row-key" : ""}`);
   const head = element("div", undefined, "row-head");
   head.append(verdictTag(row.verdict, row.verdict_label));
+  if (key) head.append(element("span", "答えに効く・先に確かめる", "row-key-badge"));
   // サーバーが付けた札（規模の重点など、F-022）。文はサーバーのまま出す。
   (row.badges || []).forEach((badge) => head.append(element("span", badge, "row-badge")));
-  const life = element("p", LIFE[row.key] || row.label, "row-life");
+  const life = withTerms(LIFE[row.key] || row.label, "p", "row-life");
   life.title = row.label;
   article.append(head, life);
   // 未確認の行は、分かったことの代わりに「誰が確かめるか」を表に出す（分かったことは開いて読む）。
   // 確定した行（リスクあり・問題なし）は、分かったことを表に出す。
   const who = row.confirm_short && row.verdict === "unconfirmed";
-  if (who) article.append(element("p", `確かめる：${row.confirm_short}${row.memo_no ? `（依頼メモ${row.memo_no}）` : ""}`, "row-who"));
-  else article.append(element("p", row.summary || row.headline, "row-headline"));
+  if (who) article.append(withTerms(`確かめる：${row.confirm_short}${row.memo_no ? `（依頼メモ${row.memo_no}）` : ""}`, "p", "row-who"));
+  else article.append(withTerms(row.summary || row.headline, "p", "row-headline"));
   const lead = who ? row.summary || row.headline : row.summary ? row.headline : "";
   article.append(fold("条件と出典を開く", detailItems({ ...row, details: [`見たもの：${row.label}`, ...row.details] }, lead)));
   return article;
@@ -138,15 +180,17 @@ function renderCostTiers(building) {
       // 決める場とお金の出どころは、桁のある手（申し入れや契約次第の手ではない）から取る。
       const priced = items.filter((m) => m.range && !m.range.startsWith("—"));
       const basis = priced.length ? priced : items;
-      const decisions = [...new Set(basis.map((m) => m.decision.replace("（建物の規約と予算による）", "＊")))];
+      // 「理事会で決められる場合がある（建物の規約と予算による）」は、タイルでは短く言い直す（＊の注記を畳みに探しに行かせない）。
+      const decisions = [...new Set(basis.map((m) => m.decision.replace("理事会で決められる場合がある（建物の規約と予算による）", "理事会で決められることも（規約・予算しだい）")))];
       const accounts = [...new Set(basis.map((m) => m.account).filter((account) => account && account !== "—"))];
       const list = element("ul", undefined, "row-details");
       items.forEach((m) => list.append(element("li", `${m.label}：${m.range}`)));
       card.append(
         element("p", tier, "cost-tier-name"),
         element("p", tierSpan(items), "cost-tier-big"),
-        element("p", `${decisions[0]}${decisions.length > 1 ? " ほか" : ""}・${accounts[0] || "契約による"}`, "cost-tier-line"),
-        fold(`${items.length}つの手と桁を開く`, list, element("p", "＊建物の規約と予算による。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。桁は目安で、見積りではありません。", "hint")),
+        element("p", `決める場：${decisions[0]}${decisions.length > 1 ? " ほか" : ""}`, "cost-tier-line"),
+        element("p", `お金：${accounts[0] || "契約による"}`, "cost-tier-line"),
+        fold(`${items.length}つの手と桁を開く`, list, element("p", "理事会で決められるか、管理費か修繕積立金かは、建物の規約と予算によります。管理会社に規約・予算書・総会の議事録で確かめてもらいます。桁は目安で、見積りではありません。", "hint")),
       );
       return card;
     }).filter(Boolean),
@@ -192,7 +236,7 @@ function answerSteps(building, className) {
   const list = element("ol", undefined, className || "answer-steps");
   steps.forEach((step) => {
     const item = element("li");
-    item.append(element("b", step.what), element("span", `頼む先：${step.who}${step.memo_no ? `（依頼メモ${step.memo_no}）` : ""}`, "answer-who"));
+    item.append(withTerms(step.what, "b"), withTerms(`頼む先：${step.who}${step.memo_no ? `（依頼メモ${step.memo_no}）` : ""}`, "span", "answer-who"));
     list.append(item);
   });
   return list;
@@ -428,7 +472,10 @@ const App = {
     document.getElementById("legal-safety").textContent = this.disclaimerText();
     const body = document.getElementById("result-body");
     const grid = element("div", undefined, "result-grid");
-    grid.append(...lifeOrder(building.equipment).map(screenRow));
+    const keyRows = (building.top_line.steps || []).map((step) => step.key);
+    const ordered = lifeOrder(building.equipment);
+    // 答えに効く行を先に、残りは暮らしに近い順のまま。
+    grid.append(...[...ordered.filter((row) => keyRows.includes(row.key)), ...ordered.filter((row) => !keyRows.includes(row.key))].map((row) => screenRow(row, keyRows)));
     // 外の街より建物の復旧が長くなりうる差（ノートの「取り残される」）。数字は足さない。
     const lead = element("p", undefined, "result-lead");
     lead.append(element("b", "外の道路が乾いても、館内の水と電気は戻らないことがあります。"));
@@ -684,6 +731,15 @@ document.querySelectorAll("[data-go]").forEach((button) => {
 
 document.getElementById("print-button").addEventListener("click", () => window.print());
 
+// ③の「いくらで、誰が決めるか」から、畳みの中の補助と相談へ直接行く（#33。2026-11-04）。
+document.querySelectorAll("[data-open-cost]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const fold = document.getElementById("stage3-cost");
+    fold.open = true;
+    document.getElementById(button.dataset.openCost)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
+
 async function loadDemoPoints() {
   try {
     const response = await fetch("/api/demo-points");
@@ -901,7 +957,7 @@ const QuestionPanel = (() => {
 
   function group(title, name, choices, current, arts) {
     const box = element("fieldset", undefined, "q-group");
-    box.append(element("legend", title));
+    box.append(withTerms(title, "legend"));
     choices.forEach(([value, text]) => box.append(radio(name, value, text, current, arts && arts[value])));
     return box;
   }

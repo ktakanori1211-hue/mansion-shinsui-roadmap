@@ -175,7 +175,7 @@
           <div class="model-controls">
             <!-- 水の位置は、下の再生のバーの①②③の札で選ぶ（ボタンとバーを一つにまとめた）。ラジオは状態の受け皿として残す。 -->
             <div class="control-group" role="radiogroup" aria-label="水の位置" hidden><span class="control-name">水の位置</span><div class="pills" id="water-controls"></div></div>
-            <div class="control-group" role="radiogroup" aria-label="対策"><span class="control-name">対策</span><div class="pills" id="measure-controls"></div></div>
+            <div class="control-group" role="radiogroup" aria-label="対策"><span class="control-name">対策を選ぶと、止まる数が変わる</span><div class="pills" id="measure-controls"></div></div>
           </div>
           <p class="control-caption" id="control-caption"></p>
           <div class="model-view" id="model-view"><p class="hint model-fail" id="model-fail" hidden></p></div>
@@ -212,6 +212,10 @@
         <h2>いくらで、誰が決めるか</h2>
         <p class="cost-tiers-lead" id="cost-tiers-lead"></p>
         <div class="cost-tier-grid" id="cost-tier-grid"></div>
+        <div class="cost-next">
+          <button type="button" data-open-cost="sim-card">使える補助を調べる</button>
+          <button type="button" data-open-cost="consult-card">専門家に調査・見積もりを相談する</button>
+        </div>
       </section>
       <div class="stage3-top">
       <div class="card" id="exits-card">

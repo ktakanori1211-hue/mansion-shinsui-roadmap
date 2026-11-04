@@ -253,7 +253,8 @@ const Scenes = (() => {
     const button = element("button", undefined, "scene-play");
     button.type = "button";
     button.append(element("span", scene.name, "scene-name"), element("strong", scene.line, "scene-line"));
-    button.append(element("span", hits ? `この土地に当てはまる ${hits}` : "地図の色は当てはまらない", "scene-count"));
+    // 数は「水の来方（浸水のパターン）」のうち、この土地の地図の色や凹みに当てはまるものの数（2026-11-04 言い方を直した）。
+    button.append(element("span", hits ? `この土地に当てはまる水の来方：${hits}つ` : "地図の色は当てはまらない", "scene-count"));
     button.addEventListener("click", () => play(scene, box));
     const more = element("details", undefined, "why-more");
     more.append(element("summary", "パターンと出典"), patternList(scene, reading), element("p", scene.note));
@@ -267,7 +268,9 @@ const Scenes = (() => {
     activeCard = null;
     App.scene = null;
     document.getElementById("scene-result").hidden = true;
-    document.getElementById("scene-cards").replaceChildren(...SCENES.map((scene) => card(scene, reading)));
+    // この土地に当てはまる水の来方が多い場面から並べる（同じ数なら元の順のまま）。
+    const ordered = SCENES.map((scene, index) => ({ scene, index, hits: count(scene, reading) })).sort((a, b) => b.hits - a.hits || a.index - b.index);
+    document.getElementById("scene-cards").replaceChildren(...ordered.map(({ scene }) => card(scene, reading)));
   }
 
   return { render, SCENES, PATTERNS, applies, BUILDING_PATTERNS };

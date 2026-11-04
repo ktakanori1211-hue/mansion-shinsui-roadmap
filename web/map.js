@@ -755,9 +755,20 @@ const TerrainChart = (() => {
     const title = document.createElement("strong");
     const text = document.createElement("p");
     if (reading.basin) {
+      // 差の大きさを地図の標高データの値のまま添え、色は警告の塗りではなく枠にする（差が小さいのに強く見えすぎないように）。
+      // 凹みであること自体は必ず見せる（原則3）。差の値は読んだ値の引き算で、新しい区切りは作らない。
       box.className = "terrain-callout callout-basin";
-      title.textContent = "⚠ 周囲より低い凹み（目安）";
-      text.textContent = `周囲（${reading.high_directions.join("・")}）の方が高く、この場所に向かって水が集まりやすい凹み（低い土地）の形です`;
+      title.textContent = "周囲より低い凹み（目安）";
+      const center = reading.elevation?.points?.[0]?.elevation_m;
+      const diffs = (reading.elevation?.points || [])
+        .slice(1)
+        .filter((point) => reading.high_directions.includes(point.label) && point.elevation_m !== null && center !== null && center !== undefined)
+        .map((point) => Math.round((point.elevation_m - center) * 10) / 10)
+        .filter((diff) => diff > 0);
+      const low = diffs.length ? Math.min(...diffs) : null;
+      const high = diffs.length ? Math.max(...diffs) : null;
+      const size = low === null ? "" : low === high ? `約${low}m低い` : `約${low}〜${high}m低い`;
+      text.textContent = `周囲（${reading.high_directions.join("・")}）より${size ? `${size}。` : "低い形。"}差は小さくても、大雨では水が集まりやすい形です`;
     } else if (low.length) {
       box.className = "terrain-callout callout-low";
       title.textContent = `周囲より低い向きの目安：${low.join("・")}`;

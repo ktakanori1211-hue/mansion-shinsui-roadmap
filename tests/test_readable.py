@@ -161,3 +161,56 @@ class ChainFixedTextTest(unittest.TestCase):
         html = read("index.html")
         lower = block(html, '<div class="card" id="model-lower"', "</details>")
         self.assertLess(lower.index('id="model-fixed"'), lower.index("<details"))
+
+
+class MiddleIssuesTest(unittest.TestCase):
+    """優先度：中の課題（#2 #4 #12 #13 #14 #20 #22 #32 #33）の受け口。2026-11-04。"""
+
+    def test_scene_count_says_what_it_counts_and_cards_are_sorted(self):
+        scenes = read("scenes.js")
+        self.assertIn("この土地に当てはまる水の来方：${hits}つ", scenes)
+        self.assertIn("sort((a, b) => b.hits - a.hits || a.index - b.index)", scenes)
+
+    def test_basin_callout_shows_the_difference_and_is_not_a_solid_warning(self):
+        js = read("map.js")
+        callout = block(js, "function callout(reading)", "function render(container")
+        self.assertIn('title.textContent = "周囲より低い凹み（目安）"', callout)
+        self.assertNotIn("⚠", callout)
+        self.assertIn("point.elevation_m - center", callout)
+        self.assertIn(".terrain-callout.callout-basin { background: #fff6ec", read("ui-more.css"))
+
+    def test_rows_that_decide_the_answer_stand_out(self):
+        app = read("app.js")
+        self.assertIn("答えに効く・先に確かめる", app)
+        self.assertIn("(building.top_line.steps || []).map((step) => step.key)", app)
+
+    def test_measure_buttons_show_the_stop_count(self):
+        panels = read("panels.js")
+        counts = block(panels, "function renderMeasureCounts", "function render(scenario)")
+        self.assertIn("App.building.scenarios[`${App.water}:${input.value}`]", counts)
+        self.assertIn("止まる${stopped}", counts)
+        self.assertIn("対策を選ぶと、止まる数が変わる", read("index.html"))
+
+    def test_terms_have_meanings_with_safe_wording(self):
+        app = read("app.js")
+        terms = block(app, "const TERMS = {", "};")
+        for word in ("借室", "キュービクル", "受電の箱", "架台", "高圧", "制御盤", "主任技術者", "竣工図", "逆止弁", "合流式"):
+            self.assertIn(f'"{word}":', terms)
+        self.assertIsNone(re.search(r"\d", "".join(re.findall(r": \"([^\"]+)\"", terms))))
+        self.assertIn("立入は禁止です", terms)
+        self.assertNotIn("あふれやすい", terms)
+        self.assertIn('withTerms(LIFE[row.key] || row.label, "p", "row-life")', app)
+
+    def test_cost_tiles_are_plain_and_lead_to_subsidy_and_consult(self):
+        app = read("app.js")
+        tiles = block(app, "function renderCostTiers", "function sheetTable")
+        self.assertIn("決める場：", tiles)
+        self.assertIn("お金：", tiles)
+        self.assertNotIn('"＊"', tiles)
+        html = read("index.html")
+        self.assertIn('data-open-cost="sim-card"', html)
+        self.assertIn('data-open-cost="consult-card"', html)
+
+    def test_sample_shape_notice_is_visible(self):
+        css = read("ui-more.css")
+        self.assertIn("#plan-message, #model-fixed-top { display: inline-block;", css)

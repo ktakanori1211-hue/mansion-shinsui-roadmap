@@ -161,3 +161,24 @@
 .q-lead { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
 .q-expert { margin: 10px 0; padding: 8px 12px; border: 1px dashed var(--ink-muted); border-radius: 8px; background: #f7f7f9; }
 .q-expert > summary { font-size: 14px; font-weight: 700; cursor: pointer; }
+
+/* 凹みの札は、塗りではなく橙の枠にする（差が小さいのに強く見えすぎないように。2026-11-04） */
+.terrain-callout.callout-basin { background: #fff6ec; color: #7a3300; border: 2px solid var(--hot); }
+
+/* ②：答えに効く未確認の行（次の3つ）を枠と札で目立たせる。 */
+.row.row-key { border: 2px solid var(--stopped); box-shadow: 0 0 0 3px #fdf0e6; }
+.row-key-badge { margin-left: 6px; padding: 0 7px; border-radius: 10px; background: var(--stopped); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+/* ②：見本の形を借りていることを、図面と3Dの上で見落とさないように。 */
+#plan-message, #model-fixed-top { display: inline-block; margin: 2px 0 4px; padding: 3px 10px; border: 1px solid #e0a35a; border-radius: 6px; background: #fff6ec; color: #7a3300; font-size: 13px; font-weight: 700; }
+#plan-message:empty, #model-fixed-top:empty { display: none; }
+/* ②：対策のボタンに添える「止まる N」 */
+.measure-count { margin-left: 6px; padding: 0 6px; border-radius: 8px; background: #fde2c4; color: #7a3300; font-size: 11px; font-weight: 700; }
+.pills .control:has(input:checked) .measure-count { background: #fff; }
+
+/* 専門用語：点線の下線。指を置くと言葉の意味（title）が出る。印刷では下線を出さない。 */
+abbr.term { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+@media print { abbr.term { text-decoration: none; } }
+
+/* ③：費用の段の下から、補助と相談へ直接行くボタン */
+.cost-next { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.cost-next button { padding: 6px 14px; font-weight: 700; }
