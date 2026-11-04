@@ -165,39 +165,57 @@ const HazardMap = (() => {
   const LANDFORM_MISSING = { fetch_failed: "接続できず", no_tile: "この地域のデータなし" };
   const LANDFORM_NOTE = "国土地理院 地形分類（提供実験）。分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません。";
 
-  function landformText(item) {
-    if (LANDFORM_MISSING[item.status]) return `地図のデータが取れていない（${LANDFORM_MISSING[item.status]}）`;
-    const codes = item.codes || [];
-    if (!codes.length) return "ピンの点：どの分類にも当たらず";
-    return `ピンの点：${codes.map((code, index) => `『${(item.names || [])[index] || `分類番号 ${code}`}』`).join("")}`;
+  // 分類の名前。表にない番号は、番号を見せずに「名前の分からない分類」とだけ言う。
+  function landformNames(item) {
+    return (item.codes || []).map((code, index) => (item.names || [])[index] || "名前の分からない分類");
   }
 
+  function landformText(item) {
+    if (LANDFORM_MISSING[item.status]) return `地図のデータが取れていない（${LANDFORM_MISSING[item.status]}）`;
+    const names = [...new Set(landformNames(item))];
+    return names.length ? names.join("・") : "当たる分類なし";
+  }
+
+  // 自然地形（もとの土地）と人工地形（いまの土地）は別々の地図なので、二つの箱に並べず
+  // 「もとは〜 → いまは〜」の一行にする（二つが食い違って見えないように）。
   function renderLandforms(container, landforms, rows) {
     if (!container) return;
+    const items = landforms || [];
     // 立地の行で水に関わる分類として札が付いた名前だけ、橙にする。
     const ground = (rows || []).find((row) => row.key === "ground");
     const marked = new Set(((ground && ground.accent && ground.accent.badges) || []).filter((badge) => badge.startsWith("地形分類：")).map((badge) => badge.slice(5)));
-    const tags = (landforms || []).map((item) => {
+    if (!items.length) {
+      container.replaceChildren();
+      container.hidden = true;
+      return;
+    }
+    const line = document.createElement("p");
+    line.className = "landform-line";
+    line.title = LANDFORM_NOTE;
+    const head = document.createElement("b");
+    head.textContent = "土地の成り立ち";
+    line.append(head);
+    const WORD = { natural: "もとは", artificial: "いまは" };
+    items.forEach((item, index) => {
+      if (index) {
+        const arrow = document.createElement("span");
+        arrow.className = "landform-arrow";
+        arrow.textContent = "→";
+        line.append(arrow);
+      }
       const missing = Boolean(LANDFORM_MISSING[item.status]);
-      const names = (item.codes || []).map((code, index) => (item.names || [])[index] || `分類番号 ${code}`);
+      const names = landformNames(item);
       const state = missing ? "missing" : names.some((name) => marked.has(name)) ? "marked" : names.length ? "found" : "none";
-      const tag = document.createElement("span");
-      tag.className = `landform-tag landform-${state}`;
-      tag.title = LANDFORM_NOTE;
-      const name = document.createElement("span");
-      name.className = "layer-name";
-      name.textContent = `地形分類（${item.label}）`;
-      const status = document.createElement("span");
-      status.className = "layer-status";
-      status.textContent = landformText(item);
-      tag.append(name, status);
-      return tag;
+      const part = document.createElement("span");
+      part.className = `landform-part landform-${state}`;
+      part.textContent = `${WORD[item.key] || item.label}『${landformText(item)}』`;
+      line.append(part);
     });
     const note = document.createElement("p");
     note.className = "landform-note";
     note.textContent = LANDFORM_NOTE;
-    container.replaceChildren(...tags, ...(tags.length ? [note] : []));
-    container.hidden = !tags.length;
+    container.replaceChildren(line, note);
+    container.hidden = false;
   }
 
   function pinNote(site) {
@@ -207,7 +225,7 @@ const HazardMap = (() => {
     if (site.basis === "building") {
       return "ピンの位置で読み直しました。この位置の値で、敷地を測ったものではありません。";
     }
-    return "ピンは候補の点です。ここで合っていますか。建物の位置へピンを動かすか、地図を押すと、その位置で読み直します。";
+    return "ピンはまだ町の代表の点です。地図で建物の上を押すか、ピンを建物へ動かしてください。その位置で読み直します。";
   }
 
   // 周囲 4 方向の標高と、周囲より低い向きの目安の矢印。
@@ -305,6 +323,8 @@ const HazardMap = (() => {
     renderLandforms(elements.landforms, location.reading.landforms, location.rows);
     renderLegend(elements.legend, location.reading.hazard_legend);
     elements.pinNote.textContent = pinNote(site);
+    // 建物の位置で読んでいないあいだは、ピンを動かす案内を大きく出す（最初の一歩でつまずかないように）。
+    elements.pinNote.classList.toggle("pin-note-ask", !site.demo && site.basis !== "building");
     showLayer(location.reading.hazards.find((hazard) => hazard.key === selectedKey));
     drawTerrain(site, location.reading);
     drawTaps({});

@@ -29,6 +29,8 @@ LAYERS = {
     "水の入り道": (4, "CONTINUOUS", "#0277bd", 1.8, ""),
     "水の位置": (4, "DASHED", "#0277bd", 1.2, "8 4"),
     "文字": (7, "CONTINUOUS", "#111111", 0.5, ""),
+    # 画面で部屋の種類を見分けるための薄い塗り。CAD の線の図には要らないので DXF には書き出さない。
+    "部屋の色": (9, "CONTINUOUS", "#f3f3f3", 0.0, ""),
 }
 
 
@@ -52,38 +54,45 @@ class Sheet:
         self.view = self.paper
         self.world_y = world_y
         self.items: List[dict] = []
+        # True のあいだに描いたものは DXF にだけ書き出し、画面と PDF の絵（SVG）には描かない（寸法線・通り芯など）。
+        self.cad_only = False
+
+    def _add(self, item: dict) -> None:
+        if self.cad_only:
+            item["cad_only"] = True
+        self.items.append(item)
 
     def use(self, view: Optional[View]) -> None:
         self.view = view or self.paper
 
     def line(self, x1, y1, x2, y2, layer="建具", width=None):
-        self.items.append({"t": "line", "p": [(x1, y1), (x2, y2)], "layer": layer, "width": width, "view": self.view})
+        self._add({"t": "line", "p": [(x1, y1), (x2, y2)], "layer": layer, "width": width, "view": self.view})
 
     def path(self, points, layer="建具", closed=False, width=None):
-        self.items.append({"t": "path", "p": list(points), "closed": closed, "layer": layer, "width": width, "view": self.view})
+        self._add({"t": "path", "p": list(points), "closed": closed, "layer": layer, "width": width, "view": self.view})
 
     def rect(self, x, y, w, h, layer="建具", width=None):
         self.path([(x, y), (x + w, y), (x + w, y + h), (x, y + h)], layer, True, width)
 
     def solid(self, points, layer="壁", color=None):
         """塗りつぶし。DXF の SOLID に合わせて、3 点か 4 点にする。"""
-        self.items.append({"t": "solid", "p": list(points), "layer": layer, "color": color, "view": self.view})
+        self._add({"t": "solid", "p": list(points), "layer": layer, "color": color, "view": self.view})
 
     def solid_rect(self, x, y, w, h, layer="壁", color=None):
         self.solid([(x, y), (x + w, y), (x + w, y + h), (x, y + h)], layer, color)
 
     def circle(self, x, y, r, layer="建具"):
-        self.items.append({"t": "circle", "c": (x, y), "r": r, "layer": layer, "view": self.view})
+        self._add({"t": "circle", "c": (x, y), "r": r, "layer": layer, "view": self.view})
 
     def arc(self, x, y, r, start, end, layer="建具"):
         """画面の向きの角度で、start から end へ時計回りに描く。"""
-        self.items.append({"t": "arc", "c": (x, y), "r": r, "a": (start, end), "layer": layer, "view": self.view})
+        self._add({"t": "arc", "c": (x, y), "r": r, "a": (start, end), "layer": layer, "view": self.view})
 
     def text(self, x, y, value, size=11, anchor="middle", layer="文字", bold=False, color=None, rotate=0):
         lines = str(value).split("\n")
         for i, line in enumerate(lines):
             dy = (i - (len(lines) - 1) / 2) * (size + 2)
-            self.items.append({"t": "text", "c": (x, y + dy), "s": line, "size": size, "anchor": anchor, "layer": layer, "bold": bold, "color": color, "rotate": rotate, "view": self.view})
+            self._add({"t": "text", "c": (x, y + dy), "s": line, "size": size, "anchor": anchor, "layer": layer, "bold": bold, "color": color, "rotate": rotate, "view": self.view})
 
     def arrow(self, x1, y1, x2, y2, layer="水の入り道", head=9):
         self.line(x1, y1, x2, y2, layer)
@@ -105,7 +114,7 @@ class Sheet:
     # 書き出し
 
     def svg_body(self) -> str:
-        return "".join(_svg_item(item) for item in self.items)
+        return "".join(_svg_item(item) for item in self.items if not item.get("cad_only"))
 
     def dxf_entities(self) -> str:
         return "".join(_dxf_item(item, self) for item in self.items)
@@ -162,6 +171,8 @@ def _pairs(*pairs) -> str:
 
 def _dxf_item(item: dict, sheet: Sheet) -> str:
     kind, layer, view = item["t"], item["layer"], item["view"]
+    if layer == "部屋の色":
+        return ""
     if kind == "line":
         (x1, y1), (x2, y2) = [_world(view, sheet, *point) for point in item["p"]]
         return _pairs((0, "LINE"), (8, layer), (10, x1), (20, y1), (30, 0), (11, x2), (21, y2), (31, 0))

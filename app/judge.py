@@ -20,6 +20,8 @@ FLAT_DIFF_M = 0.3
 WATER_LANDFORM_CODES = {
     "10601", "10703", "10704", "10804", "10904",
     "11004", "11005", "11006", "11007", "11008", "11014",
+    # 同じ分類の7桁の番号（国土地理院の style.js の表で同じ名前のもの）。
+    "2010301", "3030201", "3040201", "3040202", "5010301", "4010101", "4010201",
 }
 
 HAZARD_SOURCE = "出典：「ハザードマップポータルサイト」を加工して作成"
@@ -131,6 +133,9 @@ def _hazard_face(hazards: List[dict]) -> tuple:
         line = f"{_LAYER_SHORT[where['key']]}の想定に色あり" if len(hazards) > 1 else "想定に色あり"
         band = _legend_band(legend)
         accent = {"kind": "hazard", "level": _legend_level(legend), "badges": ["ハザード着色あり"]}
+        # 地図の切り替えで別の規模の値も見えるので、大きな値がどちらの規模かを札で言う（二つの値が食い違って見えないように）。
+        if len(hazards) > 1:
+            accent["badges"].append(f"{_LAYER_SHORT[where['key']]}の値")
         if band:
             line = f"{line}（深さの帯：{BAND_LABELS[band]}）"
             accent["band"] = band
@@ -177,6 +182,9 @@ def _hazard_row(
     details.append(HAZARD_SOURCE)
     open_item = verdict != RISK
     value, conclusion, accent = _hazard_face(hazards)
+    # 地図に色があるのに札が「未確認」なのは、ピンが町の代表点で建物の位置ではないから。その理由を札で一言添える。
+    if accent and colored and verdict == UNCONFIRMED:
+        accent["badges"].append("建物の位置は未確認")
     return Row(
         key,
         label,
@@ -204,7 +212,7 @@ def _landform_names(landforms: List[dict]) -> List[str]:
     names = []
     for landform in landforms:
         for code, name in zip(landform["codes"], landform["names"]):
-            names.append(name or f"分類番号 {code}")
+            names.append(name or "名前の分からない分類")
     return list(dict.fromkeys(names))
 
 

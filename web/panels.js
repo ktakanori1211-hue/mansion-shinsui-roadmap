@@ -149,10 +149,11 @@ const ModelPanel = (() => {
     if (lastCount !== null && lastCount !== count) number.classList.add("stop-changed");
     lastCount = count;
     const head = element("p", undefined, "stop-head");
-    head.append(element("span", "止まる設備", "stop-kicker"), number, element("span", `／${scenario.services.length}`, "stop-total"));
+    // 下のカードの札（未確認）と食い違って見えないよう、「この水位まで来たら」の仮定だと見出しで言う。
+    head.append(element("span", "この水位まで来たら止まる", "stop-kicker"), number, element("span", `／${scenario.services.length}`, "stop-total"));
     const chips = element("ul", undefined, "stop-chips");
     scenario.services.forEach((item) => {
-      const mark = { stopped: "止まる", running: "—", unknown: "建物側から分からない" }[item.state];
+      const mark = { stopped: "止まる想定", running: "—", unknown: "東京電力の部屋で中が見えない" }[item.state];
       const chip = element("li", undefined, `stop-chip stop-${item.state}`);
       chip.append(element("b", item.label), element("span", mark));
       chips.append(chip);
@@ -292,7 +293,8 @@ const SheetPanel = (() => {
   function render() {
     const building = App.building;
     const { sample } = building;
-    const label = `住所：${sample.name}／${App.locationState.site.label}${sample.custom ? "（図と設備の形は見本から借りています）" : "（建物は架空）"}`;
+    // 住所は町丁まで。番地はピンの位置から来ることがあり、建物の住所とは限らないため（2026-11-04）。
+    const label = `住所：${sample.name}／${townLabel(App.locationState.site.label)}${sample.custom ? "（図と設備の形は見本から借りています）" : "（建物は架空）"}`;
     document.getElementById("sheet-address").textContent = label;
     document.getElementById("sheet-basis-address").textContent = label;
     // 対象の範囲の一行（F-035、web/index.html の #sheet-basis .scope-line）の直後に、区域の外の一行を一度だけ足す（F-049）。
@@ -310,6 +312,8 @@ const SheetPanel = (() => {
 
     const top = document.getElementById("sheet-top");
     top.replaceChildren(element("p", building.top_line.lead, "top-lead"));
+    // 何が分かれば答えが出るか・誰に頼むか（画面の②の頭と同じ）。
+    if ((building.top_line.steps || []).length) top.append(answerSteps(building, "answer-steps sheet-steps"));
     const land = landChips(App.locationState.location.rows).map((chip) => chip.text).join("／");
     top.append(element("p", `この土地（${land}）× 大雨（線状降水帯）＝ 電気室やポンプに水が入ると、水と電気が止まるおそれ`, "top-notes strong"));
     if (building.direction_line) top.append(element("p", building.direction_line, "top-notes strong"));
@@ -517,7 +521,7 @@ const SheetPanel = (() => {
     const trRisk = building.equipment.find((item) => item.key === "tr")?.verdict === "risk";
     return {
       name: sample.name,
-      address: `${App.locationState.site.label}${sample.custom ? "" : "（建物は架空）"}`,
+      address: `${townLabel(App.locationState.site.label)}${sample.custom ? "" : "（建物は架空）"}`,
       question: "水が引いた翌朝、この建物は何日で水が出るか",
       lead: building.top_line.lead,
       // 共有の画面（view.html）は notes を最上段に出すので、A4 だけの文（a4_notes）をここで後ろに足す。

@@ -1,13 +1,13 @@
 /* 質問・図面・地図に足した部分（ノートの機能 F-011・F-012・F-013・F-016・F-017・F-022・F-024・F-042） */
 
 /* 地図の地形分類の札。取れないときは灰色の斜線、水に関わる分類として札が付いたものは橙。 */
-.landform-tags { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px; margin: -2px 0 8px; }
-.landform-tag { display: grid; grid-template-columns: 1fr; padding: 5px 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 13px; }
-.landform-tag .layer-name { font-weight: 600; }
-.landform-tag .layer-status { color: var(--ink-muted); font-size: 12px; }
-.landform-marked { border: 1px solid var(--stopped); background: #fdf0e6; }
-.landform-marked .layer-status { color: var(--stopped); font-weight: 600; }
-.landform-missing { background: repeating-linear-gradient(45deg, #f4f4f5, #f4f4f5 6px, #e4e4e7 6px, #e4e4e7 8px); color: var(--ink-muted); }
+.landform-tags { display: block; margin: -2px 0 8px; }
+.landform-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; font-size: 14px; line-height: 1.5; }
+.landform-line > b { margin-right: 4px; }
+.landform-part { white-space: nowrap; }
+.landform-arrow { color: var(--ink-muted); }
+.landform-marked { color: var(--stopped); font-weight: 700; }
+.landform-missing { color: var(--ink-muted); }
 .landform-note { grid-column: 1 / -1; margin: 0; color: var(--ink-muted); font-size: 11.5px; }
 
 /* 「何が止まるか」の行の札（規模の重点など）。 */
@@ -97,3 +97,63 @@
   .stage-tabs .materials-link, .stage-tabs .chat-toggle { flex: 1 1 45%; }
 }
 @media (min-width: 1101px) { .why-bar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 300px); } }
+
+/* ピンが町の代表点のままのとき、ピンを動かす案内を地図の上に大きく出す（2026-11-04）。 */
+.map-pin-note.pin-note-ask { margin: 0 0 6px; padding: 8px 12px; border: 2px solid var(--stopped); border-radius: 8px; background: #fdf0e6; color: #7a3300; font-size: 15px; font-weight: 700; }
+.map-pin-note.pin-note-ask::before { content: "📍 "; }
+
+/* 3D の部屋の札は、色の点と短い名前の一行だけ（立体を隠さない。2026-11-04）。 */
+.model-label.model-room-name { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; white-space: nowrap; font-size: 13px; font-weight: 700; background: rgba(255,255,255,.82); }
+.model-room-name .model-tag-line { display: inline-flex; }
+.model-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 0; background: var(--unknown, #d97706); }
+.model-dot.tag-risk { background: var(--stopped, #c2410c); }
+.model-dot.tag-unconfirmed { background: #e8a33a; }
+.model-dot.tag-clear { background: #7a8794; }
+
+/* 渡す相手ごとの紙のタブ（2026-11-04）。選んだ紙だけを出し、印刷もその紙だけ。 */
+.sheet-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.sheet-tabs button { display: grid; flex: 1 1 160px; padding: 8px 12px; text-align: left; line-height: 1.3; }
+.sheet-tabs button b { font-size: 15px; }
+.sheet-tabs button small { color: inherit; opacity: .8; font-size: 12px; }
+.sheet-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.sheet-tabs .sheet-tab-all { flex: 0 1 120px; align-content: center; }
+.sheet-tab-note { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.sheet-tabs.is-hidden-screen, .sheet-tab-note.is-hidden-screen { display: none; }
+.sheets:not([data-show="all"]) .sheet:not([data-for]) { display: none; }
+.sheets[data-show="board"] .sheet:not([data-for="board"]),
+.sheets[data-show="memo"] .sheet:not([data-for="memo"]),
+.sheets[data-show="engineer"] .sheet:not([data-for="engineer"]),
+.sheets[data-show="extra"] .sheet:not([data-for="extra"]) { display: none !important; }
+/* 一つの相手の紙は、画面で読める大きさ（等倍）で縦に並べる。全部のときだけ縮めて二列にする。 */
+@media screen and (min-width: 1200px) {
+  .sheets:not([data-show="all"]) { grid-template-columns: max-content; }
+  .sheets:not([data-show="all"]) .sheet { zoom: 1; }
+  .sheets[data-show="board"] { grid-template-columns: repeat(2, max-content); }
+}
+@media screen and (min-width: 1200px) and (max-width: 1720px) {
+  .sheets[data-show="board"] { grid-template-columns: max-content; }
+}
+@media print {
+  .sheet-tabs, .sheet-tab-note { display: none !important; }
+}
+.polish-button { background: transparent; border: 1px dashed var(--ink-muted); color: var(--ink-muted); font-weight: 400; }
+
+/* 見本の平面図は図のある範囲に寄せて大きく見せる。画像とピンを同じ割合で動かすので、ピンの位置はずれない。 */
+.plan-fit.plan-cropped { overflow: hidden; aspect-ratio: var(--plan-ratio); }
+.plan-fit.plan-cropped > img,
+.plan-fit.plan-cropped > .plan-pins { position: absolute; left: calc(-100% * var(--crop-x) / var(--crop-w)); top: calc(-100% * var(--crop-y) / var(--crop-h)); width: calc(100% / var(--crop-w)); height: calc(100% / var(--crop-h)); max-width: none; inset: auto; }
+
+/* ②の頭の「次の3つ・頼む先」 */
+.answer-steps { margin: 6px 0 4px; padding-left: 1.4em; }
+.answer-steps li { margin: 2px 0; line-height: 1.45; }
+.answer-steps li b { margin-right: 10px; }
+.answer-steps .answer-who { display: inline-block; padding: 0 8px; border-radius: 10px; background: rgba(255,255,255,.16); font-size: .88em; font-weight: 600; }
+.top-banner-steps { font-size: 16px; }
+.sheet-steps { margin: 0.3mm 0 0.6mm; padding-left: 1.2em; font-size: 8.5pt; }
+.sheet-steps li { margin: 0; line-height: 1.2; }
+.sheet-steps .answer-who { padding: 0 4px; }
+.sheet-steps .answer-who { background: #f1f1f4; color: #333; }
+/* 質問の2段 */
+.q-lead { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
+.q-expert { margin: 10px 0; padding: 8px 12px; border: 1px dashed var(--ink-muted); border-radius: 8px; background: #f7f7f9; }
+.q-expert > summary { font-size: 14px; font-weight: 700; cursor: pointer; }

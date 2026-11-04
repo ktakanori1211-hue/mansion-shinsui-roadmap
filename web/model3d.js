@@ -117,21 +117,22 @@ function roomVerdict(key) {
   return row ? { verdict: row.verdict, label: row.verdict_label } : { verdict: "unconfirmed", label: "未確認（調査が必要）" };
 }
 
+// 3D の札は短い部屋の名前だけにして、立体を隠さない（2026-11-04）。判定は札の文字にせず、名前の前の色の点で見せ、
+// 判定の名前と確かめる人は、点に指を置いたとき（title）に読む。
 function fillRoomTag(head, key, sample) {
   const { verdict, label: verdictLabel } = roomVerdict(key);
-  const tag = document.createElement("span");
-  tag.className = `model-tag tag-${verdict}`;
-  tag.textContent = verdictLabel;
-  head.replaceChildren(tag);
+  const dot = document.createElement("span");
+  dot.className = `model-dot tag-${verdict}`;
   const pin = (sample.pins || []).find((item) => item.target === key);
   const whoLabels = window.WHO_LABELS || {};
-  if (pin && whoLabels[pin.who_kind]) {
-    const who = document.createElement("span");
-    who.className = `model-who who-${pin.who_kind}`;
-    who.textContent = whoLabels[pin.who_kind];
-    head.append(who);
-  }
+  const who = pin && whoLabels[pin.who_kind] ? `／確かめる：${whoLabels[pin.who_kind]}` : "";
+  const unseen = (sample.confirmedRooms || []).includes(key) ? "" : "／位置は図面で未確認";
+  head.title = `${verdictLabel}${unseen}${who}`;
+  head.replaceChildren(dot);
 }
+
+// 3D の部屋の札に出す短い名前。
+const SHORT_ROOM_NAMES = { elec: "電気室", tr: "変圧器室", pump: "ポンプ室", panel_room: "盤の部屋", tank: "貯留タンク", gen: "発電機室", park: "機械式駐車場", slope: "スロープ" };
 
 function roomAbsent(sample, key) {
   return (sample.confirmedRooms || []).includes(`absent:${key}`);
@@ -199,15 +200,14 @@ function buildRooms(sample) {
       }
       if (main) {
         const trUnseen = room.key === "tr" && ["no", "unknown"].includes(sample.answers?.tr);
-        const name = trUnseen ? "東京電力の設備\n位置は未確認" : room.key === "tr" ? "東京電力の変圧器の部屋" : window.App.roomName(room.key);
-        const note = sample.confirmedRooms.includes(room.key) || trUnseen ? name : `${name}\n位置は図面で未確認`;
-        // 隣り合う部屋の札が重ならないよう、借室は上へ、電気室は左へずらす。
-        const shift = { tr: [0, 2.4], elec: [-3.8, 0.25], panel_room: [-3.8, 0.25] }[room.key] || [0, 0.25];
+        const note = trUnseen ? "変圧器室？" : SHORT_ROOM_NAMES[room.key] || window.App.roomName(room.key);
+        // 隣り合う部屋の札が重ならないよう、借室は少し上へずらす。
+        const shift = { tr: [0, 1.2] }[room.key] || [0, 0.25];
         const head = document.createElement("span");
         head.className = "model-tag-line";
         fillRoomTag(head, room.key, sample);
         roomTags[room.key] = head;
-        const tag = label(note, place.center.clone().add(new THREE.Vector3(shift[0], place.h / 2 + shift[1], 0)), "model-label", null, { head });
+        const tag = label(note, place.center.clone().add(new THREE.Vector3(shift[0], place.h / 2 + shift[1], 0)), "model-label model-room-name", null, { head });
         tag.userData.layout = { kind: "room", key: room.key };
       }
       if (room.key === "tr" && !["no", "unknown"].includes(sample.answers?.tr)) {
@@ -215,7 +215,7 @@ function buildRooms(sample) {
         label(hidden, place.center.clone(), "model-label model-label-small", "tr");
       }
       if (room.key === "park" || room.key === "slope") {
-        label(window.App.roomName(room.key), place.center.clone(), "model-label model-label-small", room.key);
+        label(SHORT_ROOM_NAMES[room.key], place.center.clone(), "model-label model-label-small", room.key);
       }
       const wetRoom = basement || (sample.archetype === "ground" && ["panel_room", "pump", "tr", "hall"].includes(room.key));
       // 借室の中は描かない。水も箱の中には出さず、箱の色で示す。
@@ -271,7 +271,10 @@ function buildElevator(sample) {
   const pitPlace = { center: new THREE.Vector3(shaft.position.x, bottomY + 0.4, shaft.position.z), w: shaft.geometry.parameters.width, d: shaft.geometry.parameters.depth, h: 0.8 };
   addWater("ev", pitPlace);
   focusPoints.ev = { look: pitPlace.center.clone(), from: pitPlace.center.clone().add(new THREE.Vector3(5, 3, 8)) };
-  label("エレベーターの底の部分", pitPlace.center.clone().add(new THREE.Vector3(0, 1, 0)), "model-label model-label-small", "ev");
+  label("EVの底", pitPlace.center.clone().add(new THREE.Vector3(0, 1, 0)), "model-label model-label-small", "ev");
+  // 昇降路の名前は短く「EV」とだけ、いつも出す。
+  const name = label("EV", new THREE.Vector3(shaft.position.x, FLOOR_H * 2 + 0.3, shaft.position.z), "model-label model-room-name");
+  name.userData.layout = { kind: "room", key: "ev" };
 }
 
 function buildOutside(sample) {
@@ -284,7 +287,7 @@ function buildOutside(sample) {
   focusPoints.road = { look: road.position.clone(), from: road.position.clone().add(new THREE.Vector3(0, 6, 12)) };
   const roadWater = { center: new THREE.Vector3(0, 0.05, DEPTH / 2 + 4.8), w: WIDTH + 14, d: 4, h: 1 };
   addWater("road", roadWater);
-  label("前の道路", road.position.clone().add(new THREE.Vector3(9, 0.5, 0)), "model-label model-label-small");
+  label("道路", road.position.clone().add(new THREE.Vector3(9, 0.5, 0)), "model-label model-label-small");
 
   if (sample.underground_feed) {
     const elec = meshes.elec;
@@ -294,7 +297,7 @@ function buildOutside(sample) {
     group.add(cover);
     meshes.hh = cover;
     focusPoints.hh = { look: cover.position.clone(), from: cover.position.clone().add(new THREE.Vector3(3, 5, 7)) };
-    label("歩道ぎわの「東電」「高圧」の蓋（開けない）", cover.position.clone().add(new THREE.Vector3(0, 0.6, 0)), "model-label model-label-small", "hh");
+    label("東電の蓋（開けない）", cover.position.clone().add(new THREE.Vector3(0, 0.6, 0)), "model-label model-label-small", "hh");
     const startZ = elec ? elec.position.z + elec.geometry.parameters.depth / 2 : 0;
     const conduit = box(0.35, 0.35, DEPTH / 2 + 2 - startZ, COLORS.conduit);
     conduit.position.set(x, BASE_Y + 1.2, (startZ + DEPTH / 2 + 2) / 2);
@@ -302,7 +305,7 @@ function buildOutside(sample) {
     const riser = box(0.35, -BASE_Y - 1.2, 0.35, COLORS.conduit);
     riser.position.set(x, (BASE_Y + 1.2) / 2, DEPTH / 2 + 2);
     group.add(riser);
-    label("地中の電線の管", conduit.position.clone().add(new THREE.Vector3(-1.6, 0.4, 0)), "model-label model-label-small", "elec");
+    label("電線の管", conduit.position.clone().add(new THREE.Vector3(-1.6, 0.4, 0)), "model-label model-label-small", "elec");
     const hole = box(0.5, 0.5, 0.2, 0xd9534f);
     hole.position.set(x, BASE_Y + 1.2, startZ);
     group.add(hole);
@@ -314,7 +317,7 @@ function buildOutside(sample) {
     door.position.set(room.position.x, 0.25, DEPTH / 2);
     group.add(door);
     focusPoints.door = { look: door.position.clone(), from: door.position.clone().add(new THREE.Vector3(2, 3, 8)) };
-    label("坂の下の側の扉と足元の換気口", door.position.clone().add(new THREE.Vector3(0, 0.7, 0.3)), "model-label model-label-small");
+    label("扉・換気口", door.position.clone().add(new THREE.Vector3(0, 0.7, 0.3)), "model-label model-label-small");
   }
   if (meshes.slope) {
     const slope = meshes.slope;
@@ -328,7 +331,7 @@ function buildOutside(sample) {
     const basin = box(0.9, 0.12, 0.9, COLORS.conduit);
     basin.position.set(meshes.tank.position.x, 0.1, meshes.tank.position.z);
     group.add(basin);
-    label("敷地の雨水ます", basin.position.clone().add(new THREE.Vector3(0, 0.6, 0)), "model-label model-label-small");
+    label("雨水ます", basin.position.clone().add(new THREE.Vector3(0, 0.6, 0)), "model-label model-label-small");
     const pipe = box(0.3, -BASE_Y, 0.3, COLORS.conduit);
     pipe.position.set(basin.position.x, BASE_Y / 2, basin.position.z);
     group.add(pipe);
@@ -487,7 +490,8 @@ function layoutLabels() {
     }
     const isRoom = info.kind === "room";
     const firstLevel = isRoom && rank !== 1 && H < ROOM_FULL_MIN_HEIGHT ? 1 : 0;
-    const lastLevel = isRoom ? 2 : 0;
+    // 部屋の札は短い名前だけなので、名前は畳まない（置けないときは札ごと隠す）。
+    const lastLevel = isRoom ? 1 : 0;
     const memo = placeMemo.get(el);
     let chosen = null;
     let best = null;

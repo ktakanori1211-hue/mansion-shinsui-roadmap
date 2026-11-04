@@ -741,9 +741,47 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
         notes.append(TOP_NOTE_GUIDE_DAYS)
         a4_notes.append(A4_NOTE_CHIBA)
     else:
-        lead = "まだ分からない。"
+        steps = answer_steps(equipment)
+        lead = f"次の{len(steps)}つが分かれば、答えが出ます。" if steps else "依頼メモの項目が分かれば、答えが出ます。"
         notes.append("どこまで水が来るかと盤の高さが未確認。もし浸かれば制御盤の製作に約2か月（建築設備技術者協会の報告書）など長引くおそれがあるので、まず依頼メモで高さを確かめる。")
-    return {"lead": lead, "notes": notes, "a4_notes": a4_notes}
+    return {"lead": lead, "notes": notes, "a4_notes": a4_notes, "steps": answer_steps(equipment)}
+
+
+# 「何日で水が出るか」の答えに効く順。暮らしに近い水と電気から。
+_STEP_ORDER = ["water", "power", "tr", "entry", "ev", "drain", "backflow", "lock", "park"]
+# 何が分かれば答えが出るかを、住民や理事が読める言葉で一行にする。判定は言わない。
+_STEP_WHAT = {
+    "water": "ポンプの盤が床から何cmにあるか",
+    "power": "電気を受ける部屋の階と、主任技術者がいるか",
+    "tr": "東京電力の変圧器の部屋があるか・どの階か",
+    "entry": "電気の部屋の壁の穴がふさがれているか",
+    "ev": "エレベーターの底に水が入ったときの手順",
+    "drain": "トイレの水を汲み上げるポンプがあるか・どの階か",
+    "backflow": "下水の逆流を止める弁があるか",
+    "lock": "停電のとき玄関の扉がどう動くか",
+    "park": "機械式駐車場の掘り込みの深さと排水",
+}
+STEPS_MAX = 3
+
+
+def _step_what(row: dict) -> str:
+    """部屋の有無がもう分かっている建物では、次に要るのは高さや照会なので、言い方を替える。"""
+    summary = row.get("summary") or ""
+    if row["key"] == "power" and "主任技術者の有無" not in summary:
+        return "電気を受ける盤が床から何cmにあるか"
+    if row["key"] == "tr" and "部屋があるか" not in summary:
+        return "東京電力の変圧器の部屋の浸水対策（東京電力に照会）"
+    return _STEP_WHAT[row["key"]]
+
+
+def answer_steps(equipment: List[dict]) -> List[dict]:
+    """未確認の行のうち、答えに効く順に最大3つ。誰に頼むか（依頼メモの番号）を添える。文は作らず、行の確認先のまま。"""
+    open_rows = [row for row in equipment if row["verdict"] == UNCONFIRMED and row.get("confirm_short") and row["key"] in _STEP_WHAT]
+    open_rows.sort(key=lambda row: _STEP_ORDER.index(row["key"]))
+    return [
+        {"key": row["key"], "what": _step_what(row), "who": row["confirm_short"], "memo_no": row.get("memo_no")}
+        for row in open_rows[:STEPS_MAX]
+    ]
 
 
 def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
@@ -1207,6 +1245,8 @@ def building_payload(
     equipment = judge_equipment(sample, confirmed, location_risk, document_read, hollow=hollow)
     answers = sample.get("answers") or {}
     scale = scale_focus(sample, equipment, location_rows)
+    # 依頼メモの番号（memo_no）を行に振ってから、最上段の「誰に頼むか」を作る。
+    memo_list = memos(sample, equipment, location_rows, statements or [], hollow=hollow, scale_unknown=scale["memo"])
     return {
         "sample": samples.client_view(sample),
         "confirmed": confirmed,
@@ -1215,7 +1255,7 @@ def building_payload(
         "top_line": top_line(sample, equipment, location_rows, confirmed),
         "measures": visible_measures(sample, equipment),
         "subsidies": samples.SUBSIDIES,
-        "memos": memos(sample, equipment, location_rows, statements or [], hollow=hollow, scale_unknown=scale["memo"]),
+        "memos": memo_list,
         "scale": scale,
         "direction_line": direction_line(directions or {}, low_directions or [], sample, high_directions, basin),
         "statements": statements or [],

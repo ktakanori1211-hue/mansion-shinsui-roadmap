@@ -145,7 +145,7 @@ class AnswersTest(unittest.TestCase):
     def test_unknown_rooms_do_not_say_basement(self):
         sample, rows = self.rows({"basement": "unknown"})
         lead = building.top_line(sample, rows, [{"verdict": "risk"}], [])["lead"]
-        self.assertEqual(lead, "まだ分からない。")
+        self.assertTrue(lead.endswith("分かれば、答えが出ます。"), lead)
         text = str([item["headline"] for item in rows])
         self.assertNotIn("地下の電気の部屋", text)
         self.assertNotIn("damp", [item["key"] for item in rows])
@@ -224,7 +224,19 @@ class TopLineTest(unittest.TestCase):
         self.assertEqual(self.payload("a", RISK_ROW)["lead"], "このままなら、長引くおそれがある。")
 
     def test_ground_floor_building(self):
-        self.assertEqual(self.payload("b", RISK_ROW)["lead"], "まだ分からない。")
+        # 「まだ分からない」で終わらせず、何が分かれば答えが出るかと、誰に頼むかを出す（2026-11-04）。
+        top = self.payload("b", RISK_ROW)
+        self.assertEqual(top["lead"], "次の3つが分かれば、答えが出ます。")
+        self.assertNotIn("まだ分からない", top["lead"])
+        self.assertEqual([step["key"] for step in top["steps"]], ["water", "power", "tr"])
+        for step in top["steps"]:
+            self.assertTrue(step["who"], step)
+            self.assertTrue(step["memo_no"], step)
+        self.assertEqual(top["steps"][0]["memo_no"][0], "③")
+
+    def test_steps_are_empty_when_everything_is_clear(self):
+        rows = [{"key": "water", "verdict": "clear", "confirm_short": None, "summary": ""}]
+        self.assertEqual(building.answer_steps(rows), [])
 
     def test_notes_say_what_is_not_confirmed(self):
         notes = "".join(self.payload("c", OPEN_ROW)["notes"])
@@ -734,8 +746,47 @@ class SearchTest(unittest.TestCase):
             search, "_osm", return_value=[]
         ), mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
             result = search.search("エクセル市川")
-        self.assertIn("建物名そのものは公開地図に載っていない", result["message"])
+        self.assertIn("建物名では見つかりませんでした", result["message"])
+        self.assertIn("ピンを動かして", result["message"])
+        self.assertTrue(result["approximate"])
         self.assertEqual(result["candidates"][0]["label"], "千葉県市川市")
+
+    def test_place_word_inside_a_building_name_is_not_an_address(self):
+        # 「みどりハイツ幸町」の「幸町」は住所ではない。Claude に Web 検索で確かめるよう頼み、
+        # 「入力から読んだ」という答えは使わない（道の駅などの別の場所へ飛ばない）。
+        self.assertFalse(search._has_address("みどりハイツ幸町"))
+        self.assertTrue(search._has_address("みどりハイツ 千葉県千葉市"))
+        captured = {}
+
+        def fake_create(messages, system, **kwargs):
+            captured["content"] = messages[0]["content"]
+            captured["system"] = system
+            captured["tools"] = kwargs.get("tools")
+            return {"content": [{"type": "text", "text": '{"address": "千葉県千葉市", "from_input": true, "source_url": "", "confident": false}'}], "stop_reason": "end_turn"}
+
+        with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}), mock.patch.object(claude, "create", side_effect=fake_create):
+            inferred = search._claude_infer("みどりハイツ幸町")
+        self.assertIn("Web 検索で建物の所在地を確かめてください", captured["content"])
+        self.assertIn("建物名の中に地名の字が入っているだけ", captured["system"])
+        self.assertEqual(captured["tools"], [search.WEB_SEARCH])
+        self.assertFalse(search._trusted(inferred, "みどりハイツ幸町"))
+
+    def test_web_found_building_is_used_even_with_a_place_word_in_the_name(self):
+        guess = {"address": "千葉県千葉市幸町二丁目", "building": "みどりハイツ幸町", "from_input": False, "source_url": "https://example.com/b", "confident": True}
+        found = [{"label": "千葉県千葉市幸町二丁目", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
+        with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess) as infer, mock.patch.object(search, "_gsi", return_value=found):
+            result = search.search("みどりハイツ幸町")
+        infer.assert_called_once_with("みどりハイツ幸町")
+        self.assertEqual(result["candidates"][0]["source"], "Claude の Web 検索と国土地理院")
+
+    def test_roadside_stations_are_not_town_candidates(self):
+        raw = [
+            {"label": "千葉県千葉市道の駅みほん", "longitude": 1, "latitude": 1, "source": "国土地理院"},
+            {"label": "千葉県千葉市幸町", "longitude": 1, "latitude": 1, "source": "国土地理院"},
+        ]
+        with mock.patch.object(search, "_gsi_raw", return_value=raw):
+            labels = [c["label"] for c in search._place_candidates("幸町")]
+        self.assertEqual(labels, ["千葉県千葉市幸町"])
 
     def test_postal_code_uses_postal_lookup(self):
         with mock.patch.object(search, "_postal", return_value=[{"label": "千葉県千葉市", "longitude": 1, "latitude": 1, "source": "x"}]) as postal:
@@ -760,7 +811,7 @@ class SearchTest(unittest.TestCase):
         with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess), mock.patch.object(
             search, "_gsi", return_value=[{"label": "千葉県市川市", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
         ):
-            result = search.search("エクセル市川")
+            result = search.search("みどりハイツ 千葉県千葉市")
         self.assertIn("入力の文から", result["message"])
         self.assertEqual(result["hints"], {"floors": 10, "built_year": 1999})
 

@@ -186,6 +186,28 @@ function basisRow(row) {
   return article;
 }
 
+// 「何が分かれば答えが出るか・誰に頼むか」（サーバーの top_line.steps）。②の頭と A4 のおもての頭で同じものを出す。
+function answerSteps(building, className) {
+  const steps = building.top_line.steps || [];
+  const list = element("ol", undefined, className || "answer-steps");
+  steps.forEach((step) => {
+    const item = element("li");
+    item.append(element("b", step.what), element("span", `頼む先：${step.who}${step.memo_no ? `（依頼メモ${step.memo_no}）` : ""}`, "answer-who"));
+    list.append(item);
+  });
+  return list;
+}
+
+// A4 と共有に出す住所は町丁まで（番地はピンの位置から来ることがあり、建物の住所とは限らないため）。
+function townLabel(label) {
+  return String(label || "")
+    .replace(/[0-9０-９一二三四五六七八九十〇百千]+番(?!町)(地)?.*$/, "")
+    .replace(/[0-9０-９一二三四五六七八九十〇百千]+号.*$/, "")
+    .replace(/(丁目)[0-9０-９\-－−ー].*$/, "$1")
+    .replace(/[0-9０-９]+[\-－−ー][0-9０-９].*$/, "")
+    .trim();
+}
+
 function verdictLegend() {
   const legend = element("div", undefined, "verdict-legend");
   VERDICT_LEGEND.forEach(([verdict, label, meaning]) => {
@@ -398,8 +420,9 @@ const App = {
   refresh() {
     const building = this.building;
     document.getElementById("top-banner-lead").textContent = building.top_line.lead;
+    document.getElementById("top-banner-steps").replaceWith(Object.assign(answerSteps(building, "answer-steps top-banner-steps"), { id: "top-banner-steps" }));
     document.getElementById("top-banner-notes").textContent = building.top_line.notes.join("");
-    document.getElementById("top-banner-dir").textContent = building.direction_line;
+    document.getElementById("top-banner-dir").textContent = building.direction_line ? `${building.direction_line}（向きは答えと地図の目安で、測ったものではありません）` : "";
     PlanPanel.renderDirection();
     PlanPanel.renderAbsent();
     document.getElementById("legal-safety").textContent = this.disclaimerText();
@@ -467,7 +490,8 @@ const App = {
     if (this.stage !== "2") return;
     const top = document.querySelector(".stage2-grid").getBoundingClientRect().top + window.scrollY;
     // 免責の帯は貼り付けずページの下に出すので、高さから引かない。
-    document.documentElement.style.setProperty("--stage2-room", `${Math.max(440, window.innerHeight - top - 10)}px`);
+    // 図面と3Dを読める大きさで見せるため、画面が低くても 640px は取る（少しスクロールしてよい）。
+    document.documentElement.style.setProperty("--stage2-room", `${Math.max(640, window.innerHeight - top - 10)}px`);
   },
 };
 window.App = App;
@@ -487,7 +511,7 @@ function renderLocation(state) {
   locationBody.replaceChildren(...location.rows.map(locationCard), fold("札の見方", verdictLegend()));
   document.getElementById("legal-basis").textContent = location.basis_note;
   document.getElementById("legal-basis-box").hidden = false;
-  sheetAddress.textContent = `住所：${site.label}`;
+  sheetAddress.textContent = `住所：${townLabel(site.label)}`;
   sheetLocation.replaceChildren(
     sheetTable(location.rows),
     element(
@@ -496,7 +520,7 @@ function renderLocation(state) {
       "sheet-pointer",
     ),
   );
-  sheetBasisAddress.textContent = `住所：${site.label}`;
+  sheetBasisAddress.textContent = `住所：${townLabel(site.label)}`;
   sheetBasisRows.replaceChildren(element("p", location.basis_note, "basis-note"), ...location.rows.map(basisRow));
   sheetBasis.hidden = false;
   HazardMap.show(state, mapElements, movePin);
@@ -995,6 +1019,8 @@ const QuestionPanel = (() => {
   }
   let draft = "";
   let doc = null;
+  // 下の段（管理会社や技術者が確かめる項目）を開いたかを、作り直したあとも保つ。
+  let expertOpen = false;
 
   // 答えの key（hv_documented は hv に含める）ごとに、どの語から読んだかを結ぶ。
   function linkFindings(result) {
@@ -1080,7 +1106,7 @@ const QuestionPanel = (() => {
   }
 
   // 書類で埋まった質問は灰色にして下へ寄せ、書類で埋まらない質問を上に並べる。外せば元に戻る。
-  function markDocQuestions(grid) {
+  function markDocQuestions(grid, root = grid) {
     const filled = filledByDoc();
     const keys = Object.keys(filled);
     if (!keys.length) return;
@@ -1096,7 +1122,7 @@ const QuestionPanel = (() => {
         });
         await applyDoc();
       });
-      const box = grid.querySelector(`input[name="q-${key}"]`)?.closest("fieldset");
+      const box = root.querySelector(`input[name="q-${key}"]`)?.closest("fieldset");
       if (box) {
         box.classList.add("q-from-doc");
         box.querySelectorAll("input").forEach((input) => {
@@ -1119,29 +1145,37 @@ const QuestionPanel = (() => {
     const body = document.getElementById("building-body");
     const questions = element("form", undefined, "questions");
 
-    const first = element("div", undefined, "q-section");
-    first.append(element("h3", "建物のあらまし"), numberField("築年（西暦）", "built_year", answers.built_year), numberField("階数", "floors", answers.floors));
-    first.append(group("地下はありますか", "basement", CHOICES, answers.basement));
-    first.append(group("電気の部屋とポンプの部屋の階", "rooms_floor", [["basement", "地下階"], ["ground", "1階"], ["upper", "2階以上"], ["unknown", "分からない"]], answers.rooms_floor));
-    first.append(element("p", "2020年6月の国のガイドラインより前の建物は、ケーブルを通す壁の穴の止水処理が要確認です。", "hint"));
-    first.append(group("建物の規模（総戸数のおおよそ）", "scale", SCALE_CHOICES, answers.scale));
+    // 2段に分ける（2026-11-04）。上の段は住民や理事長が外から見て答えられる項目だけ。
+    // 下の段（借室・受電設備・盤の高さなど）は、管理会社や技術者が図面・現地で確かめる項目として畳んでおく。
+    const outside = element("div", undefined, "q-section");
+    outside.append(element("h3", "建物のあらまし"), numberField("階数", "floors", answers.floors), numberField("築年（西暦）", "built_year", answers.built_year));
+    outside.append(group("地下の階はありますか", "basement", CHOICES, answers.basement));
+    outside.append(group("建物の規模（総戸数のおおよそ）", "scale", SCALE_CHOICES, answers.scale));
 
     const second = element("div", undefined, "q-section");
     second.append(element("h3", "外から見える3つ"));
     second.append(group("地下へ降りるスロープや半地下の駐輪場", "slope", CHOICES, answers.slope));
-    second.append(group("1階の足元の換気口", "vent", CHOICES, answers.vent));
     second.append(group("歩道ぎわの「東電」「高圧」の蓋（蓋は開けません）", "cover", CHOICES, answers.cover));
+    second.append(group("1階の出入口に、道路からの段差がありますか", "entrance_step", ENTRANCE_CHOICES, answers.entrance_step));
+
+    const vents = element("div", undefined, "q-section");
+    vents.append(element("h3", "分かれば"));
+    vents.append(group("1階の足元の換気口", "vent", CHOICES, answers.vent));
+
+    const first = element("div", undefined, "q-section");
+    first.append(element("h3", "部屋の階"));
+    first.append(group("電気の部屋とポンプの部屋の階", "rooms_floor", [["basement", "地下階"], ["ground", "1階"], ["upper", "2階以上"], ["unknown", "分からない"]], answers.rooms_floor));
+    first.append(element("p", "2020年6月の国のガイドラインより前の建物は、ケーブルを通す壁の穴の止水処理が要確認です。", "hint"));
 
     const third = element("div", undefined, "q-section");
-    third.append(element("h3", "覚えていれば（模式図から）"));
+    third.append(element("h3", "盤と扉（模式図から）"));
     third.append(group("盤の足元", "panel_foot", [["floor", "床置き"], ["raised", "架台・壁掛けの上"], ["unknown", "分からない"]], answers.panel_foot, FOOT_ART));
     third.append(group("電気室の扉", "door_step", [["yes", "段差あり"], ["no", "段差なし"], ["unknown", "分からない"]], answers.door_step, STEP_ART));
 
     // 足した質問（F-012・F-013）。見本Cの貯留タンクと発電機は、答えがなければサーバーの既定（あり）のまま見せる。
     const tower = sample.id === "c" && !sample.custom;
     const extra = element("div", undefined, "q-section");
-    extra.append(element("h3", "分かれば（出入口・槽・発電機）"));
-    extra.append(group("1階の出入口・搬入口に、道路からの段差がありますか（外から見て）", "entrance_step", ENTRANCE_CHOICES, answers.entrance_step));
+    extra.append(element("h3", "槽・発電機"));
     extra.append(group("雨水を地下にためる槽（貯留槽）はありますか", "tank", CHOICES, answers.tank ?? (tower ? "yes" : undefined)));
     extra.append(group("非常用発電機はありますか", "generator", CHOICES, answers.generator ?? (tower ? "yes" : undefined)));
 
@@ -1160,11 +1194,21 @@ const QuestionPanel = (() => {
 
     const submit = element("button", "この答えで作り直す", "primary");
     submit.type = "submit";
-    const grid = element("div", undefined, "q-grid");
-    grid.append(first, second, third, fourth, extra, heightBox);
+    const grid = element("div", undefined, "q-grid q-grid-residents");
+    grid.append(outside, second, vents);
+    const expertGrid = element("div", undefined, "q-grid");
+    expertGrid.append(first, third, fourth, extra, heightBox);
+    const expert = element("details", undefined, "q-expert");
+    expert.open = expertOpen;
+    expert.addEventListener("toggle", () => {
+      expertOpen = expert.open;
+    });
+    expert.append(element("summary", "ここから下は、管理会社や技術者が図面・現地で確かめる項目です（分からないままでOK）"), expertGrid);
     questions.append(
-      element("p", "どの質問も、部屋や盤を見に行って確かめる必要はありません。電気の部屋、盤の部屋、ポンプの部屋、東京電力の変圧器の部屋には入らず、扉も開けません。外から見えるものも、雨や冠水のときは見に行かず、蓋は開けません。覚えていない所は「分からない」のままで構いません。", "fixed-note strong"),
+      element("p", "住民・理事長が外から見て答えられる項目です。分かる所だけで構いません。", "q-lead"),
       grid,
+      expert,
+      element("p", "どの質問も、部屋や盤を見に行って確かめる必要はありません。電気の部屋、盤の部屋、ポンプの部屋、東京電力の変圧器の部屋には入らず、扉も開けません。外から見えるものも、雨や冠水のときは見に行かず、蓋は開けません。覚えていない所は「分からない」のままで構いません。", "fixed-note strong"),
       submit,
     );
     questions.addEventListener("submit", async (event) => {
@@ -1230,9 +1274,12 @@ const QuestionPanel = (() => {
         pdfNote.textContent = `PDF を読めませんでした：${error.message}`;
       }
     });
-    const reportBox = element("div", undefined, "q-section q-report");
-    reportBox.append(element("h3", "点検報告書など（必須ではありません）"), report, load, read, pdfLabel, pdfInput, pdfNote, found);
-    markDocQuestions(grid);
+    // 点検報告書の欄は、管理会社から受け取ったときに使うので畳んでおく（読んだ結果があれば開いたまま）。
+    const reportBox = element("details", undefined, "q-section q-report");
+    reportBox.open = Boolean(doc) || Boolean(draft);
+    reportBox.append(element("summary", "点検報告書や修繕履歴を受け取ったら、ここに入れる（必須ではありません）"), report, load, read, pdfLabel, pdfInput, pdfNote, found);
+    // 書類で読んだ項目（借室・受電設備など）は、住民の段ではなく下の段に寄せる。
+    markDocQuestions(expertGrid, questions);
 
     const title = sample.custom
       ? `${sample.name}（${sample.kind}）`
@@ -1281,9 +1328,37 @@ const ExitPanel = (() => {
     const docs = source();
     const isSheet = current === "a";
     sheets.classList.toggle("is-hidden-screen", !isSheet);
+    document.getElementById("sheet-tabs").classList.toggle("is-hidden-screen", !isSheet);
+    document.getElementById("sheet-tab-note").classList.toggle("is-hidden-screen", !isSheet);
     doc.hidden = isSheet;
     if (!isSheet) text.textContent = docs[current] || "①で場所を選ぶと、ここに出ます。";
   }
+
+  // 渡す相手ごとの紙のタブ（2026-11-04）。選んだ紙だけを画面に大きく出し、印刷もその紙だけにする。
+  const SHEET_NOTES = {
+    board: ["理事会へ（表裏1枚）", "理事会に配る表裏1枚です。両面に印刷し、防災のファイルに綴じます。"],
+    memo: ["管理会社へ（依頼メモ）", "管理会社に渡し、未確認の項目を確かめてもらう紙です。答えが返ったら、②の質問に入れ直します。"],
+    engineer: ["電気主任技術者へ（確認表）", "管理会社を通じて電気主任技術者に渡す紙です。住民向けの面には出さない項目です。"],
+    extra: ["別紙", "表裏1枚のくわしい版と、値の条件と出典です。理事会で聞かれたときに添えます。"],
+    all: ["全部", "すべての紙を続けて並べます。印刷すると全部の紙が出ます。"],
+  };
+  let shown = "board";
+  function showSheets(key) {
+    shown = key;
+    sheets.dataset.show = key;
+    document.querySelectorAll("#sheet-tabs [data-sheets]").forEach((button) => {
+      const on = button.dataset.sheets === key;
+      button.classList.toggle("active", on);
+      button.setAttribute("aria-selected", String(on));
+    });
+    document.getElementById("sheet-tab-note").textContent = SHEET_NOTES[key][1];
+    document.getElementById("print-button").textContent = key === "all" ? "全部の紙を印刷（PDFに保存もできます）" : `「${SHEET_NOTES[key][0]}」を印刷（PDFに保存もできます）`;
+  }
+  document.getElementById("sheet-tabs").addEventListener("click", (event) => {
+    const key = event.target.closest("button")?.dataset.sheets;
+    if (key) showSheets(key);
+  });
+  showSheets(shown);
 
   document.getElementById("exit-tabs").addEventListener("click", (event) => {
     const exit = event.target.closest("button")?.dataset.exit;

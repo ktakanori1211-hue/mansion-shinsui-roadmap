@@ -106,11 +106,11 @@
               <span class="tap-status" id="tap-status"></span>
             </div>
           </details>
+          <p class="map-pin-note" id="map-pin-note">住所を探すか、地図を押して場所を選んでください。</p>
           <div id="map" class="map"></div>
           <div class="scene-result" id="scene-result" role="status" hidden></div>
           <div class="map-legend" id="map-legend"></div>
           <p class="map-fixed">地図に色がないことは、安全という意味ではありません。斜線はデータが取れていない所です。</p>
-          <p class="map-pin-note" id="map-pin-note">住所を探すか、地図を押して場所を選んでください。</p>
         </section>
 
         <div class="card location-card" id="step-location">
@@ -127,6 +127,7 @@
       <div class="top-banner" id="top-banner" hidden>
         <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
         <p class="top-banner-lead" id="top-banner-lead"></p>
+        <ol class="answer-steps top-banner-steps" id="top-banner-steps"></ol>
         <p class="top-banner-dir" id="top-banner-dir"></p>
         <details class="top-banner-more"><summary>根拠と補足</summary><p class="top-banner-notes" id="top-banner-notes"></p></details>
       </div>
@@ -172,7 +173,8 @@
           <div class="stop-count" id="stop-count" aria-live="polite"></div>
           <p class="scene-context" id="scene-context" hidden></p>
           <div class="model-controls">
-            <div class="control-group" role="radiogroup" aria-label="水の位置"><span class="control-name">水の位置</span><div class="pills" id="water-controls"></div></div>
+            <!-- 水の位置は、下の再生のバーの①②③の札で選ぶ（ボタンとバーを一つにまとめた）。ラジオは状態の受け皿として残す。 -->
+            <div class="control-group" role="radiogroup" aria-label="水の位置" hidden><span class="control-name">水の位置</span><div class="pills" id="water-controls"></div></div>
             <div class="control-group" role="radiogroup" aria-label="対策"><span class="control-name">対策</span><div class="pills" id="measure-controls"></div></div>
           </div>
           <p class="control-caption" id="control-caption"></p>
@@ -182,10 +184,10 @@
         </section>
       </div>
 
-      <details class="card" id="step-building" hidden>
-        <summary>建物の質問と書類に答える（分かる所だけ。見に行かずに答えられます）</summary>
+      <section class="card" id="step-building" hidden aria-label="建物の質問">
+        <h2>建物の質問に答えると、「未確認」が減ります</h2>
         <div id="building-body"></div>
-      </details>
+      </section>
 
       <div class="card" id="step-result" hidden>
         <h2>住民の暮らしで、何が止まるか</h2>
@@ -215,16 +217,16 @@
       <div class="card" id="exits-card">
         <h2>出す資料</h2>
         <div class="button-row exit-tabs" id="exit-tabs">
-          <button type="button" data-exit="a" class="active">A4一枚と依頼メモ①②③</button>
+          <button type="button" data-exit="a" class="active">渡す紙（A4）</button>
           <button type="button" data-exit="b">理事会の議題のたたき台</button>
           <button type="button" data-exit="c">補助と手続きの順番のメモ</button>
-          <button type="button" id="polish-button">Claude で読みやすく整える</button>
         </div>
-        <p class="hint" id="polish-note"></p>
         <div class="print-row">
-          <button type="button" class="primary" id="print-button">印刷（PDFに保存もできます）</button>
+          <button type="button" class="primary" id="print-button">この紙を印刷（PDFに保存もできます）</button>
+          <button type="button" class="polish-button" id="polish-button">文を Claude で読みやすく整える</button>
           <details class="fold"><summary>プリンターがないとき</summary><p>PDFに保存して、コンビニのネットプリントで印刷できます。両面なら長辺とじで。</p></details>
         </div>
+        <p class="hint" id="polish-note"></p>
       </div>
 
       <div class="card" id="share-card">
@@ -262,8 +264,16 @@
 
       <div class="card exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
 
-      <div class="sheets">
-        <article class="sheet" id="sheet-front">
+      <div class="sheet-tabs" id="sheet-tabs" role="tablist" aria-label="誰に渡す紙か">
+        <button type="button" role="tab" data-sheets="board" class="active"><b>理事会へ</b><small>表裏1枚</small></button>
+        <button type="button" role="tab" data-sheets="memo"><b>管理会社へ</b><small>依頼メモ</small></button>
+        <button type="button" role="tab" data-sheets="engineer"><b>電気主任技術者へ</b><small>確認表</small></button>
+        <button type="button" role="tab" data-sheets="extra"><b>別紙</b><small>くわしい版・条件と出典</small></button>
+        <button type="button" role="tab" data-sheets="all" class="sheet-tab-all">全部まとめて</button>
+      </div>
+      <p class="sheet-tab-note" id="sheet-tab-note">理事会に配る表裏1枚です。両面に印刷し、防災のファイルに綴じます。</p>
+      <div class="sheets" id="sheets" data-show="board">
+        <article class="sheet" id="sheet-front" data-for="board">
           <p class="sheet-face">おもて(事前)</p>
           <p class="sheet-address" id="sheet-address">住所：まだ入っていません</p>
           <h2 class="sheet-headline">水が引いた翌朝、この建物は何日で水が出るか</h2>
@@ -278,7 +288,7 @@
           <div id="sheet-rain"><p class="placeholder">どの合図で誰が何をするかが出ます。</p></div>
         </article>
 
-        <article class="sheet" id="sheet-back">
+        <article class="sheet" id="sheet-back" data-for="board">
           <p class="sheet-face">裏(事後)</p>
           <h3>水が来ている間と、水が引いた翌朝</h3>
           <div id="sheet-during"><p class="placeholder">誰がどの順で何をし、誰に連絡するかが出ます。</p></div>
@@ -299,7 +309,7 @@
           </section>
         </article>
 
-        <article class="sheet" id="sheet-detail" hidden>
+        <article class="sheet" id="sheet-detail" data-for="extra" hidden>
           <p class="sheet-face">別紙（おもての表のくわしい版）</p>
           <p class="sheet-address" id="sheet-detail-address"></p>
           <div id="sheet-detail-notes"></div>
@@ -309,7 +319,7 @@
           <div id="sheet-detail-measures"></div>
         </article>
 
-        <article class="sheet" id="sheet-basis" hidden>
+        <article class="sheet" id="sheet-basis" data-for="extra" hidden>
           <p class="sheet-face">別紙（条件と出典）</p>
           <p class="sheet-address" id="sheet-basis-address"></p>
           <h3>どこから水が来るか</h3>
@@ -317,13 +327,13 @@
           <p class="sheet-pointer scope-line">対象：東京電力パワーグリッドの区域の、高圧で電気を受けるマンション。低圧・テナントの入る建物・ほかの区域にも同じ形で広げられます。戸建ては対象外です。今の見本には借室のみの建物も含みます。</p>
         </article>
 
-        <article class="sheet" id="sheet-memo" hidden>
+        <article class="sheet" id="sheet-memo" data-for="memo" hidden>
           <p class="sheet-face">依頼メモ（未確認を、確認する先ごとに）</p>
           <p class="sheet-address" id="sheet-memo-address"></p>
           <div id="sheet-memo-body"></div>
         </article>
 
-        <article class="sheet" id="sheet-engineer-memo" hidden>
+        <article class="sheet" id="sheet-engineer-memo" data-for="engineer" hidden>
           <p class="sheet-face">依頼メモ（電気主任技術者の方へ）</p>
           <p class="sheet-address" id="sheet-engineer-address"></p>
           <h3>電気主任技術者の方へ</h3>

@@ -204,7 +204,8 @@ class CardFaceTest(unittest.TestCase):
         row = self.rows(data)["flood"]
         self.assertEqual(row.verdict, state.UNCONFIRMED)
         self.assertEqual(row.value, "3m〜5m")
-        self.assertEqual(row.accent["badges"], ["ハザード着色あり"])
+        # 大きな値がどちらの規模か（地図の別の規模の値と食い違って見えないように）。
+        self.assertEqual(row.accent["badges"], ["ハザード着色あり", "想定最大の値", "建物の位置は未確認"])
         self.assertEqual(row.accent["level"], "high")
 
     def test_deepest_color_is_the_big_value(self):

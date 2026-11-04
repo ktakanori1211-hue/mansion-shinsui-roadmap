@@ -134,11 +134,18 @@ const SectionAnim = (() => {
         bar.strip.dataset.key = key;
         bar.strip.replaceChildren(
           ...[1, 2, 3].map((level) => {
-            const item = document.createElement("span");
+            // 段の札は、水の位置のボタンも兼ねる（①②③のボタンと再生のバーを一つにまとめた。2026-11-04）。
+            const item = document.createElement("button");
+            item.type = "button";
             const next = level === state.k && state.k !== state.level;
             item.className = `timeline-stage${level === state.level ? " is-current" : ""}${next ? " is-next" : ""}`;
             item.textContent = `${"①②③"[level - 1]} ${stageName(level)}`;
-            item.title = item.textContent;
+            item.title = `水の位置を${item.textContent}にする`;
+            item.setAttribute("aria-pressed", String(level === state.level));
+            item.addEventListener("click", () => {
+              pause();
+              setTime(level);
+            });
             return item;
           }),
         );

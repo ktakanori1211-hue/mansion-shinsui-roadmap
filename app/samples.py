@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Optional
+from typing import List, Optional
 
 # 図面の用紙。部屋の x, y, w, h は、図の外周を 0〜1 とした割合で、3D の模型とピンも同じ値を使う。
 PLAN_WIDTH = 1400
@@ -469,4 +469,16 @@ def client_view(sample: dict) -> dict:
         "pins": pins,
         "rooms": sorted(keys),
         "views": sample["views"],
+        "plan_focus": plan_focus(sample),
     }
+
+
+def plan_focus(sample: dict) -> List[float]:
+    """平面図の用紙のうち、図のある範囲（用紙に対する割合の左・上・右・下）。画面では、この範囲に寄せて図を大きく見せる。"""
+    width, height = sample["plan_size"]
+    boxes = [(left, top, left + w, top + w * height / width) for left, top, w in sample["plan_frames"].values()]
+    x0 = max(0, min(b[0] for b in boxes) - 40)
+    y0 = max(0, min(b[1] for b in boxes) - 40)
+    x1 = min(PLAN_WIDTH, max(b[2] for b in boxes) + 40)
+    y1 = min(PLAN_HEIGHT, max(b[3] for b in boxes) + 70)
+    return [round(x0 / PLAN_WIDTH, 4), round(y0 / PLAN_HEIGHT, 4), round(x1 / PLAN_WIDTH, 4), round(y1 / PLAN_HEIGHT, 4)]

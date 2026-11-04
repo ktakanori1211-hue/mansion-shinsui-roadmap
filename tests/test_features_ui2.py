@@ -82,6 +82,18 @@ class QuestionFieldsTest(unittest.TestCase):
     def test_existing_heading_is_unchanged(self):
         self.assertIn('element("h3", "外から見える3つ")', self.app)
 
+    def test_questions_are_split_for_residents_and_experts(self):
+        # 上の段は住民・理事長が外から見て答えられる項目。借室・受電設備・盤・高さは下の段（畳んで、分からないままでよい）。
+        render = block(self.app, "  function render() {\n    const { sample } = App.building;", "questions.addEventListener")
+        self.assertIn("grid.append(outside, second, vents)", render)
+        self.assertIn("expertGrid.append(first, third, fourth, extra, heightBox)", render)
+        self.assertIn("管理会社や技術者が図面・現地で確かめる項目です（分からないままでOK）", render)
+        residents = block(render, "const outside", "const first")
+        for word in ("階数", "築年", "スロープ", "「東電」「高圧」の蓋", "出入口"):
+            self.assertIn(word, residents)
+        for word in ("借室", "受電", "盤の足元", "cm"):
+            self.assertNotIn(word, residents)
+
 
 class ReportPdfTest(unittest.TestCase):
     """F-042：点検報告書・修繕履歴の PDF の文字を画面の中で取り出す。"""

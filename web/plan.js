@@ -86,9 +86,24 @@ const PlanPanel = (() => {
   });
 
   // 図面の縦横比で、平面図のカードに収まる大きさを決める。
-  image.addEventListener("load", () => {
-    if (image.naturalHeight) fit.style.setProperty("--plan-ratio", image.naturalWidth / image.naturalHeight);
-  });
+  // 見本の平面図は、用紙の余白・凡例・表題欄を外して、図のある範囲（sample.plan_focus）に寄せて大きく見せる（2026-11-04）。
+  let crop = null;
+  function applyFit() {
+    if (!image.naturalHeight) return;
+    const ratio = image.naturalWidth / image.naturalHeight;
+    fit.classList.toggle("plan-cropped", Boolean(crop));
+    if (!crop) {
+      fit.style.setProperty("--plan-ratio", ratio);
+      return;
+    }
+    const [x0, y0, x1, y1] = crop;
+    fit.style.setProperty("--crop-x", x0);
+    fit.style.setProperty("--crop-y", y0);
+    fit.style.setProperty("--crop-w", x1 - x0);
+    fit.style.setProperty("--crop-h", y1 - y0);
+    fit.style.setProperty("--plan-ratio", (ratio * (x1 - x0)) / (y1 - y0));
+  }
+  image.addEventListener("load", applyFit);
 
   // 読み取りを待たずに、見本の図面とピンを出す。API は呼ばない。
   function showSamplePlan(sample) {
@@ -289,7 +304,9 @@ const PlanPanel = (() => {
   // 平面図、水の入り道の断面図、電気と給水の系統図を切り替える。ピンは平面図にだけ立てる。
   function showDrawing(sample, kind) {
     const plan = kind === "plan";
+    crop = plan && !shownPlan && sample.plan_focus ? sample.plan_focus : null;
     image.src = plan ? shownPlan || sample.plan.png : sample.plan[`${kind}_png`];
+    applyFit();
     pinsLayer.hidden = !plan;
     if (!plan) pinCard.hidden = true;
     shownKind = kind;
@@ -467,7 +484,8 @@ const PlanPanel = (() => {
   function renderDirection() {
     if (!direction) return;
     const line = App.building?.direction_line || "";
-    direction.hidden = !line || shownKind !== "plan";
+    // ②の頭の帯に同じ一行が出ているときは、図面の下には出さない（同じ文を二度読ませない。2026-11-04）。
+    direction.hidden = !line || shownKind !== "plan" || Boolean(App.shapeChosen);
     direction.replaceChildren();
     if (!line) return;
     direction.append(element("span", line, "strong"), element("span", "（向きは答えと地図の目安で、測ったものではありません）", "plan-direction-note"));

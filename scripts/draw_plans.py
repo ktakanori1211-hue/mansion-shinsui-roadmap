@@ -30,6 +30,24 @@ def _fit_label(label, width_px, largest=14, smallest=8):
     return max(smallest, min(largest, width_px * 0.86 / longest))
 
 
+# 部屋の種類ごとの薄い塗り（画面で、電気・水・昇降・車の部屋をひと目で見分ける。2026-11-04）。
+ROOM_COLORS = {
+    "power": "#fbd9b0",  # 電気の部屋（受電・借室・盤・発電機）：橙
+    "water": "#c9e3f6",  # 水の部屋（ポンプ・受水槽・貯留槽）：青
+    "lift": "#e3dcf2",   # エレベーター・階段・PS：紫
+    "car": "#e6e6e6",    # 駐車場・車路：灰
+}
+ROOM_KIND = {
+    "elec": "power", "tr": "power", "panel_room": "power", "gen": "power",
+    "pump": "water", "water_tank": "water", "tank": "water",
+    "ev": "lift", "ev_1f": "lift", "stair": "lift", "stair_1f": "lift", "ev_pit_room": "lift",
+    "park": "car", "park_1f": "car", "aisle": "car", "slope": "car", "parking_flat": "car",
+}
+# 図の上で長すぎて小さくなる部屋の名前だけ、短く書く（正式な名前は凡例とピンの説明にある）。
+PLAN_SHORT_LABELS = {"tr": "借室\n（東京電力）"}
+SECTION_KIND = {"電気室": "power", "受変電室": "power", "共用分電盤室": "power", "借室": "power", "発電機室": "power", "給水ポンプ室": "water", "雨水貯留槽": "water", "車路": "car"}
+
+
 def _water_lines(sheet, x, y, w, h, gap=9.0):
     """水をためる所の印。土の斜線と分ける。"""
     yy = y + gap
@@ -64,6 +82,14 @@ class PlanView:
     # 通り芯と寸法
 
     def draw_grid(self):
+        """通り芯と寸法線は DXF（CAD の図面）にだけ残し、画面と PDF の絵には描かない（部屋の色と名前を読みやすくするため。2026-11-04）。"""
+        self.sheet.cad_only = True
+        try:
+            self._grid_lines()
+        finally:
+            self.sheet.cad_only = False
+
+    def _grid_lines(self):
         s = self.sheet
         xs, ys = self.grid["x"], self.grid["y"]
         top, bottom = self.view.y(0), self.view.y(self.size[1])
@@ -304,6 +330,15 @@ class PlanView:
         px2, py2 = self.px(spec["at"] + half, spec["pos"])
         self.sheet.solid_rect(px1, py1 - 2.2, px2 - px1, 4.4, "壁", color="#ffffff")
 
+    def fill_rooms(self):
+        for room in self.rooms:
+            kind = ROOM_KIND.get(room["key"])
+            if not kind or room.get("hatch") and room["key"] != "tank":
+                continue
+            x0, y0, x1, y1 = room["mm"]
+            px, py = self.px(x0, y0)
+            self.sheet.solid_rect(px, py, (x1 - x0) * self.view.scale, (y1 - y0) * self.view.scale, "部屋の色", color=ROOM_COLORS[kind])
+
     def draw_rooms(self):
         for room in self.rooms:
             x0, y0, x1, y1 = room["mm"]
@@ -320,7 +355,11 @@ class PlanView:
             if not room["label"]:
                 continue
             width = (x1 - x0) * self.view.scale
-            size = _fit_label(room["label"], width, 13 * self.zoom + 2)
+            # 部屋の名前は前の版の2倍まで大きくし、部屋の幅と高さに収める。
+            text = PLAN_SHORT_LABELS.get(room["key"], room["label"])
+            lines = len(text.split("\n"))
+            height = (y1 - y0) * self.view.scale
+            size = min(_fit_label(text, width * 0.95, 26 * self.zoom + 4, 8), max(8, height * 0.5 / lines))
             y = (y0 + y1) / 2
             if room.get("symbol") in ("cubicle", "transformer", "pump", "pump_stand", "panel_stand", "water_tank", "generator"):
                 y = y0 + (y1 - y0) * 0.3
@@ -330,7 +369,7 @@ class PlanView:
                 y = y0 + (y1 - y0) * 0.84
             elif room.get("symbol") == "stair":
                 y = y0 + (y1 - y0) * 0.1
-            self.sheet.text(*self.px((x0 + x1) / 2, y), room["label"], size, bold=True)
+            self.sheet.text(*self.px((x0 + x1) / 2, y), text, size, bold=True)
 
     # 図の外のもの
 
@@ -410,6 +449,7 @@ class PlanView:
     def draw(self, scale_text):
         s = self.sheet
         s.use(self.view)
+        self.fill_rooms()
         self.draw_grid()
         self.draw_rooms()
         self.draw_walls()
@@ -438,6 +478,9 @@ LEGEND = [
     ("shutter", "シャッター"),
     ("site", "敷地境界線"),
     ("conduit", "引込管路（地中）"),
+    ("fill:power", "電気の部屋"),
+    ("fill:water", "水の部屋"),
+    ("fill:lift", "EV・階段"),
 ]
 
 
@@ -459,6 +502,9 @@ def legend(sheet, x0, y0, aerial=False, columns=False):
             sheet.line(x, yy, x + 30, yy, "敷地")
         elif kind == "conduit":
             sheet.line(x, yy, x + 30, yy, "引込")
+        elif kind.startswith("fill:"):
+            sheet.solid_rect(x, yy - 7, 30, 14, "部屋の色", color=ROOM_COLORS[kind[5:]])
+            sheet.rect(x, yy - 7, 30, 14, "設備", 0.6)
         sheet.text(x + 40, yy, "引込線（空中）" if aerial and kind == "conduit" else name, 11, "start")
 
 
@@ -579,6 +625,12 @@ def section_underground(sheet, sample, view, left, base):
     sheet.text(X(8000), Z(150) - 14, "歩道", 12, layer="道路", bold=True)
     sheet.hatch(X(0), Z(0) + 2, X(5900) - X(0), Z(b1 - 600) - Z(0) - 2, gap=20)
     sheet.hatch(X(7000), Z(0) + 2, X(build_left) - X(7000), Z(b1 - 600) - Z(0) - 2, gap=20)
+    # 部屋の種類の薄い塗り（壁より先に描く）。
+    for i, (x, name) in enumerate(rooms):
+        room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
+        kind = SECTION_KIND.get(name)
+        if kind:
+            sheet.solid_rect(X(x), Z(floor_1 - slab), X(room_end) - X(x), Z(b1) - Z(floor_1 - slab), "部屋の色", color=ROOM_COLORS[kind])
     # 建物
     sheet.solid_rect(X(build_left), Z(floor_1), X(build_right) - X(build_left), slab * s, "壁")
     sheet.solid_rect(X(build_left), Z(top_2), X(upper_right) - X(build_left), slab * s, "壁")
@@ -594,7 +646,7 @@ def section_underground(sheet, sample, view, left, base):
         if i:
             sheet.solid_rect(X(x), Z(floor_1 - slab), 150 * s, Z(b1) - Z(floor_1 - slab), "壁")
         room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
-        sheet.text((X(x) + X(room_end)) / 2, Z(-350), name, 14, bold=True)
+        sheet.text((X(x) + X(room_end)) / 2, Z(-450), name, _fit_label(name, X(room_end) - X(x), 26, 12), bold=True)
     sheet.text(X(build_left) + 12, Z(floor_1) - 12, "1FL", 11, "start", layer="寸法")
     sheet.text(X(build_left) - 8, Z(b1) + 4, "地下1階FL", 11, "end", layer="寸法")
     sheet.text(X(0) - 6, Z(0), "GL", 11, "end", layer="寸法")
@@ -713,11 +765,18 @@ def section_hillside(sheet, sample, view, left, base):
     sheet.line(X(build_left), Z(top_2 + 700), X(build_right), Z(top_2 + 700), "図枠", 1)
     sheet.text((X(build_left) + X(build_right)) / 2, Z(top_2 + 700) - 14, f"2階より上は省略（全{sample['floors']}階建て）", 11)
     rooms = [(7300, "共用分電盤室"), (13000, "借室"), (18000, "給水ポンプ室"), (23000, "エントランス")]
+    # 部屋の種類の薄い塗り（外壁の内側だけ。間仕切りの壁はこのあとで上に描く）。
+    for i, (x, name) in enumerate(rooms):
+        room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right - wall
+        kind = SECTION_KIND.get(name)
+        if kind:
+            sheet.solid_rect(X(x), Z(top_2 - 300), X(room_end) - X(x), Z(floor_1) - Z(top_2 - 300), "部屋の色", color=ROOM_COLORS[kind])
     for i, (x, name) in enumerate(rooms):
         if i:
             sheet.solid_rect(X(x), Z(top_2 - 300), 150 * s, Z(floor_1) - Z(top_2 - 300), "壁")
         room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
-        sheet.text((X(x) + X(room_end)) / 2, Z(top_2 - 300) + 18, name, 14, bold=True)
+        # 1階の部屋は低いので、中の「？」と重ならない大きさにとどめる。
+        sheet.text((X(x) + X(room_end)) / 2, Z(top_2 - 300) + 15, name, _fit_label(name, X(room_end) - X(x), 20, 12), bold=True)
     for x, w, name in ((8800, 2800, "スイッチ盤"), (19400, 2400, "制御盤")):
         sheet.line(X(x), Z(floor_1), X(x), Z(floor_1 + 500), "設備")
         sheet.line(X(x + w), Z(floor_1), X(x + w), Z(floor_1 + 500), "設備")
@@ -828,11 +887,14 @@ def write_section_anchors() -> None:
 
 def _box(sheet, x, y, w, label, floor=None, pin=None, unknown=False, water=False):
     h = 58
+    # 平面図と同じ色で、水の機器は青、電気の機器は橙に薄く塗る（道路の配電線など建物の外は塗らない）。
+    if not unknown and floor not in ("道路", "歩道の下", "道路の下"):
+        sheet.solid_rect(x, y, w, h, "部屋の色", color=ROOM_COLORS["water" if water else "power"])
     if unknown:
         sheet.rect(x, y, w, h, "引込", 1.6)
     else:
         sheet.rect(x, y, w, h, "図枠", 1.6)
-    sheet.text(x + w / 2, y + h / 2 - (6 if floor else 0), label, 13, bold=True, color="#0277bd" if water else None)
+    sheet.text(x + w / 2, y + h / 2 - (7 if floor else 0), label, _fit_label(label, w, 17, 12), bold=True, color="#0277bd" if water else None)
     if floor:
         sheet.text(x + w / 2, y + h - 12, floor, 10.5, color="#0277bd" if "地下" in floor else "#5a5a60", bold="地下" in floor)
     if pin:
