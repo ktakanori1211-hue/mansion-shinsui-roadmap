@@ -200,21 +200,25 @@ const ModelPanel = (() => {
     renderMeasureCounts();
     renderSceneContext();
     renderCaption();
-    // 「本シートは予報ではなく〜」はページの一番下の免責に同じ文があるので、ここでは繰り返さない（2026-11-04）。
-    // 安全の一文は、3D で危ない部屋を選んだときに強調する（highlightFocus）ので、ここにも残す。
+    // 「本シートは予報ではなく〜」と安全の一文は、ページの一番下の免責に同じ文があるので、ここでは繰り返さない（2026-11-04）。
+    // 安全の一文は、3D で危ない部屋を選んだときだけ、3D のすぐ下（#model-safety）に強調して出す（highlightFocus）。
     document.getElementById("model-fixed").replaceChildren(
       ...scenario.notes.map((line) => element("p", line, "fixed-note strong")),
       element("p", fixed.water_not_entry, "fixed-note strong"),
       element("p", App.building.sample.has_chief_engineer ? fixed.ordinary : fixed.ordinary_no_engineer, "fixed-note strong"),
       ...chainFixed(),
-      element("p", App.disclaimerText(), "fixed-note strong disclaimer-line"),
     );
+    document.getElementById("model-safety").textContent = App.disclaimerText();
     renderChain(scenario);
     renderTable(scenario);
   }
 
   function highlightFocus(active) {
-    document.querySelector(".disclaimer-line")?.classList.toggle("emphasis", active);
+    const safety = document.getElementById("model-safety");
+    // 図面のピンの説明（pin-card）を開いているときは、その中に同じ安全の一文があるので出さない。
+    const shown = active && document.getElementById("pin-card").hidden;
+    safety.hidden = !shown;
+    safety.classList.toggle("emphasis", shown);
   }
 
   return { renderControls, render, highlightFocus };

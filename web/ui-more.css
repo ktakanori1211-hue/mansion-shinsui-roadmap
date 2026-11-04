@@ -182,3 +182,12 @@ abbr.term { text-decoration: underline dotted; text-underline-offset: 3px; curso
 /* ③：費用の段の下から、補助と相談へ直接行くボタン */
 .cost-next { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .cost-next button { padding: 6px 14px; font-weight: 700; }
+
+/* ②の帯の右上の「次へ」（#6） */
+.top-banner { position: relative; }
+.banner-next { position: absolute; top: 10px; right: 14px; padding: 6px 14px; font-weight: 700; }
+/* 3D で危ない部屋を選んだときだけ出す安全の一文 */
+.model-safety[hidden] { display: none; }
+.model-safety { margin: 6px 0; }
+/* 共有リンクは畳み（#34） */
+#share-card > summary { font-size: 15px; font-weight: 700; cursor: pointer; }

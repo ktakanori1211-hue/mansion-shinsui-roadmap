@@ -89,6 +89,11 @@ function label(text, position, className = "model-label", detailOf = null, extra
       node.append(rest);
     }
     object.userData.parts = { name, rest };
+  } else if (detailOf && text.includes("\n")) {
+    // 部屋を選んだときに出る補助の札も一行だけにし、残りの行（高さの値や「位置は図面で未確認」など）は指を置いたとき（title）に読む。
+    const [first, ...rest] = text.split("\n");
+    node.textContent = first;
+    node.title = rest.join(" ");
   } else node.textContent = text;
   object.position.copy(position);
   object.userData.layout = { kind: detailOf ? "detail" : "misc", key: detailOf };
@@ -693,7 +698,10 @@ window.Model3D = {
         // 付け替えた盤は部屋の札の高さに来るので、札を盤の横へずらして重ならないようにする。
         panelLabel.position.x = meshes.panel.position.x + (raised ? 1.6 : 0);
         panelLabel.position.y = meshes.panel.position.y + (raised ? -1.0 : 0.75);
-        panelLabel.element.textContent = raised ? RAISED_PANEL_NOTE : `ポンプのスイッチ盤\n${panelHeightNote(this.sample)}`;
+        // 一行目だけを札に出し、残りは指を置いたとき（title）に読む（ほかの補助の札と同じ）。
+        const [first, ...rest] = (raised ? RAISED_PANEL_NOTE : `ポンプのスイッチ盤\n${panelHeightNote(this.sample)}`).split("\n");
+        panelLabel.element.textContent = first;
+        panelLabel.element.title = rest.join(" ");
       }
       refreshDetails();
     }

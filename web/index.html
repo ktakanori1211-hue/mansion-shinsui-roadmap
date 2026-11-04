@@ -49,7 +49,7 @@
     <article class="why-card why-stop">
       <p class="why-kicker">どの場面でも、地下の電気室やポンプに水が入ると</p>
       <p class="why-big">水・トイレ・エレベーターが止まるおそれ</p>
-      <p class="why-sub">入り道は壁の穴とポンプ制御盤。最初の手は数万〜十数万円（桁の目安）。</p>
+      <p class="why-sub">入り道は壁の穴とポンプ制御盤。費用は③で見られます。</p>
       <details class="why-more"><summary>補足</summary><p>壁の穴とポンプ制御盤の止水は、管理会社の仕事にも点検の項目にも入っていないことがあります。壁の穴は、地中から高圧のケーブルで電気を引き込む建物の話で、書類で確かめます。給水ポンプの制御盤が浸かると、受電が生きていても断水につながることがあります。建物の規約と予算によっては、マンション側の部屋の壁の穴の止水などを理事会で決められる場合があります。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p></details>
     </article>
   </section>
@@ -125,6 +125,7 @@
 
     <section class="stage" data-stage="2" aria-label="第2段階">
       <div class="top-banner" id="top-banner" hidden>
+        <button type="button" class="primary banner-next" data-go="3">次へ：③A4・費用 ➔</button>
         <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
         <p class="top-banner-lead" id="top-banner-lead"></p>
         <ol class="answer-steps top-banner-steps" id="top-banner-steps"></ol>
@@ -179,6 +180,7 @@
           </div>
           <p class="control-caption" id="control-caption"></p>
           <div class="model-view" id="model-view"><p class="hint model-fail" id="model-fail" hidden></p></div>
+          <p class="fixed-note strong model-safety" id="model-safety" hidden></p>
           <div class="model-focus-buttons" id="focus-buttons"></div>
           <p class="tr-note" id="tr-note"></p>
         </section>
@@ -233,8 +235,8 @@
         <p class="hint" id="polish-note"></p>
       </div>
 
-      <div class="card" id="share-card">
-        <h2>共有リンク（パスワードと有効期限つき）</h2>
+      <details class="card" id="share-card">
+        <summary>紙の代わりにリンクで渡す（パスワードと有効期限つき）</summary>
         <div class="share-form">
           <label for="share-password">パスワード（8文字以上）</label>
           <input type="password" id="share-password" autocomplete="new-password">
@@ -248,7 +250,7 @@
         </div>
         <details class="fold"><summary>条件を開く</summary><p>パスワードを忘れると元に戻せません。ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
         <div class="share-result" id="share-result" hidden></div>
-      </div>
+      </details>
       </div>
 
       <details class="card stage3-cost" id="stage3-cost" hidden>

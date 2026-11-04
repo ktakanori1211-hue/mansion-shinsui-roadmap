@@ -106,7 +106,7 @@ function locationCard(row) {
   face.append(element("span", row.value, "loc-value"));
   (accent?.badges || []).forEach((badge) => face.append(element("span", badge, "accent-badge")));
   const foot = element("div", undefined, "loc-foot");
-  foot.append(withTerms(row.conclusion, "p", "loc-line"), fold("条件と出典を開く", detailItems(row, row.headline)));
+  foot.append(withTerms(row.conclusion, "p", "loc-line"), fold("くわしく", detailItems(row, row.headline)));
   card.append(head, face, foot);
   return card;
 }
@@ -153,7 +153,8 @@ function screenRow(row, keyRows = []) {
   if (who) article.append(withTerms(`確かめる：${row.confirm_short}${row.memo_no ? `（依頼メモ${row.memo_no}）` : ""}`, "p", "row-who"));
   else article.append(withTerms(row.summary || row.headline, "p", "row-headline"));
   const lead = who ? row.summary || row.headline : row.summary ? row.headline : "";
-  article.append(fold("条件と出典を開く", detailItems({ ...row, details: [`見たもの：${row.label}`, ...row.details] }, lead)));
+  // 8枚のカードに同じ長い文が並ばないよう、畳みの名前は短く「くわしく」にする（#25）。
+  article.append(fold("くわしく", detailItems({ ...row, details: [`見たもの：${row.label}`, ...row.details] }, lead)));
   return article;
 }
 
@@ -571,6 +572,11 @@ function renderLocation(state) {
   sheetBasisRows.replaceChildren(element("p", location.basis_note, "basis-note"), ...location.rows.map(basisRow));
   sheetBasis.hidden = false;
   HazardMap.show(state, mapElements, movePin);
+  // ピンの点にどれかの地図の色があるときは「色がない所も」と言い、画面と食い違わないようにする（#16）。
+  const pinColored = location.reading.hazards.some((hazard) => hazard.status === "color");
+  document.querySelector(".map-fixed").textContent = pinColored
+    ? "色がない所も、安全という意味ではありません。斜線はデータが取れていない所です。"
+    : "地図に色がないことは、安全という意味ではありません。斜線はデータが取れていない所です。";
   TerrainChart.render(document.getElementById("terrain"), location.reading, site);
   App.locationState = state;
   Scenes.render(state);

@@ -155,7 +155,13 @@ class ChainFixedTextTest(unittest.TestCase):
         self.assertIn("App.building.chain.note", fixed)
         render = block(panels, "  function render(scenario) {", "function highlightFocus")
         self.assertIn("...chainFixed()", render)
-        self.assertIn("disclaimer-line", render)
+        # 安全の一文はページ下の免責と二重にせず、3D で危ない部屋を選んだときだけ 3D の下に強調して出す。
+        self.assertNotIn("disclaimer-line", render)
+        self.assertIn('getElementById("model-safety").textContent = App.disclaimerText()', render)
+        focus = block(panels, "function highlightFocus", "return { renderControls")
+        self.assertIn("safety.hidden = !shown", focus)
+        self.assertIn('document.getElementById("pin-card").hidden', focus)
+        self.assertIn('id="model-safety" hidden', read("index.html"))
         # 下の免責と同じ「予報ではなく」の一文は、ここでは繰り返さない。
         self.assertNotIn("element(\"p\", \"本シートは予報ではなく", render)
         html = read("index.html")
@@ -214,3 +220,20 @@ class MiddleIssuesTest(unittest.TestCase):
     def test_sample_shape_notice_is_visible(self):
         css = read("ui-more.css")
         self.assertIn("#plan-message, #model-fixed-top { display: inline-block;", css)
+
+
+class LowIssuesTest(unittest.TestCase):
+    """優先度：低の課題（#6 #15 #16 #25 #34）と、3D の補助の札の一行化。2026-11-04。"""
+
+    def test_low_items(self):
+        html = read("index.html")
+        app = read("app.js")
+        self.assertIn('class="primary banner-next" data-go="3"', html)
+        self.assertNotIn("最初の手は数万〜十数万円", html)
+        self.assertIn("色がない所も、安全という意味ではありません。", app)
+        self.assertIn('fold("くわしく", detailItems({ ...row', app)
+        self.assertIn('<details class="card" id="share-card">', html)
+
+    def test_detail_labels_in_3d_are_one_line(self):
+        model = read("model3d.js")
+        self.assertIn('node.title = rest.join(" ")', model)
