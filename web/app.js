@@ -1150,7 +1150,6 @@ const QuestionPanel = (() => {
     const outside = element("div", undefined, "q-section");
     outside.append(element("h3", "建物のあらまし"), numberField("階数", "floors", answers.floors), numberField("築年（西暦）", "built_year", answers.built_year));
     outside.append(group("地下の階はありますか", "basement", CHOICES, answers.basement));
-    outside.append(group("建物の規模（総戸数のおおよそ）", "scale", SCALE_CHOICES, answers.scale));
 
     const second = element("div", undefined, "q-section");
     second.append(element("h3", "外から見える3つ"));
@@ -1158,9 +1157,12 @@ const QuestionPanel = (() => {
     second.append(group("歩道ぎわの「東電」「高圧」の蓋（蓋は開けません）", "cover", CHOICES, answers.cover));
     second.append(group("1階の出入口に、道路からの段差がありますか", "entrance_step", ENTRANCE_CHOICES, answers.entrance_step));
 
+    // 規模（小さめ・中くらい・大きめ）は区切りが仮の目安で、住民によって答えが変わるので、下の段で管理会社が総戸数から答える。
+    // 足元の換気口（給気ガラリなど）は住民には見分けにくく、浸水の入口にもなるので、下の段で確かめる。
     const vents = element("div", undefined, "q-section");
-    vents.append(element("h3", "分かれば"));
-    vents.append(group("1階の足元の換気口", "vent", CHOICES, answers.vent));
+    vents.append(element("h3", "規模と換気口（管理会社が総戸数と現地で答える）"));
+    vents.append(group("建物の規模（総戸数のおおよそ）", "scale", SCALE_CHOICES, answers.scale));
+    vents.append(group("1階の足元の換気口（給気ガラリなど。水が入る口になります）", "vent", CHOICES, answers.vent));
 
     const first = element("div", undefined, "q-section");
     first.append(element("h3", "部屋の階"));
@@ -1195,9 +1197,9 @@ const QuestionPanel = (() => {
     const submit = element("button", "この答えで作り直す", "primary");
     submit.type = "submit";
     const grid = element("div", undefined, "q-grid q-grid-residents");
-    grid.append(outside, second, vents);
+    grid.append(outside, second);
     const expertGrid = element("div", undefined, "q-grid");
-    expertGrid.append(first, third, fourth, extra, heightBox);
+    expertGrid.append(first, vents, third, fourth, extra, heightBox);
     const expert = element("details", undefined, "q-expert");
     expert.open = expertOpen;
     expert.addEventListener("toggle", () => {

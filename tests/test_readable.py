@@ -142,3 +142,22 @@ class SheetTabsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChainFixedTextTest(unittest.TestCase):
+    def test_chain_fixed_text_is_outside_the_fold(self):
+        # 本人の決定（2026-11-04）：停電の連鎖の固定の文は畳まずに出す。
+        panels = read("panels.js")
+        chain = block(panels, "function renderChain", "function chainFixed")
+        self.assertNotIn("fixed.chain", chain)
+        fixed = block(panels, "function chainFixed", "function renderTable")
+        self.assertIn("App.building.fixed.chain", fixed)
+        self.assertIn("App.building.chain.note", fixed)
+        render = block(panels, "  function render(scenario) {", "function highlightFocus")
+        self.assertIn("...chainFixed()", render)
+        self.assertIn("disclaimer-line", render)
+        # 下の免責と同じ「予報ではなく」の一文は、ここでは繰り返さない。
+        self.assertNotIn("element(\"p\", \"本シートは予報ではなく", render)
+        html = read("index.html")
+        lower = block(html, '<div class="card" id="model-lower"', "</details>")
+        self.assertLess(lower.index('id="model-fixed"'), lower.index("<details"))

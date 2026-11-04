@@ -141,7 +141,11 @@
 /* 見本の平面図は図のある範囲に寄せて大きく見せる。画像とピンを同じ割合で動かすので、ピンの位置はずれない。 */
 .plan-fit.plan-cropped { overflow: hidden; aspect-ratio: var(--plan-ratio); }
 .plan-fit.plan-cropped > img,
-.plan-fit.plan-cropped > .plan-pins { position: absolute; left: calc(-100% * var(--crop-x) / var(--crop-w)); top: calc(-100% * var(--crop-y) / var(--crop-h)); width: calc(100% / var(--crop-w)); height: calc(100% / var(--crop-h)); max-width: none; inset: auto; }
+.plan-fit.plan-cropped > .plan-pins { position: absolute; inset: auto; left: calc(-100% * var(--crop-x) / var(--crop-w)); top: calc(-100% * var(--crop-y) / var(--crop-h)); width: calc(100% / var(--crop-w)); height: calc(100% / var(--crop-h)); max-width: none; }
+/* 図面が読める幅を取るため、②の図面と3Dは同じ幅にする（前は 0.8：1.2。2026-11-04）。 */
+@media screen and (min-width: 1101px) {
+  .stage2-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
 
 /* ②の頭の「次の3つ・頼む先」 */
 .answer-steps { margin: 6px 0 4px; padding-left: 1.4em; }

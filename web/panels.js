@@ -93,10 +93,16 @@ const ModelPanel = (() => {
     const box = document.getElementById("chain");
     box.replaceChildren(element("h3", "停電の連鎖（止まる想定はオレンジ。文を読まなくても、どこまで止まるかが見えます）"));
     chainPaths(App.building.chain).forEach((path) => box.append(chainRow(path, scenario)));
-    box.append(element("p", App.building.fixed.chain, "fixed-note"));
+    // 連鎖の固定の文は畳みの中に置かず、畳みの上の固定の文の欄（chainFixed）に出す（本人の決定 2026-11-04）。
+  }
+
+  // 停電の連鎖の固定の文。「塗っていない箱も止まりうる」は安全側の注意なので、畳まずに出す。
+  // 東京電力の変圧器の部屋の一文は、3D のカードの下（tr-note）に同じ文があるので、ここでは繰り返さない。
+  function chainFixed() {
+    const lines = [element("p", `停電の連鎖：${App.building.fixed.chain}`, "fixed-note strong")];
     // 借室の有無と受電の形で、止まる範囲の言い方を書き分けた一文（サーバーの chain.note）。
-    if (App.building.chain.note) box.append(element("p", App.building.chain.note, "fixed-note chain-note"));
-    box.append(element("p", `東京電力の変圧器の部屋：${App.building.fixed.tr_box}`, "fixed-note"));
+    if (App.building.chain.note) lines.push(element("p", App.building.chain.note, "fixed-note strong chain-note"));
+    return lines;
   }
 
   function renderTable(scenario) {
@@ -176,12 +182,14 @@ const ModelPanel = (() => {
     renderStopCount(scenario);
     renderSceneContext();
     renderCaption();
+    // 「本シートは予報ではなく〜」はページの一番下の免責に同じ文があるので、ここでは繰り返さない（2026-11-04）。
+    // 安全の一文は、3D で危ない部屋を選んだときに強調する（highlightFocus）ので、ここにも残す。
     document.getElementById("model-fixed").replaceChildren(
       ...scenario.notes.map((line) => element("p", line, "fixed-note strong")),
       element("p", fixed.water_not_entry, "fixed-note strong"),
       element("p", App.building.sample.has_chief_engineer ? fixed.ordinary : fixed.ordinary_no_engineer, "fixed-note strong"),
+      ...chainFixed(),
       element("p", App.disclaimerText(), "fixed-note strong disclaimer-line"),
-      element("p", "本シートは予報ではなく、現時点の静的な整理である", "fixed-note strong"),
     );
     renderChain(scenario);
     renderTable(scenario);

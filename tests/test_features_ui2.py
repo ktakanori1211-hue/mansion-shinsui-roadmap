@@ -85,13 +85,13 @@ class QuestionFieldsTest(unittest.TestCase):
     def test_questions_are_split_for_residents_and_experts(self):
         # 上の段は住民・理事長が外から見て答えられる項目。借室・受電設備・盤・高さは下の段（畳んで、分からないままでよい）。
         render = block(self.app, "  function render() {\n    const { sample } = App.building;", "questions.addEventListener")
-        self.assertIn("grid.append(outside, second, vents)", render)
-        self.assertIn("expertGrid.append(first, third, fourth, extra, heightBox)", render)
+        self.assertIn("grid.append(outside, second)", render)
+        self.assertIn("expertGrid.append(first, vents, third, fourth, extra, heightBox)", render)
         self.assertIn("管理会社や技術者が図面・現地で確かめる項目です（分からないままでOK）", render)
-        residents = block(render, "const outside", "const first")
-        for word in ("階数", "築年", "スロープ", "「東電」「高圧」の蓋", "出入口"):
+        residents = block(render, "const outside", "    // 規模（小さめ")
+        for word in ("階数", "築年", "地下の階", "スロープ", "「東電」「高圧」の蓋", "出入口"):
             self.assertIn(word, residents)
-        for word in ("借室", "受電", "盤の足元", "cm"):
+        for word in ("借室", "受電", "盤の足元", "cm", "規模", "換気口"):
             self.assertNotIn(word, residents)
 
 
