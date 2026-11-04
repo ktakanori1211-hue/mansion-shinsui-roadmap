@@ -171,7 +171,7 @@ function tierSpan(items) {
 function renderCostTiers(building) {
   const measures = SimPanel.byTier(building.measures.filter((m) => m.key !== "power"));
   const lead = document.getElementById("cost-tiers-lead");
-  lead.replaceChildren(element("b", "最初の段は、建物の規約と予算によっては理事会と管理費で決められる手から。修繕積立金を使う工事は、その後の段です。"));
+  lead.replaceChildren(element("b", "まず左の段から。理事会と管理費で決められることもある手です。"));
   const grid = document.getElementById("cost-tier-grid");
   grid.replaceChildren(
     ...TIERS.map((tier) => {
@@ -343,7 +343,7 @@ const App = {
   },
 
   showShape() {
-    ["plan-card", "model-card", "model-lower", "step-result", "step-building", "top-banner"].forEach((id) => {
+    ["glance", "stage2-more", "plan-card", "model-card", "model-lower", "step-result", "step-building", "top-banner"].forEach((id) => {
       document.getElementById(id).hidden = !this.shapeChosen;
     });
     document.getElementById("type-chooser").hidden = this.shapeChosen;
@@ -490,6 +490,7 @@ const App = {
     SheetPanel.render();
     renderCostTiers(building);
     ExitPanel.render();
+    window.Glance?.render();
   },
 
   chatContext() {
@@ -536,7 +537,10 @@ const App = {
   // 第2段階の平面図と模型を、スクロールなしで押しながら見られる高さにそろえる。
   fitStage2() {
     if (this.stage !== "2") return;
-    const top = document.querySelector(".stage2-grid").getBoundingClientRect().top + window.scrollY;
+    const grid = document.querySelector(".stage2-grid");
+    // ②は一枚のカードに作り直したので、高さは CSS（.sim-viewer）で決める。古い格子があるときだけ合わせる。
+    if (!grid) return;
+    const top = grid.getBoundingClientRect().top + window.scrollY;
     // 免責の帯は貼り付けずページの下に出すので、高さから引かない。
     // 図面と3Dを読める大きさで見せるため、画面が低くても 640px は取る（少しスクロールしてよい）。
     document.documentElement.style.setProperty("--stage2-room", `${Math.max(640, window.innerHeight - top - 10)}px`);
@@ -1390,10 +1394,8 @@ const ExitPanel = (() => {
       button.classList.toggle("active", button.dataset.exit === current);
     });
     const docs = source();
+    // ほかの文書は自分の畳みの中に出し、上の「渡す紙」は隠さない（2026-11-04）。
     const isSheet = current === "a";
-    sheets.classList.toggle("is-hidden-screen", !isSheet);
-    document.getElementById("sheet-tabs").classList.toggle("is-hidden-screen", !isSheet);
-    document.getElementById("sheet-tab-note").classList.toggle("is-hidden-screen", !isSheet);
     doc.hidden = isSheet;
     if (!isSheet) text.textContent = docs[current] || "①で場所を選ぶと、ここに出ます。";
   }
@@ -1423,6 +1425,26 @@ const ExitPanel = (() => {
     if (key) showSheets(key);
   });
   showSheets(shown);
+
+  // 紙は最初は縮めて並べ、「大きくして読む」で等倍にする（③の文字の壁を減らす。印刷はいつも等倍）。
+  const sizeButton = document.getElementById("sheet-size");
+  sizeButton.addEventListener("click", () => {
+    const large = sheets.classList.toggle("is-large");
+    sizeButton.textContent = large ? "縮めて並べる" : "大きくして読む";
+  });
+
+  // 「このあと、あなたがすること」のボタン。紙のタブを選んで紙の所へ移る。③の答えは②の質問へ戻る。
+  document.getElementById("next-steps").addEventListener("click", (event) => {
+    const step = event.target.closest("button")?.dataset.step;
+    if (!step) return;
+    if (step === "answers") {
+      App.showStage("2");
+      document.getElementById("step-building")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    showSheets(step);
+    document.getElementById("sheet-area").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 
   document.getElementById("exit-tabs").addEventListener("click", (event) => {
     const exit = event.target.closest("button")?.dataset.exit;

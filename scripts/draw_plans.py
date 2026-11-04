@@ -735,6 +735,8 @@ def section_underground(sheet, sample, view, left, base):
             {"key": "slope", "points": [[X(slope_top + 1100), Z(150)], [X(slope_top), Z(150)], [X(build_right), Z(b1 + 300)], [X(rooms[-1][0]), Z(b1 + 300)]]},
         ],
         "stage_names": {str(k): v for k, v in _section_short(sample).items()},
+        # 画面のビューアーで寄せて見せる、図のある範囲（用紙の px。左・上・右・下）。
+        "focus": [round(X(0) - 40, 1), round(Z(top_2 + 700) - 40, 1), round(X(slope_top + 2200) + 30, 1), round(Z(b1 - 600) + 20, 1)],
     }
     if has_gen:
         anchors["equipment"]["gen"] = {"rect": [X(18400), Z(b1 + 1500), 2200 * s, 1500 * s]}
@@ -830,6 +832,8 @@ def section_hillside(sheet, sample, view, left, base):
             {"key": "door", "points": [[X(5800), Z(650)], [X(build_left) + 2, Z(520)]]},
         ],
         "stage_names": {str(k): v for k, v in _section_short(sample).items()},
+        # 画面のビューアーで寄せて見せる、図のある範囲（用紙の px。左・上・右・下）。
+        "focus": [round(X(0) - 20, 1), round(Z(6200) - 30, 1), round(X(38500) + 20, 1), round(Z(-400) + 60, 1)],
     }
 
 

@@ -9,7 +9,7 @@ const SectionAnim = (() => {
   const SVG_NS = "http://www.w3.org/2000/svg";
   // 段ごとに、時間の軸のうち水が上がっていく割合。残りは、その段に達した形のまま止める。
   const RISE = 0.7;
-  const PLAY_SECONDS = 9;
+  const PLAY_SECONDS = 16;
   // 入り道の矢印を出し始める水の位置（続いた値）。外の水が入口に届いてから矢印を出す。
   const ROUTE_FROM = { hill: 0.15, slope: 0.85, hole: 0.85, door: 0.85, basin: 1.5 };
   const RAISED_TEXT = "付け替えた盤（高さは見積りと現地調査で決める）";
@@ -54,10 +54,58 @@ const SectionAnim = (() => {
     return (anchors && anchors.stage_names && anchors.stage_names[level]) || FALLBACK_NAMES[level];
   }
 
-  // 再生のボタンとスライダー。3D の上と、断面図の上に一つずつ置き、同じ時間の軸を動かす。
+  // ---- 時間の物語（2026-11-04 作り直し）----
+  // 水位の①②③ではなく、住民が過ごす時間の順（大雨が近づいたとき → 当日 → 翌朝 → 数日〜1週間 → 約2か月〜本復旧）で見せる。
+  // 時間の段の名前はサーバーの五段の表の列と同じ。各段の暮らしの状態は、サーバーの scenario（services と table）のまま出し、計算し直さない。
+  // 当日の中だけ、水が①②③の順に上がる（phase）。翌朝は外の水が引いても地下に水が残り、数日後は水を抜いても機械は止まったまま。
+  const PHASES = [
+    { key: "before", name: "大雨が近づいたとき" },
+    { key: "day", name: "水が来た当日" },
+    { key: "morning", name: "水が引いた翌朝" },
+    { key: "week", name: "数日〜1週間" },
+    { key: "months", name: "約2か月〜本復旧" },
+  ];
+  const PHASE_LINES = {
+    before: "外の道路に水がたまり始める。建物の中はまだ使える",
+    day: "スロープや壁の穴から地下へ水が入り、エレベーター、続いて水と電気が止まる",
+    morning: "外の道路は乾いても、地下には水が残る。水を抜くまで機械室に入れない",
+    week: "水を抜いても、浸かった機械は止まったまま。点検と修理を待つ",
+    months: "浸かった盤や部品が届いて付け替わるまで、止まったままのことがある",
+  };
+  // 住民の暮らしで何が困るか（サーバーの services の名前ごと）。判定は言わず、状態はサーバーのまま。
+  const LIFE_OF = [
+    [/給水/, "水・トイレ・風呂"],
+    [/エレベーター/, "エレベーター（高い階は階段）"],
+    [/廊下/, "廊下の照明"],
+    [/各戸の電気/, "家の電気（冷蔵庫・冷房）"],
+  ];
+  const STATE_TEXT = { stopped: "止まる", running: "使える", unknown: "東京電力しだい" };
+  const STORY_MAX = PHASES.length;
+  let story = 1.99;
+
+  function lifeName(label) {
+    const found = LIFE_OF.find(([pattern]) => pattern.test(label));
+    return found ? found[1] : label;
+  }
+
+  // 物語の時間（0〜5）から、段、外の水と中の水の続いた位置（0〜3）、①②③の水の位置を出す。
+  function storyAt(value) {
+    const idx = Math.min(STORY_MAX - 1, Math.max(0, Math.floor(value)));
+    const sub = Math.min(1, Math.max(0, value - idx));
+    if (idx === 0) return { idx, out: Math.min(1, sub / 0.6), inn: 0, t: 1, level: 1 };
+    if (idx === 1) {
+      const within = 1 + 2 * Math.min(1, sub / 0.85);
+      const ph = phase(within);
+      return { idx, out: ph.flow, inn: ph.flow, t: within, level: ph.level };
+    }
+    if (idx === 2) return { idx, out: 0, inn: 3, t: 3, level: 3 };
+    return { idx, out: 0, inn: 0, t: 3, level: 3 };
+  }
+
+  // 再生のボタンとスライダー、5つの時間の札、今の段の暮らしの欄。図の窓のすぐ下に一本だけ置く。
   function makeBar(where, withLegend) {
     const box = document.createElement("div");
-    box.className = "timeline-bar section-timeline";
+    box.className = "timeline-bar section-timeline story-bar";
     const row = document.createElement("div");
     row.className = "timeline-row";
     const button = document.createElement("button");
@@ -66,28 +114,30 @@ const SectionAnim = (() => {
     const range = document.createElement("input");
     range.type = "range";
     range.min = "0";
-    range.max = "300";
+    range.max = String(STORY_MAX * 100);
     range.step = "1";
     range.className = "timeline-range";
-    range.setAttribute("aria-label", "水が入る順番");
+    range.setAttribute("aria-label", "時間の順番");
     const count = document.createElement("span");
     count.className = "timeline-count";
     row.append(button, range, count);
     const strip = document.createElement("div");
-    strip.className = "timeline-strip";
+    strip.className = "timeline-strip story-strip";
+    const life = document.createElement("div");
+    life.className = "story-life";
     const note = document.createElement("p");
     note.className = "timeline-note";
     note.textContent = NOTE;
-    box.append(row, strip);
+    box.append(row, strip, life);
     if (withLegend) box.append(legend());
     box.append(note);
     button.addEventListener("click", () => (playing ? pause() : play()));
     range.addEventListener("input", () => {
       pause();
-      setTime(Number(range.value) / 100);
+      setStory(Number(range.value) / 100);
     });
     where(box);
-    const bar = { box, button, range, strip, count };
+    const bar = { box, button, range, strip, count, life };
     bars.push(bar);
     return bar;
   }
@@ -116,43 +166,108 @@ const SectionAnim = (() => {
     return row;
   }
 
-  function renderBars(state) {
-    const scenario = ready() ? App.scenario() : null;
-    const stopped = scenario ? scenario.services.filter((item) => item.state === "stopped").length : null;
-    bars.forEach((bar) => {
-      bar.range.value = String(Math.round(t * 100));
-      bar.button.textContent = playing ? "❚❚ 一時停止" : t >= 3 ? "↺ 時間経過で再生" : "▶ 時間経過で再生";
-      bar.count.replaceChildren();
-      if (stopped !== null) {
-        const number = document.createElement("strong");
-        number.textContent = String(stopped);
-        bar.count.append("止まる設備 ", number);
+  // 段ごとの札：名前と、その段の暮らしの一言（止まる数はサーバーの scenario のまま）。
+  function phaseSummary(index) {
+    const measure = App.measure;
+    const first = scenarioAt(1, measure);
+    const top = scenarioAt(3, measure);
+    const count = (scenario) => scenario.services.filter((service) => service.state === "stopped").length;
+    if (index === 0) return count(first) ? `止まる ${count(first)}／${first.services.length}` : "まだ使える";
+    if (index === 1) return `止まる ${count(top)}／${top.services.length}`;
+    if (index === 2) return "外は乾いても、地下に水";
+    if (index === 3) return `止まったまま ${count(top)}／${top.services.length}`;
+    return "部品が届くまで";
+  }
+
+  // 今の段の暮らしの欄：止まるもの（大きく）、その段の目安（サーバーの五段の表の、その列の文）、人がすること（畳み）。
+  function renderLife(bar, now) {
+    const scenario = scenarioAt(now.level, App.measure);
+    const top = scenarioAt(3, App.measure);
+    const head = document.createElement("p");
+    head.className = "story-head";
+    const name = document.createElement("b");
+    name.textContent = PHASES[now.idx].name;
+    head.append(name, `　${PHASE_LINES[PHASES[now.idx].key]}`);
+    const tiles = document.createElement("ul");
+    tiles.className = "story-tiles";
+    scenario.services.forEach((service) => {
+      const item = document.createElement("li");
+      item.className = `story-tile is-${service.state}`;
+      const label = document.createElement("b");
+      label.textContent = lifeName(service.label);
+      const state = document.createElement("span");
+      state.textContent = now.idx >= 4 && service.state === "stopped" ? "部品が届くまで止まる" : now.idx >= 2 && service.state === "stopped" ? "止まったまま" : STATE_TEXT[service.state] || service.state;
+      item.append(label, state);
+      tiles.append(item);
+    });
+    const notes = document.createElement("ul");
+    notes.className = "story-notes";
+    const people = [];
+    (top.table || []).forEach((row) => {
+      const cell = row.cells[now.idx];
+      if (!cell || cell === "—") return;
+      if (row.label === "人がすること") {
+        people.push(cell);
+        return;
       }
-      // 達した段は濃く、水が上がっていく先の段は枠だけにする（水の位置のボタンと同じ段を濃くする）。
-      const key = `${state.level}:${state.k}:${stageName(3)}`;
+      if (now.idx === 0) return;
+      const line = document.createElement("li");
+      const label = document.createElement("b");
+      label.textContent = `${row.label}：`;
+      line.append(label, cell);
+      notes.append(line);
+    });
+    const parts = [head, tiles];
+    if (notes.childElementCount) parts.push(notes);
+    if (people.length) {
+      const more = document.createElement("details");
+      more.className = "fold story-people";
+      const summary = document.createElement("summary");
+      summary.textContent = "このとき人がすること";
+      const text = document.createElement("p");
+      text.textContent = people.join("");
+      more.append(summary, text);
+      if (now.idx === 0) more.open = true;
+      parts.push(more);
+    }
+    bar.life.replaceChildren(...parts);
+  }
+
+  function renderBars() {
+    const now = storyAt(story);
+    bars.forEach((bar) => {
+      bar.range.value = String(Math.round(story * 100));
+      bar.button.textContent = playing ? "❚❚ 一時停止" : story >= STORY_MAX - 0.01 ? "↺ 最初から見る" : "▶ 時間の順に見る";
+      bar.count.textContent = "";
+      if (!ready()) return;
+      const key = `${now.idx}:${App.measure}:${now.level}`;
       if (bar.strip.dataset.key !== key) {
         bar.strip.dataset.key = key;
         bar.strip.replaceChildren(
-          ...[1, 2, 3].map((level) => {
-            // 段の札は、水の位置のボタンも兼ねる（①②③のボタンと再生のバーを一つにまとめた。2026-11-04）。
-            const item = document.createElement("button");
-            item.type = "button";
-            const next = level === state.k && state.k !== state.level;
-            item.className = `timeline-stage${level === state.level ? " is-current" : ""}${next ? " is-next" : ""}`;
-            item.textContent = `${"①②③"[level - 1]} ${stageName(level)}`;
-            item.title = `水の位置を${item.textContent}にする`;
-            item.setAttribute("aria-pressed", String(level === state.level));
-            item.addEventListener("click", () => {
+          ...PHASES.map((item, index) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `timeline-stage story-stage${index === now.idx ? " is-current" : ""}${index < now.idx ? " is-past" : ""}`;
+            const name = document.createElement("span");
+            name.className = "stage-name";
+            name.textContent = item.name;
+            const result = document.createElement("span");
+            const summary = phaseSummary(index);
+            result.className = `stage-result${/止ま|地下に水|部品/.test(summary) ? " has-stop" : ""}`;
+            result.textContent = summary;
+            button.append(name, result);
+            button.title = `${item.name}の様子を見る`;
+            button.setAttribute("aria-pressed", String(index === now.idx));
+            button.addEventListener("click", () => {
               pause();
-              setTime(level);
+              setStory(index === 1 ? 1.99 : index + 0.99);
             });
-            return item;
+            return button;
           }),
         );
+        renderLife(bar, now);
       }
     });
-    const planBar = bars[1];
-    if (planBar) planBar.box.hidden = shownKind !== "section";
   }
 
   // ---- 断面図の重ね絵 ----
@@ -263,7 +378,9 @@ const SectionAnim = (() => {
     if (!overlay || !anchors || !ready()) return;
     overlay.root.style.display = shownKind === "section" ? "" : "none";
     if (shownKind !== "section") return;
-    const flow = state.flow;
+    // 外の水（道路・蓋の中・入り道の矢印）と中の水（部屋）を分けて描く。翌朝は外が引いても中に残る。
+    const flow = state.out ?? state.flow;
+    const inFlow = state.inn ?? state.flow;
     const scenario = App.scenario();
     const wet = new Set(scenario.wet);
     const stopped = new Set(scenario.stopped);
@@ -288,7 +405,7 @@ const SectionAnim = (() => {
     }
     // 建物の中：一番低い床の続きの部屋は、対策にかかわらず水が入る（スロープ・扉から）。
     // 盤・受電の箱の部屋は scenario で浸かるときだけ。借室の中は描かない（3D と同じ）。
-    const surface = insideY(flow);
+    const surface = insideY(inFlow);
     overlay.rooms.forEach(({ room, node, seal }) => {
       const flooded = room.role === "floor" || (room.role === "power" && !powerDry);
       const top = surface === null || !flooded ? anchors.floor_y : surface;
@@ -310,11 +427,11 @@ const SectionAnim = (() => {
       group.style.display = raising ? "" : "none";
       box.classList.toggle("is-stopped", stopped.has("panel"));
       box.classList.toggle("is-wet", wet.has("panel"));
-      dry.style.display = raising && flow > 1 && !wet.has("panel") && (surface === null || surface > bottom) ? "" : "none";
+      dry.style.display = raising && inFlow > 1 && !wet.has("panel") && (surface === null || surface > bottom) ? "" : "none";
     }
     // 壁の穴を塞いで乾いたままの部屋に「守られる」。建物に水が来てから出す。
     overlay.rooms.forEach(({ room, badge }) => {
-      if (badge) badge.style.display = room.role === "power" && powerDry && flow >= 1 ? "" : "none";
+      if (badge) badge.style.display = room.role === "power" && powerDry && Math.max(flow, inFlow) >= 1 ? "" : "none";
     });
     // 入り道の矢印。塞いだ壁の穴は、穴の手前で止めて × を出す。スロープと扉からの道は、対策にかかわらず流す。
     overlay.routes.forEach(({ route, node, block }) => {
@@ -351,6 +468,8 @@ const SectionAnim = (() => {
       anchors = loaded;
       buildOverlay();
       render();
+      // 図面のビューアーが、断面図を図のある範囲（anchors.focus）に寄せられるように知らせる。
+      window.dispatchEvent(new CustomEvent("section-anchors", { detail: anchors }));
     } catch (error) {
       anchors = null;
       if (overlay) overlay.root.remove();
@@ -361,19 +480,21 @@ const SectionAnim = (() => {
   // ---- 時間の軸 ----
 
   function render() {
-    const state = phase(t);
-    renderBars(state);
-    if (ready() && window.Model3D && !window.Model3D.failed && window.Model3D.setFlow) window.Model3D.setFlow(state.flow);
-    drawOverlay(state);
+    const now = storyAt(story);
+    t = now.t;
+    renderBars();
+    if (ready() && window.Model3D && !window.Model3D.failed && window.Model3D.setFlow) window.Model3D.setFlow(now.out, now.inn);
+    drawOverlay(now);
   }
 
-  function setTime(value) {
-    t = Math.min(3, Math.max(0, value));
-    const state = phase(t);
-    if (ready() && App.water !== state.level) {
+  // 物語の時間を動かす。①②③の水の位置（App.setWater）は、その段の scenario を選ぶためだけに合わせる。
+  function setStory(value) {
+    story = Math.min(STORY_MAX, Math.max(0, value));
+    const now = storyAt(story);
+    if (ready() && App.water !== now.level) {
       syncing = true;
       try {
-        App.setWater(state.level);
+        App.setWater(now.level);
       } finally {
         syncing = false;
       }
@@ -381,9 +502,15 @@ const SectionAnim = (() => {
     render();
   }
 
+  // 前の版の呼び方（①②③の水の位置）も残す：①→大雨が近づいたとき、②③→当日のその水位。
+  function setTime(value) {
+    const level = Math.min(3, Math.max(0, value));
+    setStory(level <= 1 ? 0.99 : 1 + ((level - 1) / 2) * 0.85);
+  }
+
   function play() {
     if (!ready()) return;
-    if (t >= 3) setTime(0);
+    if (story >= STORY_MAX - 0.01) setStory(0);
     playing = true;
     last = performance.now();
     const step = (now) => {
@@ -391,8 +518,9 @@ const SectionAnim = (() => {
       // 画面が裏に回って止まっていたときに一気に進まないよう、1回に進める量を抑える。
       const seconds = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
-      setTime(t + (seconds * 3) / PLAY_SECONDS);
-      if (t >= 3) {
+      setStory(story + (seconds * STORY_MAX) / PLAY_SECONDS);
+      if (story >= STORY_MAX - 0.01) {
+        setStory(STORY_MAX - 0.01);
         pause();
         return;
       }
@@ -409,14 +537,17 @@ const SectionAnim = (() => {
     render();
   }
 
-  // 水の位置のボタン（pills）や答えの組み直しで App.water が変わったら、時間の軸をその段に合わせる。
+  // チャットや答えの組み直しで App.water が変わったら、物語の時間をその水位の当日に合わせる。
   function followApp() {
     if (syncing || !ready()) return;
-    if (phase(t).level !== App.water) {
+    if (storyAt(story).level !== App.water) {
       playing = false;
       cancelAnimationFrame(frame);
-      t = App.water;
+      setTime(App.water);
+      return;
     }
+    // 対策を替えたときなど：段の札と暮らしの欄を作り直す。
+    bars.forEach((bar) => delete bar.strip.dataset.key);
     render();
   }
 
@@ -428,10 +559,10 @@ const SectionAnim = (() => {
   }
 
   function init() {
-    const caption = document.getElementById("control-caption");
-    if (caption) makeBar((box) => caption.after(box), false);
-    const tabs = document.getElementById("plan-tabs");
-    if (tabs) makeBar((box) => tabs.after(box), true);
+    // ②は一枚のカードにまとめたので、再生のバーも一本だけ（断面図・3D・平面図のどれを見ていても同じ時間の軸）。
+    // 図の窓のすぐ下に置き、図を見ながら①②③を押せるようにする。
+    const viewer = document.getElementById("sim-viewer") || document.getElementById("control-caption");
+    if (viewer) makeBar((box) => viewer.after(box), true);
     if (typeof App.applyScenario === "function") {
       const original = App.applyScenario;
       App.applyScenario = function applyScenarioWithTimeline(...args) {

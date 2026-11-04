@@ -114,7 +114,7 @@ class TimelineScriptTest(unittest.TestCase):
         self.assertIn("App.building.scenarios[`${level}:${measure}`]", self.section)
         self.assertIn("scenario.wet", self.section)
         self.assertIn("scenario.stopped", self.section)
-        self.assertIn("App.setWater(state.level)", self.section)
+        self.assertIn("App.setWater(now.level)", self.section)
         # 対策の名前で守られるかを決めていない（壁の穴は scenario の wet の hv で決める）。
         self.assertNotIn('measure === "hole"', self.section)
         target = block(read("model3d.js"), "function waterTarget(", "function setColor(")

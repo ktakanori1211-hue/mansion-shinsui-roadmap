@@ -23,7 +23,7 @@ const PlanPanel = (() => {
   let pins = [];
   let fromReading = false;
   let shownPlan = "";
-  let shownKind = "plan";
+  let shownKind = "section";
   const tabs = document.getElementById("plan-tabs");
   const direction = document.getElementById("plan-direction");
   const absentBox = document.getElementById("plan-absent");
@@ -60,29 +60,169 @@ const PlanPanel = (() => {
   let readKinds = new Set();
   let absentOpen = false;
 
-  // 図を押すと、画面いっぱいに大きく出す。ピンを押したときは開かない。
-  image.addEventListener("click", () => {
-    const overlay = element("div", undefined, "drawing-zoom");
-    const big = document.createElement("img");
-    big.src = image.src;
-    big.alt = "図面を大きく表示";
-    const close = element("button", "閉じる（Esc）", "drawing-zoom-close");
-    close.type = "button";
-    const shut = () => {
-      overlay.remove();
-      document.removeEventListener("keydown", onKey);
+  // ---- 図面のビューアー（2026-11-04 作り直し）----
+  // どの図（見本の平面図・断面図・系統図、入れた PDF や画像）も、同じ窓で拡大・移動・全画面で見られる。
+  // 図（plan-fit）を窓（plan-stage）に収まる大きさに置き、その上から拡大と移動を CSS の transform で足す。
+  // ピンと断面図の重ね絵は plan-fit の中にあるので、図と一緒に動く。ピンの大きさは拡大しても変えない（--zoom で打ち消す）。
+  const viewer = document.getElementById("sim-viewer");
+  const modelView = document.getElementById("model-view");
+  const view = { s: 1, x: 0, y: 0 };
+  let base = { w: 0, h: 0, left: 0, top: 0 };
+  let ratio = 1.41;
+  const ZOOM_MAX = 8;
+
+  // 窓の高さを図の縦横比に合わせ、横長の断面図で上下が大きく空かないようにする（3D と全画面のときは CSS のまま）。
+  function fitViewerHeight() {
+    if (!modelView.hidden || viewer.classList.contains("is-full")) {
+      viewer.style.height = "";
+      return;
+    }
+    const wanted = viewer.clientWidth / ratio;
+    viewer.style.height = `${Math.round(Math.max(360, Math.min(wanted, window.innerHeight * 0.78)))}px`;
+  }
+
+  function layoutFit() {
+    fitViewerHeight();
+    const W = stage.clientWidth;
+    const H = stage.clientHeight;
+    if (!W || !H) return;
+    let w = W;
+    let h = W / ratio;
+    if (h > H) {
+      h = H;
+      w = H * ratio;
+    }
+    base = { w, h, left: (W - w) / 2, top: (H - h) / 2 };
+    fit.style.width = `${w}px`;
+    fit.style.height = `${h}px`;
+    clampView();
+    applyView();
+  }
+
+  function clampView() {
+    if (view.s <= 1) {
+      view.s = 1;
+      view.x = 0;
+      view.y = 0;
+      return;
+    }
+    // 図が窓より大きい向きは、端が窓の内側に入らない範囲で動かす。小さい向きは真ん中に置く。
+    const fitAxis = (size, scaled, offset, moved) => {
+      const total = offset + moved;
+      const clamped = scaled > size ? Math.min(0, Math.max(size - scaled, total)) : (size - scaled) / 2;
+      return clamped - offset;
     };
-    const onKey = (event) => {
-      if (event.key === "Escape") shut();
-    };
-    close.addEventListener("click", shut);
-    overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) shut();
-    });
-    document.addEventListener("keydown", onKey);
-    overlay.append(big, close);
-    document.body.append(overlay);
-    close.focus();
+    view.x = fitAxis(stage.clientWidth, base.w * view.s, base.left, view.x);
+    view.y = fitAxis(stage.clientHeight, base.h * view.s, base.top, view.y);
+  }
+
+  function applyView() {
+    fit.style.transform = `translate(${base.left + view.x}px, ${base.top + view.y}px) scale(${view.s})`;
+    fit.style.setProperty("--zoom", view.s);
+    stage.classList.toggle("is-zoomed", view.s > 1);
+  }
+
+  // 窓の中の点（cx, cy）を中心に拡大・縮小する。
+  function zoomAt(factor, cx, cy) {
+    const next = Math.min(ZOOM_MAX, Math.max(1, view.s * factor));
+    const px = (cx - base.left - view.x) / view.s;
+    const py = (cy - base.top - view.y) / view.s;
+    view.x = cx - base.left - px * next;
+    view.y = cy - base.top - py * next;
+    view.s = next;
+    clampView();
+    applyView();
+  }
+
+  function resetView() {
+    view.s = 1;
+    view.x = 0;
+    view.y = 0;
+    layoutFit();
+  }
+
+  stage.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      zoomAt(event.deltaY < 0 ? 1.15 : 1 / 1.15, event.clientX - rect.left, event.clientY - rect.top);
+    },
+    { passive: false },
+  );
+
+  // ドラッグで移動、2本指で拡大。ピンを押したときは動かさない（ピンは自分で動かせる）。
+  const pointers = new Map();
+  let pinch = null;
+  stage.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".plan-pin")) return;
+    stage.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
+    }
+  });
+  stage.addEventListener("pointermove", (event) => {
+    const last = pointers.get(event.pointerId);
+    if (!last) return;
+    const now = { x: event.clientX, y: event.clientY };
+    pointers.set(event.pointerId, now);
+    if (pointers.size === 2 && pinch) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const rect = stage.getBoundingClientRect();
+      if (pinch.d) zoomAt(d / pinch.d, (a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top);
+      pinch.d = d;
+      return;
+    }
+    if (view.s > 1) {
+      view.x += now.x - last.x;
+      view.y += now.y - last.y;
+      clampView();
+      applyView();
+    }
+  });
+  const release = (event) => {
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) pinch = null;
+  };
+  stage.addEventListener("pointerup", release);
+  stage.addEventListener("pointercancel", release);
+  stage.addEventListener("dblclick", (event) => {
+    const rect = stage.getBoundingClientRect();
+    zoomAt(view.s >= ZOOM_MAX ? 0 : 2, event.clientX - rect.left, event.clientY - rect.top);
+  });
+
+  document.getElementById("viewer-tools").addEventListener("click", (event) => {
+    const action = event.target.closest("button")?.dataset.zoom;
+    if (!action) return;
+    if (action === "full") {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else viewer.requestFullscreen?.();
+      return;
+    }
+    if (action === "fit") return resetView();
+    zoomAt(action === "in" ? 1.4 : 1 / 1.4, stage.clientWidth / 2, stage.clientHeight / 2);
+  });
+  document.addEventListener("fullscreenchange", () => {
+    const full = document.fullscreenElement === viewer;
+    viewer.classList.toggle("is-full", full);
+    const button = viewer.querySelector('[data-zoom="full"]');
+    if (button) button.textContent = full ? "全画面を閉じる" : "全画面";
+    requestAnimationFrame(resetView);
+  });
+  new ResizeObserver(() => layoutFit()).observe(stage);
+
+  // 断面図は、用紙の余白・凡例・表題欄を外して、図のある範囲（断面図の基準の座標の focus）に寄せる。
+  let sectionFocus = null;
+  window.addEventListener("section-anchors", (event) => {
+    const { focus, width, height } = event.detail || {};
+    sectionFocus = focus && width && height ? [focus[0] / width, focus[1] / height, focus[2] / width, focus[3] / height] : null;
+    if (shownKind === "section" && sectionFocus) {
+      crop = sectionFocus;
+      applyFit();
+    }
   });
 
   // 図面の縦横比で、平面図のカードに収まる大きさを決める。
@@ -90,25 +230,30 @@ const PlanPanel = (() => {
   let crop = null;
   function applyFit() {
     if (!image.naturalHeight) return;
-    const ratio = image.naturalWidth / image.naturalHeight;
+    const natural = image.naturalWidth / image.naturalHeight;
     fit.classList.toggle("plan-cropped", Boolean(crop));
     if (!crop) {
-      fit.style.setProperty("--plan-ratio", ratio);
-      return;
+      ratio = natural;
+    } else {
+      const [x0, y0, x1, y1] = crop;
+      fit.style.setProperty("--crop-x", x0);
+      fit.style.setProperty("--crop-y", y0);
+      fit.style.setProperty("--crop-w", x1 - x0);
+      fit.style.setProperty("--crop-h", y1 - y0);
+      ratio = (natural * (x1 - x0)) / (y1 - y0);
     }
-    const [x0, y0, x1, y1] = crop;
-    fit.style.setProperty("--crop-x", x0);
-    fit.style.setProperty("--crop-y", y0);
-    fit.style.setProperty("--crop-w", x1 - x0);
-    fit.style.setProperty("--crop-h", y1 - y0);
-    fit.style.setProperty("--plan-ratio", (ratio * (x1 - x0)) / (y1 - y0));
+    fit.style.setProperty("--plan-ratio", ratio);
+    resetView();
   }
   image.addEventListener("load", applyFit);
+
+  // 見本の図は、拡大しても字がにじまないよう SVG で出す（PNG は印刷と読み取りに使う）。
+  const crisp = (path) => (path ? path.replace(/\.png$/, ".svg") : path);
 
   // 読み取りを待たずに、見本の図面とピンを出す。API は呼ばない。
   function showSamplePlan(sample) {
     fromReading = false;
-    image.src = sample.plan.png;
+    image.src = crisp(sample.plan.png);
     stage.hidden = false;
     pins = sample.pins.map((pin) => ({ ...pin }));
     renderPins();
@@ -226,7 +371,8 @@ const PlanPanel = (() => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
     const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 1.6 });
+    // 拡大しても読めるよう、高めの解像度で描く（読み取りの文字の位置は scale 1 の基準で返すので変わらない）。
+    const viewport = page.getViewport({ scale: 3 });
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -275,6 +421,12 @@ const PlanPanel = (() => {
         shown = URL.createObjectURL(new Blob([buffer], { type: mediaType }));
       }
       shownPlan = shown;
+      // 入れた図面は平面図のタブで、寄せずに全体を出す（拡大・移動はビューアーで）。
+      crop = null;
+      shownKind = "plan";
+      modelView.hidden = true;
+      viewer.classList.remove("is-model");
+      tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.drawing === "plan"));
       image.src = shown;
       pinsLayer.hidden = false;
       stage.hidden = false;
@@ -303,9 +455,23 @@ const PlanPanel = (() => {
 
   // 平面図、水の入り道の断面図、電気と給水の系統図を切り替える。ピンは平面図にだけ立てる。
   function showDrawing(sample, kind) {
+    // 3D は同じ窓で切り替える。図面のビューアーの拡大ボタンは隠し、全画面だけ残す（3D は自分のホイールで拡大する）。
+    const model = kind === "model";
+    modelView.hidden = !model;
+    stage.hidden = model;
+    viewer.classList.toggle("is-model", model);
+    if (model) viewer.style.height = "";
+    if (model) {
+      pinCard.hidden = true;
+      shownKind = kind;
+      tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.drawing === kind));
+      window.dispatchEvent(new Event("resize"));
+      if (typeof SectionAnim !== "undefined") SectionAnim.showDrawing(kind, sample);
+      return;
+    }
     const plan = kind === "plan";
-    crop = plan && !shownPlan && sample.plan_focus ? sample.plan_focus : null;
-    image.src = plan ? shownPlan || sample.plan.png : sample.plan[`${kind}_png`];
+    crop = plan && !shownPlan && sample.plan_focus ? sample.plan_focus : kind === "section" ? sectionFocus : null;
+    image.src = plan ? shownPlan || crisp(sample.plan.png) : crisp(sample.plan[`${kind}_png`]);
     applyFit();
     pinsLayer.hidden = !plan;
     if (!plan) pinCard.hidden = true;
@@ -331,8 +497,9 @@ const PlanPanel = (() => {
     const full = element("a", "PDFで拡大", "plan-open");
     full.target = "_blank";
     full.rel = "noopener";
-    tabs.replaceChildren(named("平面図", "plan"), named("断面図（水の入り道）", "section"), named("系統図（電気と給水）", "system"), full, cad);
-    showDrawing(sample, "plan");
+    // 主役は断面図（水が入る順番が一枚で見える）。3D・平面図・系統図は同じ窓で切り替える。
+    tabs.replaceChildren(named("断面で見る（水の入り道）", "section"), named("3Dで見る", "model"), named("平面図", "plan"), named("系統図（電気と給水）", "system"), full, cad);
+    showDrawing(sample, shownKind || "section");
   }
 
   function offerSample() {

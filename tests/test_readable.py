@@ -64,9 +64,9 @@ class ModelLabelTest(unittest.TestCase):
         html = read("index.html")
         self.assertRegex(html, r'<div class="control-group" role="radiogroup" aria-label="水の位置" hidden>')
         section = read("section-anim.js")
-        strip = block(section, "bar.strip.replaceChildren(", "    const planBar")
+        strip = block(section, "bar.strip.replaceChildren(", "renderLife(bar, now);")
         self.assertIn('document.createElement("button")', strip)
-        self.assertIn("setTime(level)", strip)
+        self.assertIn("setStory(", strip)
 
 
 class StopChipTest(unittest.TestCase):
@@ -237,3 +237,122 @@ class LowIssuesTest(unittest.TestCase):
     def test_detail_labels_in_3d_are_one_line(self):
         model = read("model3d.js")
         self.assertIn('node.title = rest.join(" ")', model)
+
+
+class SimulationCardTest(unittest.TestCase):
+    """②の作り直し（2026-11-04）：断面図を主役にした一枚のカード、図面のビューアー、水位の物語、3D の色。"""
+
+    def test_one_card_with_section_first(self):
+        html = read("index.html")
+        card = block(html, '<section class="card sim-card" id="plan-card"', "</section>")
+        for part in ('id="sim-viewer"', 'id="plan-stage"', 'id="model-view"', 'data-zoom="in"', 'data-zoom="full"', 'id="measure-controls"'):
+            self.assertIn(part, card)
+        self.assertNotIn('class="stage2-grid"', html)
+        plan = read("plan.js")
+        self.assertIn('named("断面で見る（水の入り道）", "section"), named("3Dで見る", "model")', plan)
+        self.assertIn('let shownKind = "section";', plan)
+
+    def test_viewer_zooms_pans_and_goes_fullscreen(self):
+        plan = read("plan.js")
+        for part in ("function zoomAt", "function clampView", '"wheel"', "pointermove", "requestFullscreen", "fullscreenchange", "ZOOM_MAX = 8"):
+            self.assertIn(part, plan)
+        # 見本の図は SVG で出して、拡大しても字がにじまないようにする。
+        self.assertIn('path.replace(/\\.png$/, ".svg")', plan)
+        self.assertIn("scale: 3", plan)
+        self.assertIn("scale(calc(1 / var(--zoom, 1)))", read("ui-more.css"))
+
+    def test_section_is_cropped_to_its_drawing(self):
+        for sid in ("a", "b", "c"):
+            anchors = draw_plans.section_anchors(samples.SAMPLES[sid])
+            x0, y0, x1, y1 = anchors["focus"]
+            self.assertTrue(0 <= x0 < x1 <= anchors["width"] and 0 <= y0 < y1 <= anchors["height"], sid)
+            for room in anchors["rooms"]:
+                self.assertTrue(x0 <= room["x0"] and room["x1"] <= x1, (sid, room["name"]))
+        self.assertIn('new CustomEvent("section-anchors"', read("section-anim.js"))
+
+    def test_one_story_bar_with_outcomes(self):
+        section = read("section-anim.js")
+        init = block(section, "function init()", "init();")
+        self.assertEqual(init.count("makeBar("), 1)
+        # 水位の①②③ではなく、住民が過ごす時間の順（サーバーの五段の表の列と同じ名前）で見せる。
+        for name in ("大雨が近づいたとき", "水が来た当日", "水が引いた翌朝", "数日〜1週間", "約2か月〜本復旧"):
+            self.assertIn(f'name: "{name}"', section)
+            self.assertIn(name, read("panels.js"))
+        self.assertIn("外は乾いても、地下に水", section)
+        self.assertIn("{ idx, out: 0, inn: 3, t: 3, level: 3 }", section)
+        self.assertIn('row.label === "人がすること"', section)
+        self.assertIn("setFlow(flow, inside)", read("model3d.js"))
+
+    def test_3d_rooms_follow_drawing_colors(self):
+        model = read("model3d.js")
+        self.assertIn("power: 0xf2b97a", model)
+        self.assertIn("waterRoom: 0x8fc2ea", model)
+        self.assertIn("const levels = Math.min(sample.floors - 1, 3);", model)
+
+
+class StageThreeNextStepsTest(unittest.TestCase):
+    """③の作り直し（2026-11-04）：このあと、あなたがすること、紙は縮めて並べる、印刷で白紙を出さない。"""
+
+    def test_next_steps_lead_the_page(self):
+        html = read("index.html")
+        stage = block(html, '<section class="stage" data-stage="3"', '<section class="stage" data-stage="materials"')
+        self.assertLess(stage.index('id="next-steps"'), stage.index('id="cost-tiers"'))
+        for word in ('data-step="board"', 'data-step="memo"', 'data-step="answers"', "理事会で、表裏1枚を配る", "管理会社に、依頼メモを渡す", "返ってきた答えを、②の質問に入れる"):
+            self.assertIn(word, stage)
+        # 紙の置き場は .card にしない（印刷で .card を隠す決まりがあるため）。
+        self.assertIn('<div class="sheet-area" id="sheet-area">', stage)
+        self.assertIn('<details class="card other-docs" id="exits-card">', stage)
+
+    def test_sheets_start_small_and_print_without_blank_pages(self):
+        css = read("ui-more.css")
+        self.assertIn(".sheets:not(.is-large) .sheet { zoom: .62; }", css)
+        self.assertIn('.sheets[data-show="board"] #sheet-back,', css)
+        self.assertIn('sheets.classList.toggle("is-large")', read("app.js"))
+
+
+class GlanceTest(unittest.TestCase):
+    """②の一番上「うちのマンションで起きること」（2026-11-04）：電気を知らない人に一目で伝える。"""
+
+    def setUp(self):
+        self.js = read("glance.js")
+
+    def test_placed_first_and_loaded(self):
+        html = read("index.html")
+        self.assertLess(html.index('id="glance"'), html.index('id="top-banner"'))
+        self.assertLess(html.index('src="app.js"'), html.index('src="glance.js"'))
+        self.assertIn("window.Glance?.render();", read("app.js"))
+
+    def test_no_electrical_jargon_in_the_words_people_read(self):
+        visible = "".join(re.findall(r'"[^"\n]*"|`[^`\n]*`', self.js))
+        for word in ("受電", "借室", "キュービクル", "盤", "高圧", "変圧器", "主任技術者"):
+            self.assertNotIn(word, visible, word)
+        for word in ("電気の機械", "水を送るポンプ", "あなたの暮らしでは", "住んでいる階"):
+            self.assertIn(word, self.js)
+
+    def test_states_and_days_come_from_the_server(self):
+        self.assertIn("App.building?.scenarios?.[`3:${App.measure}`]", self.js)
+        self.assertIn("/ほかの建物の例/", self.js)
+        # 新しい日数を書かない（住んでいる階は本人の数をそのまま使う）。
+        days = re.findall(r"\d+\s*(日|か月|年)", "".join(re.findall(r'"[^"\n]*"', self.js)))
+        self.assertEqual(days, [])
+
+
+class BoardOneSheetTest(unittest.TestCase):
+    """②は「理事会で、最初に見る1枚」だけを見せ、ほかは「くわしく見る」に畳む（2026-11-04）。"""
+
+    def test_three_places_to_look_and_the_rest_folded(self):
+        js = read("glance.js")
+        for part in ("理事会で、最初に見る1枚", "あなたの暮らしでは", "次の理事会で決めること", "管理会社に、3つの確認を頼む", "管理会社への依頼メモを印刷"):
+            self.assertIn(part, js)
+        html = read("index.html")
+        more = block(html, '<details class="stage2-more" id="stage2-more" hidden>', '<div class="stage-next">')
+        for part in ('id="top-banner"', 'id="plan-card"', 'id="step-building"', 'id="step-result"', 'id="model-lower"'):
+            self.assertIn(part, more)
+        self.assertNotIn('id="glance"', more)
+
+    def test_board_asks_are_in_plain_words(self):
+        js = read("glance.js")
+        asks = block(js, "const PLAIN_ASK = {", "};")
+        for word in ("盤", "受電", "借室", "主任技術者"):
+            self.assertNotIn(word, asks)
+        self.assertIn("PLAIN_ASK[item.key] || item.what", js)

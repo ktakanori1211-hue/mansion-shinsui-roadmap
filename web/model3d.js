@@ -7,13 +7,16 @@ const WIDTH = 20;
 const DEPTH = 16;
 const FLOOR_H = 3.2;
 const BASE_Y = -3.4;
+// 部屋の色は平面図・断面図の塗り分けとそろえる（電気＝橙、水＝青、借室＝紫、そのほか＝灰。2026-11-04）。
 const COLORS = {
   room: 0xdfe3e8,
   key: 0xbcd0e5,
-  tr: 0xc9c2d6,
+  power: 0xf2b97a,
+  waterRoom: 0x8fc2ea,
+  tr: 0xb8a6dc,
   trUnknown: 0xa89bc4,
-  stopped: 0xe8853a,
-  water: 0x3f87c7,
+  stopped: 0xd9412b,
+  water: 0x2f7fd0,
   ground: 0xcfd3cc,
   road: 0x9a9da3,
   ghost: 0xb9c3cf,
@@ -165,7 +168,7 @@ function placeRoom(room, baseY, height) {
 }
 
 function addWater(key, place) {
-  const mesh = box(Math.max(place.w - 0.2, 0.2), 1, Math.max(place.d - 0.2, 0.2), COLORS.water, 0.55);
+  const mesh = box(Math.max(place.w - 0.2, 0.2), 1, Math.max(place.d - 0.2, 0.2), COLORS.water, 0.62);
   mesh.position.set(place.center.x, place.center.y - place.h / 2, place.center.z);
   mesh.scale.y = 0.001;
   group.add(mesh);
@@ -174,7 +177,9 @@ function addWater(key, place) {
 
 function roomKindColor(key) {
   if (key === "tr") return COLORS.tr;
-  return ["elec", "pump", "panel_room", "tank", "gen"].includes(key) ? COLORS.key : COLORS.room;
+  if (["elec", "panel_room", "gen"].includes(key)) return COLORS.power;
+  if (["pump", "tank"].includes(key)) return COLORS.waterRoom;
+  return COLORS.room;
 }
 
 function buildRooms(sample) {
@@ -190,11 +195,13 @@ function buildRooms(sample) {
       const place = placeRoom(room, baseY, height);
       const closed = room.key === "tr";
       const main = MAIN_ROOMS.includes(room.key);
-      const opacity = closed ? 0.9 : isGround && sample.archetype !== "ground" ? 0.12 : 0.28;
+      // 主な部屋（電気・水・借室）は色を濃く、そのほかの部屋と、地下のある建物の1階は薄くして、見る所をはっきりさせる。
+      const ghostFloor = isGround && sample.archetype !== "ground";
+      const opacity = closed ? 0.9 : main ? 0.62 : ghostFloor ? 0.06 : 0.16;
       const mesh = box(place.w - 0.1, place.h, place.d - 0.1, roomKindColor(room.key), opacity);
       mesh.position.copy(place.center);
-      // 主な部屋は、図面で確かめるまで破線の箱にする。
-      edges(mesh, 0x444444, main && !sample.confirmedRooms.includes(room.key));
+      // 主な部屋は、図面で確かめるまで破線の箱にする。そのほかの部屋の線は薄くする。
+      edges(mesh, main || closed ? 0x444444 : ghostFloor ? 0xd3d8de : 0xa7afb8, main && !sample.confirmedRooms.includes(room.key));
       group.add(mesh);
       meshes[room.key] = mesh;
       focusPoints[room.key] = { look: place.center.clone(), from: place.center.clone().add(new THREE.Vector3(7, 5, 14)) };
@@ -283,9 +290,22 @@ function buildElevator(sample) {
 }
 
 function buildOutside(sample) {
-  const ground = box(WIDTH + 14, 0.1, DEPTH + 12, COLORS.ground, 0.1);
+  const ground = box(WIDTH + 14, 0.1, DEPTH + 12, COLORS.ground, 0.14);
   ground.position.set(0, -0.05, 1);
   group.add(ground);
+  // 地下のある建物は、奥と左に土の断面、下に床を描き、部屋が地面の下にあることを見て分かるようにする（2026-11-04）。
+  if (sample.archetype !== "ground") {
+    const depth = -BASE_Y + 0.6;
+    const soil = 0xc9b48c;
+    const back = box(WIDTH + 1.2, depth, 0.12, soil, 0.7);
+    back.position.set(0, -depth / 2, -DEPTH / 2 - 0.3);
+    const side = box(0.12, depth, DEPTH + 0.6, soil, 0.7);
+    side.position.set(-WIDTH / 2 - 0.6, -depth / 2, 0);
+    const slab = box(WIDTH + 1.2, 0.12, DEPTH + 0.6, 0x9aa0a6, 0.75);
+    slab.position.set(0, BASE_Y - 0.06, 0);
+    group.add(back, side, slab);
+    label("地面の下", new THREE.Vector3(-WIDTH / 2 - 0.6, BASE_Y / 2, DEPTH / 2), "model-label model-label-small");
+  }
   const road = box(WIDTH + 14, 0.08, 4, COLORS.road, 0.35);
   road.position.set(0, 0.02, DEPTH / 2 + 4.8);
   group.add(road);
@@ -344,13 +364,14 @@ function buildOutside(sample) {
 }
 
 function buildUpper(sample) {
-  const levels = Math.min(sample.floors - 1, sample.archetype === "tower" ? 16 : 7);
+  // 上の階は3階分だけ薄く描く（高い建物でも、見たい地下と1階が小さくならないように）。
+  const levels = Math.min(sample.floors - 1, 3);
   const height = levels * FLOOR_H;
   const footprintW = sample.archetype === "tower" ? WIDTH * 0.62 : WIDTH;
   const footprintD = sample.archetype === "tower" ? DEPTH * 0.62 : DEPTH;
-  const mesh = box(footprintW, height, footprintD, COLORS.ghost, 0.05);
+  const mesh = box(footprintW, height, footprintD, COLORS.ghost, 0.04);
   mesh.position.set(0, FLOOR_H + height / 2, 0);
-  edges(mesh, 0x8a94a0);
+  edges(mesh, 0xc5ccd4);
   for (let i = 1; i < levels; i += 1) {
     const slab = box(footprintW, 0.03, footprintD, COLORS.ghost, 0.18);
     slab.position.set(0, FLOOR_H + i * FLOOR_H, 0);
@@ -661,7 +682,8 @@ window.Model3D = {
     buildOutside(sample);
     buildUpper(sample);
     buildPins(sample);
-    focusPoints.overview = { look: new THREE.Vector3(0, sample.archetype === "ground" ? 2 : -0.5, 0), from: new THREE.Vector3(15, sample.archetype === "ground" ? 8 : 6, 24) };
+    // 最初の向きは、地下と1階が大きく見える近さにする。
+    focusPoints.overview = { look: new THREE.Vector3(0, sample.archetype === "ground" ? 1.2 : -1.4, 0), from: new THREE.Vector3(12, sample.archetype === "ground" ? 7 : 5, 19) };
     camera.position.copy(focusPoints.overview.from);
     controls.target.copy(focusPoints.overview.look);
     this.sample = sample;
@@ -710,15 +732,19 @@ window.Model3D = {
   },
   // 時間の再生（web/section-anim.js）から、水の位置を続いた値 flow（0〜3）で渡す。
   // 段の間は前後の段の高さを混ぜるだけで、水の量や速さは計算しない。止まる色は apply の scenario のまま。
-  setFlow(flow) {
+  // 外の水（道路）と中の水（部屋）を別々に動かせる。inside を省くと同じ値（前の版の呼び方）。
+  setFlow(flow, inside) {
     if (!this.sample || flow === null || flow === undefined) return;
     const measure = this.measure || "plate";
-    const low = Math.floor(flow);
-    const high = Math.min(3, Math.ceil(flow));
-    waters.forEach((item) => {
+    const at = (value, item) => {
+      const low = Math.floor(value);
+      const high = Math.min(3, Math.ceil(value));
       const from = waterTarget(item, low, measure, this.sample);
       const to = waterTarget(item, high, measure, this.sample);
-      item.target = from + (to - from) * (flow - low);
+      return from + (to - from) * (value - low);
+    };
+    waters.forEach((item) => {
+      item.target = at(item.key === "road" || inside === undefined ? flow : inside, item);
     });
   },
   // 判定が変わったとき（書類・聞き取り・向き）に、模型を組み直さずに部屋の札の1行目だけ替える。

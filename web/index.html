@@ -124,14 +124,9 @@
     </section>
 
     <section class="stage" data-stage="2" aria-label="第2段階">
-      <div class="top-banner" id="top-banner" hidden>
-        <button type="button" class="primary banner-next" data-go="3">次へ：③A4・費用 ➔</button>
-        <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
-        <p class="top-banner-lead" id="top-banner-lead"></p>
-        <ol class="answer-steps top-banner-steps" id="top-banner-steps"></ol>
-        <p class="top-banner-dir" id="top-banner-dir"></p>
-        <details class="top-banner-more"><summary>根拠と補足</summary><p class="top-banner-notes" id="top-banner-notes"></p></details>
-      </div>
+      <!-- ②の一番上：電気を知らない人にも一目で伝わる「うちのマンションで起きること」（web/glance.js）。 -->
+      <section class="card glance" id="glance" hidden aria-label="うちのマンションで起きること"></section>
+
       <p class="hint stage-empty" id="stage2-empty">①で場所を選ぶと、ここが出ます。</p>
       <section class="card type-chooser" id="type-chooser" hidden aria-label="建物の形を選ぶ">
         <h2>あなたの建物に近い形を選んでください</h2>
@@ -143,34 +138,43 @@
         </div>
       </section>
 
-      <div class="stage2-grid">
-        <section class="card" id="plan-card" aria-label="平面図" hidden>
-          <div class="card-head">
-            <h2>平面図と確かめる場所</h2>
-            <p class="plan-message" id="plan-message"></p>
+      <!-- 理事会が最初に見るのは上の1枚だけ。ほかは「くわしく見る」に畳む（2026-11-04。目をやる所を減らす）。 -->
+      <details class="stage2-more" id="stage2-more" hidden>
+        <summary>くわしく見る（時間の流れ・断面図・3D・建物の質問・何が止まるか）</summary>
+      <div class="top-banner" id="top-banner" hidden>
+        <button type="button" class="primary banner-next" data-go="3">次へ：③A4・費用 ➔</button>
+        <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
+        <p class="top-banner-lead" id="top-banner-lead"></p>
+        <ol class="answer-steps top-banner-steps" id="top-banner-steps"></ol>
+        <p class="top-banner-dir" id="top-banner-dir"></p>
+        <details class="top-banner-more"><summary>根拠と補足</summary><p class="top-banner-notes" id="top-banner-notes"></p></details>
+      </div>
+      <!-- ②の主役は「浸水の進み方」の一枚のカード（2026-11-04 作り直し）。断面図を大きく出し、3D・平面図・系統図は同じ窓で切り替える。
+           どの図も、拡大・移動・全画面で見られる（図面のビューアー）。 -->
+      <section class="card sim-card" id="plan-card" aria-label="浸水の進み方" hidden>
+        <div class="sim-head">
+          <h2>水はこの順に入り、こう止まる</h2>
+          <p class="plan-message" id="plan-message"></p>
+          <p class="model-fixed strong" id="model-fixed-top"></p>
+        </div>
+        <div class="plan-tabs" id="plan-tabs"></div>
+        <div class="sim-viewer" id="sim-viewer">
+          <div class="viewer-tools" id="viewer-tools">
+            <button type="button" data-zoom="in" aria-label="拡大">＋</button>
+            <button type="button" data-zoom="out" aria-label="縮小">－</button>
+            <button type="button" data-zoom="fit">全体</button>
+            <button type="button" data-zoom="full">全画面</button>
+            <span class="viewer-hint">ドラッグで移動・ホイール（または2本指）で拡大</span>
           </div>
-          <div class="plan-tabs" id="plan-tabs"></div>
           <div class="plan-stage" id="plan-stage" hidden>
             <div class="plan-fit" id="plan-fit">
-              <img id="plan-image" alt="平面図">
+              <img id="plan-image" alt="図面" draggable="false">
               <div class="plan-pins" id="plan-pins"></div>
             </div>
           </div>
-          <p class="plan-direction" id="plan-direction" hidden></p>
-          <div class="pin-card" id="pin-card" hidden></div>
-          <details class="fold plan-read">
-            <summary>図面を読み取る・自分の図面を入れる</summary>
-            <div class="plan-actions" id="plan-actions"></div>
-          </details>
-          <div id="plan-rooms"></div>
-          <div id="plan-absent"></div>
-        </section>
-
-        <section class="card" id="model-card" aria-label="3Dの模型" hidden>
-          <div class="card-head">
-            <h2>もしこの位置まで水が来たら</h2>
-            <p class="model-fixed strong" id="model-fixed-top"></p>
-          </div>
+          <div class="model-view" id="model-view" hidden><p class="hint model-fail" id="model-fail" hidden></p></div>
+        </div>
+        <div class="sim-controls" id="model-card">
           <div class="stop-count" id="stop-count" aria-live="polite"></div>
           <p class="scene-context" id="scene-context" hidden></p>
           <div class="model-controls">
@@ -179,12 +183,19 @@
             <div class="control-group" role="radiogroup" aria-label="対策"><span class="control-name">対策を選ぶと、止まる数が変わる</span><div class="pills" id="measure-controls"></div></div>
           </div>
           <p class="control-caption" id="control-caption"></p>
-          <div class="model-view" id="model-view"><p class="hint model-fail" id="model-fail" hidden></p></div>
           <p class="fixed-note strong model-safety" id="model-safety" hidden></p>
           <div class="model-focus-buttons" id="focus-buttons"></div>
           <p class="tr-note" id="tr-note"></p>
-        </section>
-      </div>
+        </div>
+        <p class="plan-direction" id="plan-direction" hidden></p>
+        <div class="pin-card" id="pin-card" hidden></div>
+        <details class="fold plan-read">
+          <summary>図面を読み取る・自分の図面を入れる</summary>
+          <div class="plan-actions" id="plan-actions"></div>
+        </details>
+        <div id="plan-rooms"></div>
+        <div id="plan-absent"></div>
+      </section>
 
       <section class="card" id="step-building" hidden aria-label="建物の質問">
         <h2>建物の質問に答えると、「未確認」が減ります</h2>
@@ -206,10 +217,21 @@
         </details>
       </div>
 
+      </details>
+
       <div class="stage-next"><button type="button" class="primary" data-go="3">次へ：③A4・費用</button></div>
     </section>
 
     <section class="stage" data-stage="3" aria-label="第3段階">
+      <!-- ③は「このあと、あなたがすること」から始める（2026-11-04 作り直し）。当事者が次に動く順に、紙と答えの戻し方を並べる。 -->
+      <section class="card next-steps" id="next-steps" aria-label="このあと、あなたがすること">
+        <h2>このあと、あなたがすること</h2>
+        <ol class="next-list">
+          <li><b>理事会で、表裏1枚を配る</b><span>次の理事会の議題にする</span><button type="button" class="primary" data-step="board">表裏1枚を見る・印刷</button></li>
+          <li><b>管理会社に、依頼メモを渡す</b><span>未確認の所を、図面や点検の記録で確かめてもらう</span><button type="button" data-step="memo">依頼メモを見る</button></li>
+          <li><b>返ってきた答えを、②の質問に入れる</b><span>「未確認」が減り、何日で戻るかの答えに近づく</span><button type="button" data-step="answers">②の質問へ</button></li>
+        </ol>
+      </section>
       <section class="card cost-tiers" id="cost-tiers" hidden aria-label="いくらで、誰が決めるか">
         <h2>いくらで、誰が決めるか</h2>
         <p class="cost-tiers-lead" id="cost-tiers-lead"></p>
@@ -219,39 +241,6 @@
           <button type="button" data-open-cost="consult-card">専門家に調査・見積もりを相談する</button>
         </div>
       </section>
-      <div class="stage3-top">
-      <div class="card" id="exits-card">
-        <h2>出す資料</h2>
-        <div class="button-row exit-tabs" id="exit-tabs">
-          <button type="button" data-exit="a" class="active">渡す紙（A4）</button>
-          <button type="button" data-exit="b">理事会の議題のたたき台</button>
-          <button type="button" data-exit="c">補助と手続きの順番のメモ</button>
-        </div>
-        <div class="print-row">
-          <button type="button" class="primary" id="print-button">この紙を印刷（PDFに保存もできます）</button>
-          <button type="button" class="polish-button" id="polish-button">文を Claude で読みやすく整える</button>
-          <details class="fold"><summary>プリンターがないとき</summary><p>PDFに保存して、コンビニのネットプリントで印刷できます。両面なら長辺とじで。</p></details>
-        </div>
-        <p class="hint" id="polish-note"></p>
-      </div>
-
-      <details class="card" id="share-card">
-        <summary>紙の代わりにリンクで渡す（パスワードと有効期限つき）</summary>
-        <div class="share-form">
-          <label for="share-password">パスワード（8文字以上）</label>
-          <input type="password" id="share-password" autocomplete="new-password">
-          <label for="share-days">有効期限</label>
-          <select id="share-days">
-            <option value="7">1週間</option>
-            <option value="30">1か月</option>
-            <option value="90">3か月</option>
-          </select>
-          <button type="button" class="primary" id="share-button">共有リンクを発行</button>
-        </div>
-        <details class="fold"><summary>条件を開く</summary><p>パスワードを忘れると元に戻せません。ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
-        <div class="share-result" id="share-result" hidden></div>
-      </details>
-      </div>
 
       <details class="card stage3-cost" id="stage3-cost" hidden>
         <summary>費用の桁と補助・専門家への相談</summary>
@@ -268,8 +257,9 @@
         </section>
       </details>
 
-      <div class="card exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
-
+      <!-- 印刷で .card を隠す決まりがあるので、紙の置き場は .card にしない（見た目は ui-more.css でカードと同じにする）。 -->
+      <div class="sheet-area" id="sheet-area">
+        <h2>渡す紙</h2>
       <div class="sheet-tabs" id="sheet-tabs" role="tablist" aria-label="誰に渡す紙か">
         <button type="button" role="tab" data-sheets="board" class="active"><b>理事会へ</b><small>表裏1枚</small></button>
         <button type="button" role="tab" data-sheets="memo"><b>管理会社へ</b><small>依頼メモ</small></button>
@@ -278,6 +268,13 @@
         <button type="button" role="tab" data-sheets="all" class="sheet-tab-all">全部まとめて</button>
       </div>
       <p class="sheet-tab-note" id="sheet-tab-note">理事会に配る表裏1枚です。両面に印刷し、防災のファイルに綴じます。</p>
+        <div class="print-row">
+          <button type="button" class="primary" id="print-button">この紙を印刷（PDFに保存もできます）</button>
+          <button type="button" id="sheet-size">大きくして読む</button>
+          <button type="button" class="polish-button" id="polish-button">文を Claude で読みやすく整える</button>
+          <details class="fold"><summary>プリンターがないとき</summary><p>PDFに保存して、コンビニのネットプリントで印刷できます。両面なら長辺とじで。</p></details>
+        </div>
+        <p class="hint" id="polish-note"></p>
       <div class="sheets" id="sheets" data-show="board">
         <article class="sheet" id="sheet-front" data-for="board">
           <p class="sheet-face">おもて(事前)</p>
@@ -346,6 +343,34 @@
           <div id="sheet-engineer"><p class="placeholder">確認していただく項目が出ます。</p></div>
         </article>
       </div>
+      </div>
+
+      <details class="card other-docs" id="exits-card">
+        <summary>ほかに作れる文書（理事会の議題のたたき台・補助と手続きの順番のメモ）</summary>
+        <div class="button-row exit-tabs" id="exit-tabs">
+          <button type="button" data-exit="a" class="active">渡す紙（A4）</button>
+          <button type="button" data-exit="b">理事会の議題のたたき台</button>
+          <button type="button" data-exit="c">補助と手続きの順番のメモ</button>
+        </div>
+        <div class="card exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
+      </details>
+
+      <details class="card" id="share-card">
+        <summary>紙の代わりにリンクで渡す（パスワードと有効期限つき）</summary>
+        <div class="share-form">
+          <label for="share-password">パスワード（8文字以上）</label>
+          <input type="password" id="share-password" autocomplete="new-password">
+          <label for="share-days">有効期限</label>
+          <select id="share-days">
+            <option value="7">1週間</option>
+            <option value="30">1か月</option>
+            <option value="90">3か月</option>
+          </select>
+          <button type="button" class="primary" id="share-button">共有リンクを発行</button>
+        </div>
+        <details class="fold"><summary>条件を開く</summary><p>パスワードを忘れると元に戻せません。ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
+        <div class="share-result" id="share-result" hidden></div>
+      </details>
     </section>
 
     <section class="stage" data-stage="materials" aria-label="根拠と資料">
@@ -379,6 +404,7 @@
   <script src="map.js"></script>
   <script src="scenes.js"></script>
   <script src="app.js"></script>
+  <script src="glance.js"></script>
   <script src="plan.js"></script>
   <script src="panels.js"></script>
   <script src="section-anim.js"></script>
