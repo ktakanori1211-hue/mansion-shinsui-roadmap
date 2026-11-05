@@ -579,6 +579,7 @@ function depthCard() {
     <p class="depth-words">${esc(storyWords(band))}</p>
     <div class="depth-art">${depthPicture(band)}</div>
     ${durationLine()}
+    <p class="depth-why">${esc(depthWhy(band))}</p>
     <p class="depth-short">${esc(depthShort(band))}</p>
     <details class="depth-more"><summary>ほかの想定・前提・内水を見る</summary>
       ${scenarioTable()}
@@ -586,6 +587,15 @@ function depthCard() {
       <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
     </details>
   </div>`;
+}
+
+// なぜこの深さか。ハザードマップの深さが何の計算かを、想定ごとに言う（水防法の浸水想定：洪水は国や都道府県、高潮は都道府県、内水は都道府県や市区町村）。
+function depthWhy(band) {
+  const who = { flood: "国や都道府県", surge: "都道府県", inland: "都道府県や市区町村" }[band.key] || "国や自治体";
+  const what = { flood: "川があふれたり堤防が切れたりしたとき", surge: "高潮で海の水が入ってきたとき", inland: "下水や水路があふれたとき" }[band.key] || "大雨のとき";
+  const layer = hazardLayer(band);
+  const rain = layer && SCENARIO_WORDS[layer.key] ? `${SCENARIO_WORDS[layer.key]}で、` : "";
+  return `なぜこの深さ？　${rain}${what}に、水がどこまで広がり、どれだけたまるかを、${who}が計算した想定です。毎年の大雨でこの深さになるという意味ではありません。`;
 }
 
 // 札の表面に残す前提の1行（本人の指摘：前提が見えないと誤解する）。くわしい文は折りたたみの中。
@@ -645,6 +655,112 @@ function experienceLine() {
   return `${says}。地図にない内水の手がかりなので、管理会社から市区町村（下水道の担当）に、この辺りの浸水の記録と内水の想定を確かめてください。`;
 }
 
+// ---- 土地を横から見た図（2026-11-05） ----
+// サーバーが読んだ「建物の点と、北南（東西）50m・100m の高さ」を横から見た線にし、建物・海面・想定の水面を重ねる。
+// 高さの差が大きい向き（北南か東西）を選ぶ。水面は「建物の点の高さ＋想定の深さ」で、深さの帯の両端を引く。説明用の目安。
+function profileAxis() {
+  const profile = S.place?.location?.reading?.profile || {};
+  const range = (list) => {
+    const values = (list || []).map(([, h]) => h).filter((h) => typeof h === "number");
+    return values.length >= 3 ? Math.max(...values) - Math.min(...values) : -1;
+  };
+  const ns = range(profile.ns);
+  const ew = range(profile.ew);
+  if (ns < 0 && ew < 0) return null;
+  // 北南は北を左に、東西は西を左に置く。
+  if (ns >= ew) return { left: "北", right: "南", points: [...profile.ns].sort((a, b) => b[0] - a[0]).filter(([, h]) => typeof h === "number") };
+  return { left: "西", right: "東", points: [...profile.ew].sort((a, b) => a[0] - b[0]).filter(([, h]) => typeof h === "number") };
+}
+
+// 図の下の一行。データから言えることだけ（海面より低いか・まわりより低いか高いか）。
+function profileWords(axis) {
+  const center = axis.points.find(([d]) => d === 0)?.[1];
+  if (typeof center !== "number") return "";
+  const others = axis.points.filter(([d]) => d !== 0).map(([, h]) => h);
+  const mean = others.reduce((sum, h) => sum + h, 0) / (others.length || 1);
+  const parts = [];
+  if (center < 0) parts.push(`海面より低い土地（${center.toFixed(1)}m）`);
+  const reading = S.place?.location?.reading || {};
+  // 片側が高く、反対側が低いときは「坂の途中」と言う。標高の細かな差を坂と言わないよう、1m 以上の差のときだけ（仮の目安）。
+  const ci = axis.points.findIndex(([d]) => d === 0);
+  const lefts = axis.points.slice(0, ci).map(([, h]) => h);
+  const rights = axis.points.slice(ci + 1).map(([, h]) => h);
+  const slopeDown = lefts.length && rights.length && Math.max(...lefts) >= center + 1 && Math.min(...rights) <= center - 1;
+  const slopeUp = lefts.length && rights.length && Math.min(...lefts) <= center - 1 && Math.max(...rights) >= center + 1;
+  if (reading.basin) parts.push("まわりより低い凹み");
+  else if (slopeDown) parts.push(`${axis.left}が高く${axis.right}が低い坂の途中`);
+  else if (slopeUp) parts.push(`${axis.right}が高く${axis.left}が低い坂の途中`);
+  else if (center < mean - 0.1) parts.push("まわりより低い所");
+  else if (center > mean + 0.1) parts.push("まわりより少し高い所");
+  else parts.push("まわりとほぼ同じ高さ");
+  let line = `この建物は、${parts.join("で、")}にあります。`;
+  if (deepestHazard() && (center < 0 || reading.basin || center < mean - 0.1)) line += "川があふれると、低い所に水が集まります。";
+  return line;
+}
+
+function profilePicture() {
+  const axis = profileAxis();
+  if (!axis) return "";
+  const W = 340;
+  const H = 170;
+  const padX = 18;
+  const top = 26;
+  const bottom = 132;
+  const heights = axis.points.map(([, h]) => h);
+  const center = axis.points.find(([d]) => d === 0)?.[1] ?? heights[Math.floor(heights.length / 2)];
+  const band = deepestHazard();
+  const waterHigh = band ? center + (band.high === null ? band.low + STORY_M : band.high) : null;
+  const waterLow = band ? center + band.low : null;
+  const values = [...heights, ...(waterHigh !== null ? [waterHigh] : [])];
+  const seaShown = Math.min(...heights) < 1;
+  if (seaShown) values.push(0);
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
+  if (hi - lo < 2) {
+    const mid = (hi + lo) / 2;
+    lo = mid - 1;
+    hi = mid + 1;
+  }
+  const pad = (hi - lo) * 0.12;
+  lo -= pad;
+  hi += pad;
+  const y = (h) => bottom - ((h - lo) / (hi - lo)) * (bottom - top);
+  const span = axis.points.length - 1 || 1;
+  const x = (i) => padX + (i / span) * (W - padX * 2);
+  const ground = axis.points.map(([, h], i) => `${x(i).toFixed(1)},${y(h).toFixed(1)}`);
+  const parts = [`<rect x="0" y="0" width="${W}" height="${H}" class="c-sky"/>`];
+  if (waterHigh !== null) {
+    parts.push(`<rect x="0" y="${y(waterHigh)}" width="${W}" height="${bottom - y(waterHigh) + 4}" class="t-water"/>`);
+    if (band.low > 0) parts.push(`<line x1="0" y1="${y(waterLow)}" x2="${W}" y2="${y(waterLow)}" class="d-low"/>`);
+    parts.push(`<line x1="0" y1="${y(waterHigh)}" x2="${W}" y2="${y(waterHigh)}" class="d-high"/>`);
+    parts.push(`<text x="6" y="${y(waterHigh) - 5}" class="t-label water">想定の水面（深さ ${esc(band.value)}）</text>`);
+  }
+  if (seaShown) {
+    parts.push(`<line x1="0" y1="${y(0)}" x2="${W}" y2="${y(0)}" class="t-sea"/>`);
+    parts.push(`<text x="${W - 6}" y="${y(0) - 4}" class="t-label sea" text-anchor="end">海面 0m</text>`);
+  }
+  parts.push(`<polygon points="${x(0)},${H} ${ground.join(" ")} ${x(span)},${H}" class="t-ground"/>`);
+  parts.push(`<polyline points="${ground.join(" ")}" class="t-line"/>`);
+  // 建物（真ん中の点）
+  const ci = axis.points.findIndex(([d]) => d === 0);
+  const bx = x(ci < 0 ? Math.floor(span / 2) : ci);
+  const by = y(center);
+  parts.push(`<rect x="${bx - 14}" y="${by - 40}" width="28" height="40" class="t-building"/>`);
+  parts.push(`<text x="${bx}" y="${by - 46}" class="t-label" text-anchor="middle">建物 ${center.toFixed(1)}m</text>`);
+  // 両端の高さ
+  const [, leftH] = axis.points[0];
+  const [, rightH] = axis.points[axis.points.length - 1];
+  parts.push(`<text x="4" y="${H - 6}" class="t-label">${axis.left} ${leftH.toFixed(1)}m</text>`);
+  parts.push(`<text x="${W - 4}" y="${H - 6}" class="t-label" text-anchor="end">${axis.right} ${rightH.toFixed(1)}m</text>`);
+  const words = profileWords(axis);
+  return `<div class="profile">
+    <p class="profile-head">この土地を横から見ると（${axis.left} → ${axis.right}、約200m）</p>
+    <svg class="profile-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(words || "土地を横から見た図")}">${parts.join("")}</svg>
+    ${words ? `<p class="profile-words">${esc(words)}</p>` : ""}
+    <p class="hint">高さは海面からの高さ（国土地理院の標高）。水面は、建物の点の高さに想定の深さを足した目安です。</p>
+  </div>`;
+}
+
 // ---- 1 場所 ----
 
 // 地図の下の太字1行。凹みを一番に、次に確かめた立地のリスク（浸水の記録など）、なければ土地の高さ。
@@ -653,8 +769,9 @@ function placeHeadline() {
   if (terrain.verdict === "risk") return { ...terrain, sub: "" };
   const risky = (S.place?.location?.rows || []).filter((item) => item.verdict === "risk");
   // どの項目の話かが分かるよう、項目の短い名前を頭に付ける（例：高潮：想定に色あり）。
-  if (risky.length) return { verdict: "risk", text: risky.map((item) => `${PLACE_SHORT[item.key] || item.label}：${item.conclusion || item.value || ""}`).join("／"), sub: terrain.text };
-  return { ...terrain, sub: "" };
+  if (risky.length) return { verdict: "risk", text: risky.map((item) => `${PLACE_SHORT[item.key] || item.label}：${item.conclusion || item.value || ""}`).join("／"), sub: "" };
+  // 土地の高さの言い方は「土地を横から見た図」に任せる（地図の下で別の言い方をして食い違わないように）。
+  return null;
 }
 
 function terrainLine() {
@@ -756,10 +873,11 @@ function screenOne() {
         <p class="place"><b>${esc(S.place.site.label)}</b></p>
         <h2 class="question">この土地で水が来る道</h2>
         ${depthCard()}
+        ${profilePicture()}
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
         ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置の値で読んでいます（地図を押すと選び直せます）" : "地図で、建物の場所を押してください（今は町丁の代表点の値）"}</p>`}
-        <p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>
+        ${terrain ? `<p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>` : ""}
         <ul class="place-chips">${rows}</ul>
         ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
         ${S.sampleId ? "" : ownQuestions()}
@@ -786,8 +904,6 @@ function screenOne() {
 // 地図。地理院タイルとハザードマップの色を重ね、東西南北50mの標高を置く。高い方から建物へ水の矢印を引く。
 const TILE_PAGE = "https://maps.gsi.go.jp/development/ichiran.html";
 const HAZARD_URL = "https://disaportaldata.gsi.go.jp/raster/{layer}/{z}/{x}/{y}.png";
-// [緯度の向き, 経度の向き, 方位角]。矢印の字（➜）は回さないと東を向くので、隣の点から建物へ向けるには方位角＋90度回す。
-const DIRS = { north: [1, 0, 0], east: [0, 1, 90], south: [-1, 0, 180], west: [0, -1, 270] };
 
 function drawMap() {
   if (S.map) {
@@ -814,30 +930,12 @@ function drawMap() {
       attribution: '<a href="https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html" target="_blank" rel="noopener">ハザードマップポータルサイト</a>',
     }).addTo(map);
   }
-  const points = reading.elevation?.points || [];
-  const center = points.find((p) => p.key === "center");
+  // 地図は「場所の確認」と「建物の位置を押す」だけに使う。高さの数字と矢印は、地図の下の「土地を横から見た図」で見せる（2026-11-05）。
   const meters = reading.elevation?.distance_m || 50;
   const dLat = meters / 111320;
   const dLng = meters / (111320 * Math.cos((lat * Math.PI) / 180));
-  points
-    .filter((p) => DIRS[p.key] && typeof p.elevation_m === "number")
-    .forEach((p) => {
-      const [a, b, angle] = DIRS[p.key];
-      const at = [lat + a * dLat, lng + b * dLng];
-      // 高い・低いは、サーバーと同じ目安（0.1m 以上の差）で決める。差がそれより小さい所は「ほぼ同じ」。
-      const higher = (reading.high_directions || []).includes(p.label);
-      const lower = (reading.low_directions || []).includes(p.label);
-      const cls = higher ? " up" : lower ? " down" : " same";
-      L.marker(at, { interactive: false, icon: L.divIcon({ className: `m-height${cls}`, html: `${p.elevation_m.toFixed(1)}m`, iconSize: [52, 22], iconAnchor: [26, 11] }) }).addTo(map);
-      // 水の矢印は、建物より高い方からだけ引く（凹みでも、低い方からは引かない）。
-      if (higher) {
-        const mid = [lat + a * dLat * 0.5, lng + b * dLng * 0.5];
-        L.marker(mid, { interactive: false, icon: L.divIcon({ className: "m-flow", html: `<span style="transform:rotate(${angle + 90}deg)">➜</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
-      }
-    });
-  L.marker([lat, lng], { interactive: false, icon: L.divIcon({ className: "m-site", html: center ? `<b>${center.elevation_m.toFixed(1)}m</b>` : "<b>●</b>", iconSize: [60, 28], iconAnchor: [30, 14] }) }).addTo(map);
-  // 東西南北の札と矢印が真ん中の札に重ならない広さ（50m の点が真ん中から約90px）に寄せる。
-  map.fitBounds([[lat - dLat * 1.25, lng - dLng * 1.25], [lat + dLat * 1.25, lng + dLng * 1.25]]);
+  L.marker([lat, lng], { interactive: false, icon: L.divIcon({ className: "m-site", html: "<b>建物</b>", iconSize: [48, 26], iconAnchor: [24, 13] }) }).addTo(map);
+  map.fitBounds([[lat - dLat * 1.6, lng - dLng * 1.6], [lat + dLat * 1.6, lng + dLng * 1.6]]);
   if (shown) {
     const legend = L.control({ position: "topleft" });
     legend.onAdd = () => {
@@ -1187,10 +1285,7 @@ function readCard() {
 function mapLegend() {
   const reading = S.place?.location?.reading || {};
   const chips = (reading.hazard_legend || []).map((item) => `<span class="lg"><i style="background:${esc(item.color)}"></i>${esc(item.label)}</span>`).join("");
-  return `<div class="map-legend">
-    <p>数字＝海面からの高さ。<span class="up">茶</span>＝高い・<span class="down">青</span>＝低い（0.1m以上の差）。矢印は高い方から。</p>
-    ${chips ? `<details><summary>色の深さ</summary><p class="lg-row">${chips}</p></details>` : ""}
-  </div>`;
+  return chips ? `<div class="map-legend"><details><summary>地図の色の深さ</summary><p class="lg-row">${chips}</p></details></div>` : "";
 }
 
 function floorChoice(floor) {

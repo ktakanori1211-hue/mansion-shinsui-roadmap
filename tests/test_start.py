@@ -466,14 +466,13 @@ class NoDrawingTest(unittest.TestCase):
         self.assertIn("未確認", items[0]["text"])
         self.assertIn('item.from === "聞き取り"', read("start.js"))
 
-    def test_map_arrows_only_from_higher_points(self):
+    def test_map_has_no_numbers_or_arrows(self):
+        # 本人の指摘（2026-11-05）：地図の数字と矢印は初見で分からない。地図は場所の確認だけにし、高さは横から見た図で見せる。
         js = read("start.js")
         draw = block(js, "function drawMap()", "\n}\n")
-        self.assertIn("(reading.high_directions || []).includes(p.label)", draw)
-        self.assertNotIn("reading.basin)", draw)
-        legend = block(js, "function mapLegend()", "\n}\n")
-        self.assertIn("海面からの高さ", legend)
-        self.assertIn("reading.hazard_legend", legend)
+        self.assertNotIn("m-height", draw)
+        self.assertNotIn("m-flow", draw)
+        self.assertIn("${profilePicture()}", block(js, "function screenOne()", "\n}\n"))
 
 
 class BuildingPinTest(unittest.TestCase):
@@ -662,6 +661,37 @@ class FoldTest(unittest.TestCase):
         box = block(js, "function factsBox()", "\n}\n")
         self.assertIn('<details class="facts"', box)
         self.assertIn("Anthropic の API に送り", box)
+
+
+class ProfileTest(unittest.TestCase):
+    """土地を横から見た図と「なぜこの深さ？」（2026-11-05）。データから言えることだけを言う。"""
+
+    def test_profile_uses_the_server_heights(self):
+        js = read("start.js")
+        axis = block(js, "function profileAxis()", "\n}\n")
+        self.assertIn("reading?.profile", axis)
+        picture = block(js, "function profilePicture()", "\n}\n")
+        self.assertIn("deepestHazard()", picture)
+        self.assertIn("海面 0m", picture)
+        self.assertIn("建物の点の高さに想定の深さを足した目安", picture)
+
+    def test_words_only_say_what_the_data_shows(self):
+        js = read("start.js")
+        words = block(js, "function profileWords(axis)", "\n}\n")
+        self.assertIn("if (center < 0)", words)
+        self.assertIn("海面より低い土地", words)
+        self.assertIn("まわりより少し高い所", words)
+        # 坂と言うのは1m以上の差のときだけ（海面より低い平らな土地を「坂」と言わない）。
+        self.assertIn("Math.max(...lefts) >= center + 1", words)
+        # 低い土地でないときは「水が集まる」と言わない。
+        self.assertIn("if (deepestHazard() && (center < 0 || reading.basin || center < mean - 0.1))", words)
+
+    def test_why_line_names_who_calculated_it(self):
+        js = read("start.js")
+        why = block(js, "function depthWhy(band)", "\n}\n")
+        self.assertIn("毎年の大雨でこの深さになるという意味ではありません", why)
+        self.assertIn('flood: "国や都道府県"', why)
+        self.assertIn("${depthWhy(band)}", js.replace("esc(depthWhy(band))", "${depthWhy(band)}"))
 
 
 class PlanFileTest(unittest.TestCase):

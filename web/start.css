@@ -107,12 +107,26 @@ button { font: inherit; }
 .m-height.down { border-color: #2f6fb0; color: #2f6fb0; }
 .m-height.same { border-color: #b8bec8; color: #6b717c; }
 .m-flow span { display: block; font-size: 22px; line-height: 26px; text-align: center; color: var(--water); font-weight: 800; text-shadow: 0 0 3px #fff; }
-.m-site b { display: block; background: var(--navy); color: #fff; border-radius: 8px; font-size: 13px; text-align: center; line-height: 28px; }
+.m-site b { display: block; background: var(--navy); color: #fff; border-radius: 8px; font-size: 12px; text-align: center; line-height: 26px; }
 .m-legend { background: rgba(255, 255, 255, .92); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 700; color: var(--ink); }
 
 .site-map.pickable { cursor: crosshair; }
 .pin-hint { margin: -2px 0 0; font-size: 13.5px; font-weight: 800; color: var(--accent); background: #eef4fc; border-radius: 8px; padding: 8px 10px; }
 .pin-hint.done { color: var(--clear); background: var(--clear-bg); }
+.profile { display: flex; flex-direction: column; gap: 4px; }
+.profile-head { margin: 0; font-size: 14px; font-weight: 800; }
+.profile-svg { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+.profile-svg text { font-family: inherit; }
+.profile-words { margin: 0; font-size: 15px; font-weight: 800; color: var(--navy); }
+.t-ground { fill: #e8dfcb; }
+.t-line { fill: none; stroke: #7a6a48; stroke-width: 2.5; }
+.t-water { fill: var(--water); opacity: .25; }
+.t-sea { stroke: #185fa5; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.t-building { fill: #fff; stroke: #44474f; stroke-width: 2; }
+.t-label { font-size: 11px; font-weight: 700; fill: #4a5361; paint-order: stroke; stroke: #f4f7fb; stroke-width: 3px; }
+.t-label.water { fill: #0d3f7a; }
+.t-label.sea { fill: #185fa5; }
+.depth-why { margin: 2px 0 0; font-size: 12.5px; color: #33404f; background: #fff; border-radius: 8px; padding: 6px 8px; line-height: 1.55; }
 .map-legend { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: -4px; }
 .map-legend p { margin: 0; }
 .map-legend .up { color: #8a5a12; font-weight: 800; }
