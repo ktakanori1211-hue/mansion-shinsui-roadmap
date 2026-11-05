@@ -372,7 +372,9 @@ class DepthOnBuildingTest(unittest.TestCase):
         # 本人の指摘（2026-11-05）：どの雨の想定か・どこの値か・帯のどちらの端か・1階の床の高さを札に添える。
         js = read("start.js")
         conds = block(js, "function depthConditions(band)", "\n}\n")
-        self.assertIn("layer.label", conds)
+        # どの想定かは、札の一行目（leadWords）と、想定を並べる表で言う。
+        self.assertIn("SCENARIO_WORDS[layer.key]", block(js, "function leadWords(band)", "\n}\n"))
+        self.assertIn("${scenarioTable()}", block(js, "function depthCard()", "\n}\n"))
         self.assertIn("町丁の代表点の値で、建物の位置の値ではありません", conds)
         self.assertIn("の深い方（${band.high}m）で描いています", conds)
         self.assertIn("1階の床が地面より高い建物では、その分浅くなります", conds)
@@ -394,6 +396,45 @@ class DepthOnBuildingTest(unittest.TestCase):
             self.assertIsNotNone(m, text)
             self.assertEqual((m.group(1), m.group(2)), (low, high), text)
         self.assertIsNone(re.match(pattern, "データなし"))
+
+
+class HonestShapeTest(unittest.TestCase):
+    """本人の指摘（2026-11-05）：「11階建て」「地下の電気室」はどこから？ 3〜5mは本当？"""
+
+    def test_scenarios_are_listed_side_by_side(self):
+        # 一番深い想定だけを見せず、同じ場所のほかの想定（計画規模など）を並べる。値はサーバーの reading.hazards のまま。
+        js = read("start.js")
+        rows = block(js, "function scenarioRows()", "\n}\n")
+        self.assertIn("S.place?.location?.reading?.hazards", rows)
+        self.assertIn('"この点に色なし"', rows)
+        words = js_object(js, "SCENARIO_WORDS")
+        self.assertEqual(words["flood_max"], "想定しうる最大の大雨")
+        self.assertEqual(words["flood_planned"], "川の整備の目標の大雨")
+        # 想定の言葉に、確率や年数の数字を書かない。
+        self.assertIsNone(re.search(r"\d", "".join(words.values())))
+
+    def test_own_building_floors_are_not_borrowed(self):
+        js = read("start.js")
+        cut = block(js, "function cutaway(", "\n}\n")
+        self.assertIn("sample.custom ? Number(sample.answers?.floors) || 0 : sample.floors", cut)
+        self.assertIn('"階数は未確認"', cut)
+        self.assertIn("見本の形を借りた絵", cut)
+        self.assertIn("（見本の形）", block(js, "function plan(", "\n}\n"))
+
+    def test_own_building_answers_are_sent(self):
+        js = read("start.js")
+        own = block(js, "function ownQuestions()", "\n}\n")
+        self.assertIn('id="own-floors"', own)
+        self.assertIn("data-own", own)
+        self.assertIn("分からない", own)
+        sent = block(js, "function answers()", "\n}\n")
+        self.assertIn("S.own.basement", sent)
+        self.assertIn("floors: built", sent)
+        # サーバーは、答えた階数と地下の有無を形に使う（地下なしなら地下のない見本の形）。
+        no_basement = samples.apply_answers(None, {"basement": "no", "floors": 7}, "東京都")
+        self.assertEqual(no_basement["floors"], 7)
+        self.assertEqual(no_basement["archetype"], "ground")
+        self.assertEqual(samples.client_view(no_basement)["answers"]["floors"], 7)
 
 
 class PlanFileTest(unittest.TestCase):

@@ -32,6 +32,8 @@ const S = {
   claude: null,
   // チャットで聞き取った事実（サーバーの statements）。依頼メモの材料になる。
   statements: [],
+  // 自分の建物で、住民が答えられる2つ（何階建てか・地下はあるか）。分からないときは空のまま。
+  own: { floors: "", basement: "unknown" },
   map: null,
 };
 
@@ -302,7 +304,7 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   const parts = [];
   const wet = new Set();
   parts.push(`<rect x="0" y="0" width="${VW}" height="${VH}" class="p-ground"/>`);
-  parts.push(`<text x="${PAD}" y="30" class="p-floor">${esc(view.name.replace("平面図", ""))}の平面図</text>`);
+  parts.push(`<text x="${PAD}" y="30" class="p-floor">${esc(view.name.replace("平面図", ""))}の平面図${sample.custom ? "（見本の形）" : ""}</text>`);
 
   // 道路（1階の平面図の下の辺の外）。
   const roadY = Y(1) + 18;
@@ -489,10 +491,40 @@ function hazardLayer(band) {
 }
 
 // 札の前提（2026-11-05 本人の指摘で足した）。どの雨の想定か・どこの値か・帯のどちらの端か・1階の床の高さ。
+// 想定の名前の意味（言葉の意味だけ。確率の数字は書かない）。
+const SCENARIO_WORDS = { flood_max: "想定しうる最大の大雨", flood_planned: "川の整備の目標の大雨" };
+const SCENARIO_ORDER = ["flood_planned", "flood_max", "inland", "storm_surge", "tsunami"];
+
+// 同じ場所の想定を並べる（サーバーの reading.hazards のまま）。一番深いものだけを見せない。
+function scenarioRows() {
+  const hazards = S.place?.location?.reading?.hazards || [];
+  return SCENARIO_ORDER.map((key) => hazards.find((item) => item.key === key)).filter(Boolean).map((item) => {
+    let value = "データなし";
+    let cls = "none";
+    if (item.legend) {
+      value = item.legend;
+      cls = "color";
+    } else if (item.nearby_legend) {
+      value = `${item.nearby_legend}（この点ではなく近くに色）`;
+      cls = "color";
+    } else if (item.status === "no_color") {
+      value = "この点に色なし";
+      cls = "nocolor";
+    }
+    return { key: item.key, name: item.label, words: SCENARIO_WORDS[item.key] || "", value, cls };
+  });
+}
+
+function scenarioTable() {
+  const rows = scenarioRows();
+  if (!rows.length) return "";
+  return `<table class="scenarios"><caption>同じ場所の、ほかの想定</caption>${rows
+    .map((row) => `<tr class="${row.cls}"><th>${esc(row.name)}${row.words ? `<small>${esc(row.words)}</small>` : ""}</th><td>${esc(row.value)}</td></tr>`)
+    .join("")}</table>`;
+}
+
 function depthConditions(band) {
-  const layer = hazardLayer(band);
   const lines = [];
-  if (layer) lines.push(`${layer.label}の想定${/想定最大/.test(layer.label) ? "（想定しうる最大の大雨）" : ""}`);
   lines.push(S.place?.site?.basis === "representative" ? "町丁の代表点の値で、建物の位置の値ではありません" : "建物の位置として選んだ点の値です");
   // 点そのものに色がなく、近くの色の値を使ったときは、その旨（サーバーの文のまま）。
   if (/先に色/.test(band.conclusion)) lines.push(band.conclusion);
@@ -506,11 +538,19 @@ function depthCard() {
   const band = deepestHazard();
   if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p>`;
   return `<div class="depth">
-    <p class="depth-lead">${esc(HAZARD_WORDS[band.key])} <b>${esc(band.value)}</b></p>
+    <p class="depth-lead">${esc(leadWords(band))} <b>${esc(band.value)}</b></p>
     <p class="depth-words">${esc(storyWords(band))}</p>
     <div class="depth-art">${depthPicture(band)}</div>
+    ${scenarioTable()}
     <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
   </div>`;
+}
+
+// 札の一行目。どの想定の深さかを、頭に言う（例：想定しうる最大の大雨で川があふれると）。
+function leadWords(band) {
+  const layer = hazardLayer(band);
+  const words = layer && SCENARIO_WORDS[layer.key];
+  return words ? `${words}で${HAZARD_WORDS[band.key]}` : HAZARD_WORDS[band.key];
 }
 
 // ---- 1 場所 ----
@@ -533,6 +573,18 @@ function terrainLine() {
   const points = reading.elevation?.points || [];
   if (points.length >= 5) return { verdict: "unconfirmed", text: "周りより少し高い土地（凹みではない）" };
   return { verdict: "unconfirmed", text: "土地の高さは読めませんでした" };
+}
+
+// 自分の建物だけ、住民が外から答えられる2つを聞く（分からなくても進める）。
+function ownQuestions() {
+  const chips = [["yes", "ある"], ["no", "ない"], ["unknown", "分からない"]]
+    .map(([key, word]) => `<button type="button" class="option${S.own.basement === key ? " chosen" : ""}" data-own="${key}" aria-pressed="${S.own.basement === key}">${word}</button>`)
+    .join("");
+  return `<div class="own">
+    <p class="own-head">あなたの建物（分からなくても進めます）</p>
+    <label class="floor">何階建て<input id="own-floors" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.own.floors)}" placeholder="11">階建て</label>
+    <div class="own-row"><span>地下は</span><div class="options">${chips}</div></div>
+  </div>`;
 }
 
 function screenOne() {
@@ -562,6 +614,7 @@ function screenOne() {
         <p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>
         <ul class="place-chips">${rows}</ul>
         ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
+        ${S.sampleId ? "" : ownQuestions()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
         <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>この建物で見る</button>
       </div>`;
@@ -694,10 +747,10 @@ function cutaway(level = 0) {
       parts.push(`<rect x="${wx}" y="${y + fh * 0.26}" width="26" height="${fh * 0.48}" rx="2" class="c-win${off ? " off" : ""}"/>`);
     }
   }
-  if ((sample.floors || 0) > shown) {
-    parts.push(`<path d="M${x0 - 4} ${top + fh * 1.5} l8 -5 l8 5 l8 -5" class="c-break"/>`);
-    parts.push(`<text x="${x1 + dx + 4}" y="${top - dy + 4}" class="c-label" text-anchor="end">${sample.floors}階建て</text>`);
-  }
+  // 階数は、見本なら見本の値、自分の建物なら答えたときだけ。分からなければ「未確認」と書く。
+  const knownFloors = sample.custom ? Number(sample.answers?.floors) || 0 : sample.floors;
+  if (!knownFloors || knownFloors > shown) parts.push(`<path d="M${x0 - 4} ${top + fh * 1.5} l8 -5 l8 5 l8 -5" class="c-break"/>`);
+  parts.push(`<text x="${x1 + dx + 4}" y="${top - dy + 4}" class="c-label" text-anchor="end">${knownFloors ? `${knownFloors}階建て` : "階数は未確認"}</text>`);
   // 機械の部屋（地下の階、なければ1階）
   const roomTop = under ? G + 6 : G - band_ + 4;
   const roomBottom = under ? G + 66 : G;
@@ -723,6 +776,14 @@ function cutaway(level = 0) {
   // 地面の線・道路・入り道
   parts.push(`<line x1="0" y1="${G}" x2="${W}" y2="${G}" class="c-ground"/>`);
   parts.push(`<text x="6" y="${G - 8}" class="c-label">道路</text>`);
+  // 自分の建物は、機械の部屋の位置が分からない。見本の形を借りていることを、絵の中に書く。
+  if (sample.custom) {
+    const where = sample.answers?.basement === "yes" ? "地下あり（機械の部屋の階は未確認）" : sample.answers?.basement === "no" ? "地下なし（機械の部屋の階は未確認）" : "地下の有無は未確認";
+    // 右上の「階数」の札と重ならないよう、左上に2行で書く。
+    parts.push(`<rect x="4" y="4" width="196" height="34" rx="4" class="c-tag"/>`);
+    parts.push(`<text x="10" y="18" class="c-tag-text">見本の形を借りた絵</text>`);
+    parts.push(`<text x="10" y="32" class="c-tag-sub">${esc(where)}</text>`);
+  }
   const routes = [];
   if (under) {
     // スロープ（右から地下へ）と、道路の下の管から電気室の壁の穴へ
@@ -780,6 +841,12 @@ function factLine(text) {
 }
 
 // 時間の段。表面は段の名前と太字1行（原則1）。段の説明と、ほかの目安は折りたたみに入れる。
+// 地下のない形の建物では、段の文の「地下」を「機械の部屋」に言い換える（機械が1階にある形のため）。
+function shapeWords(text) {
+  if (S.building?.sample?.archetype !== "ground") return text;
+  return text.replace(/地下へ/g, "1階の機械の部屋へ").replace(/地下には/g, "機械の部屋には").replace(/地下に/g, "機械の部屋に");
+}
+
 function timeline() {
   const n = Number(S.floor);
   const notes = S.building?.scenarios?.["3:plate"]?.notes || [];
@@ -789,15 +856,15 @@ function timeline() {
     let lead = "";
     if (phase.key === "before") lead = "建物の中は、まだ使える";
     if (phase.key === "day") lead = stopped.length ? `止まる想定：${stopped.join("・")}` : phase.line;
-    if (phase.key === "morning") lead = n >= 2 ? `${n}階まで、水もごみも階段で運ぶ` : "地下に水が残り、機械室に入れない";
+    if (phase.key === "morning") lead = n >= 2 ? `${n}階まで、水もごみも階段で運ぶ` : S.building?.sample?.archetype === "ground" ? "機械の部屋に水が残り、入れない" : "地下に水が残り、機械室に入れない";
     if (phase.key === "week" || phase.key === "months") lead = facts.find((cell) => /ほかの建物の例/.test(cell) && !/本復旧/.test(cell)) || facts[0] || phase.line;
     const head = lead.replace(/（.*$/, "");
     const note = lead.slice(head.length);
     const rest = facts.filter((cell) => cell !== lead);
     return `<li class="phase ${phase.key}">
       <p class="phase-name">${esc(phase.name)}</p>
-      <p class="phase-lead">${esc(head)}${note ? `<small>${esc(note)}</small>` : ""}</p>
-      <details class="phase-more"><summary>くわしく</summary><p class="phase-line">${esc(phase.line)}</p>${rest.length ? `<ul class="facts">${rest.map(factLine).join("")}</ul>` : ""}</details>
+      <p class="phase-lead">${esc(shapeWords(head))}${note ? `<small>${esc(note)}</small>` : ""}</p>
+      <details class="phase-more"><summary>くわしく</summary><p class="phase-line">${esc(shapeWords(phase.line))}</p>${rest.length ? `<ul class="facts">${rest.map(factLine).join("")}</ul>` : ""}</details>
     </li>`;
   }).join("");
   return `<ol class="timeline">${items}</ol>${notes[0] ? `<p class="hint">${esc(notes[0])}</p>` : ""}`;
@@ -816,7 +883,7 @@ function screenTwo() {
     <div class="cut">${cutaway(S.play)}</div>
     <div class="play-row">
       <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : "▶ 水が入る順に見る"}</button>
-      <span class="caption">${playing ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : `${b.sample.archetype === "ground" ? "1階" : "地下"}の機械が止まると、上の階まで止まる`}</span>
+      <span class="caption">${playing ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : (b.sample.custom ? "機械の部屋が止まると、上の階まで止まる" : `${b.sample.archetype === "ground" ? "1階" : "地下"}の機械が止まると、上の階まで止まる`)}</span>
     </div>
     ${playing ? `<p class="hint">${PLAY_NOTE}</p>` : ""}
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
@@ -1098,6 +1165,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.message = "";
     S.building = null;
     S.choices = {};
+    S.own = { floors: "", basement: "unknown" };
     S.extra = {};
     S.read = null;
     S.reached = 1;
@@ -1114,7 +1182,10 @@ function answers() {
   if (S.sampleId) return { ...S.extra };
   const floors = Object.values(S.choices);
   const roomsFloor = ["basement", "ground", "upper"].find((f) => floors.includes(f)) || "unknown";
-  return { rooms_floor: roomsFloor, basement: roomsFloor === "basement" ? "yes" : "unknown", ...S.extra };
+  // 地下の有無は、画面1の答えを先に。画面3で部屋が地下と分かれば「ある」。
+  const basement = roomsFloor === "basement" ? "yes" : S.own.basement;
+  const built = Number(S.own.floors);
+  return { rooms_floor: roomsFloor, basement, ...(built >= 1 ? { floors: built } : {}), ...S.extra };
 }
 
 function confirmedTokens() {
@@ -1285,6 +1356,12 @@ screen.addEventListener("click", (event) => {
     setEngineer(target.dataset.hv);
   } else if (target.dataset.kind) {
     setRoom(target.dataset.kind, target.dataset.choice);
+  } else if (target.dataset.own) {
+    S.own.basement = target.dataset.own;
+    document.querySelectorAll("[data-own]").forEach((b) => {
+      b.classList.toggle("chosen", b === target);
+      b.setAttribute("aria-pressed", String(b === target));
+    });
   } else if (target.dataset.tab) {
     S.tab = target.dataset.tab;
     render();
@@ -1302,6 +1379,7 @@ screen.addEventListener("click", (event) => {
 // 住んでいる階は、描き直さずに覚えるだけ（地図を読み直さない）。
 screen.addEventListener("input", (event) => {
   if (event.target.id === "floor") S.floor = event.target.value;
+  if (event.target.id === "own-floors") S.own.floors = event.target.value;
 });
 
 screen.addEventListener("change", (event) => {

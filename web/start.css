@@ -229,6 +229,19 @@ button { font: inherit; }
 .depth-svg { display: block; width: 100%; height: auto; }
 .depth-svg text { font-family: inherit; }
 .depth-conds { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+.scenarios { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 2px 0; }
+.scenarios caption { text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+.scenarios th { text-align: left; font-weight: 700; padding: 3px 6px 3px 0; border-top: 1px solid #d6e2f0; }
+.scenarios th small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+.scenarios td { text-align: right; padding: 3px 0; border-top: 1px solid #d6e2f0; white-space: nowrap; }
+.scenarios tr.color td { font-weight: 800; color: #0d3f7a; }
+.scenarios tr.nocolor td, .scenarios tr.none td { color: var(--muted); }
+.own { display: flex; flex-direction: column; gap: 8px; background: #f6f7f9; border-radius: 10px; padding: 10px 12px; }
+.own-head { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+.own-row { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; flex-wrap: wrap; }
+.c-tag { fill: #fff; stroke: var(--unconfirmed-line); stroke-width: 1.2; opacity: .95; }
+.c-tag-text { font-size: 11px; font-weight: 800; fill: #6b4700; }
+.c-tag-sub { font-size: 10px; font-weight: 700; fill: #6b4700; }
 .depth-none { margin: 0; font-size: 13px; color: var(--muted); border-left: 4px solid #b8bec8; padding-left: 8px; }
 .c-under { fill: #fff; stroke: #6b717c; stroke-width: 1.2; stroke-dasharray: 4 3; }
 .d-water { fill: var(--water); opacity: .38; }
