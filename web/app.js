@@ -772,6 +772,8 @@ async function loadDemoPoints() {
         lookUp({ demo: point.id });
       });
       buttons.append(button);
+      // かんたん版から「くわしい版」へ来たときは、同じ見本を開く（#demo=…）。
+      if (location.hash === `#demo=${point.id}`) button.click();
     });
     document.getElementById("demo-points").hidden = false;
   } catch (error) {

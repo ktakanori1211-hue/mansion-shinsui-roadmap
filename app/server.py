@@ -70,7 +70,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/api/location":
+        if parsed.path == "/":
+            # 最初の画面は、かんたん版（4つの画面）。くわしい版は /index.html のまま。
+            self.path = "/start.html" + (f"?{parsed.query}" if parsed.query else "")
+            super().do_GET()
+        elif parsed.path == "/api/location":
             self._location(urllib.parse.parse_qs(parsed.query))
         elif parsed.path == "/api/demo-points":
             self._send_json(
