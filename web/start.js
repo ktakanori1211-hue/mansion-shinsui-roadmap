@@ -45,6 +45,8 @@ const S = {
   factsBusy: false,
   sendMsg: "",
   sendText: "",
+  // 画面2の対策の切り替え（what-019）：plate（止水板だけ）／hole（壁の穴を塞ぐ）／raise（盤を高くする）。
+  measure: "plate",
   map: null,
 };
 
@@ -64,8 +66,8 @@ const SERVICE_OF_TILE = { water: "pump", ev: "ev", homes: "homes" };
 // 平面図の部屋と、判定の行（サーバーの _UPPER_ROWS・_ABSENT_ROWS と同じ対応）。ほかの部屋は色を塗らない。
 const KIND_ROWS = { pump: "water", elec: "power", panel_room: "power", tr: "tr", gen: "gen", tank: "tank", park: "park", ev: "ev" };
 const ROOM_SHORT = { elec: "電気室", tr: "借室", panel_room: "分電盤室", pump: "ポンプ室", gen: "発電機室", tank: "雨水槽", park: "駐車場ピット", ev: "EV" };
-// 水が来たときに止まるもの（サーバーの scenarios の services）と、その部屋。
-const STOPS_OF_ROOM = { pump: ["pump"], elec: ["ev", "light"], panel_room: ["ev", "light"], tr: ["homes"] };
+// サーバーの scenario の wet（浸かる設備）と、平面図の部屋。hv＝受電の箱の部屋、panel＝ポンプの制御盤の部屋。
+const WET_ROOMS = { ev: ["ev"], hv: ["elec", "panel_room"], panel: ["pump"], tr: ["tr"], gen: ["gen"], tank: ["tank"] };
 // 管理会社に頼む確認を、電気を知らない人の言葉で言う（サーバーの top_line.steps の key ごと。中身は同じ確認）。
 const PLAIN_ASK = {
   water: "水を送るポンプのスイッチの箱が、床から何cmの高さにあるか",
@@ -78,7 +80,7 @@ const PLAIN_ASK = {
   lock: "停電のとき、玄関の扉がどう動くか",
   park: "機械式駐車場の深さと、水を抜くポンプ",
 };
-// 再生の注意書き（前の断面図の再生と同じ文）。時刻や速さは出さない。
+// 再生の注意書き（平面図の水の位置①②③の再生）。時刻や速さは出さない。
 const PLAY_NOTE = "実際の浸水速度の予測ではなく、水が順番に入る仕組みの模式です。";
 const CAPTIONS = {
   1: "大雨で、道路に水がたまる",
@@ -207,8 +209,12 @@ function titleLine() {
   return `${where ? `${where}の` : ""}機械が水につかると、全部の家で${joinJa(names)}が止まります`;
 }
 
+function scenario(level) {
+  return S.building?.scenarios?.[`${level}:${S.measure}`] || null;
+}
+
 function serviceState(level, key) {
-  const services = S.building?.scenarios?.[`${level}:plate`]?.services || [];
+  const services = scenario(level)?.services || [];
   return services.find((item) => item.key === key)?.state || "unknown";
 }
 
@@ -360,11 +366,13 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
     const flash = S.flash.includes(room.key) ? " flash" : "";
     const cls = v ? `p-room p-key ${v}${flash}` : room.hatch ? "p-room p-soil" : `p-room${flash}`;
     parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" class="${cls}" data-room="${esc(room.key)}"/>`);
-    let flooded = false;
-    if (level >= 2 && wet.has(room.key)) flooded = true;
-    if (level >= 3 && /^corridor/.test(room.key)) flooded = true;
-    if (level >= 3 && STOPS_OF_ROOM[room.key]) flooded = STOPS_OF_ROOM[room.key].some((key) => serviceState(level, key) === "stopped");
-    if (flooded) parts.push(`<rect x="${x + 3}" y="${y + h * 0.45}" width="${w - 6}" height="${h * 0.55 - 3}" class="p-water"/>`);
+    // 水の位置（what-018）。①は道路と入り道まで。②は一番低い床（車路・廊下・EVの底）に浅く。③は盤や受電の箱の高さまで。
+    // 機械の部屋が浸かるかは、サーバーの scenario（選んだ対策）の wet のまま。対策で浸からない部屋は塗らない。
+    const wetNow = new Set((level >= 2 ? scenario(level)?.wet || [] : []).flatMap((key) => WET_ROOMS[key] || []));
+    const lowFloor = /^(aisle|corridor)/.test(room.key) || room.key === "park";
+    let depth = 0;
+    if (level >= 2 && (lowFloor || wetNow.has(room.key))) depth = level >= 3 ? 0.55 : 0.25;
+    if (depth) parts.push(`<rect x="${x + 3}" y="${y + h * (1 - depth)}" width="${w - 6}" height="${h * depth - 3}" class="p-water"/>`);
     const cx = x + w / 2;
     if (v) {
       const name = ROOM_SHORT[room.key];
@@ -387,9 +395,11 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
 
   // 水の入り道（青い矢印）。判定ではなく、入りうる所。
   entries.forEach((entry) => {
-    parts.push(`<path d="M${entry.x1} ${entry.y1} L${entry.x2} ${entry.y2}" class="p-arrow${level >= 2 ? " on" : ""}" marker-end="url(#p-head)"/>`);
-    if (entry.hole) parts.push(`<circle cx="${entry.x1}" cy="${Y(1)}" r="7" class="p-hole"/>`);
-    parts.push(`<text x="${entry.lx}" y="${entry.ly}" class="p-entry" text-anchor="${entry.anchor}">${esc(entry.label)}</text>`);
+    // 「壁の穴を塞ぐ」を選んだときは、管から壁の穴への入り道を塞いだ印にする（ほかの入り道は残る）。
+    const blocked = entry.hole && S.measure === "hole";
+    parts.push(`<path d="M${entry.x1} ${entry.y1} L${entry.x2} ${entry.y2}" class="p-arrow${blocked ? " blocked" : level >= 1 ? " on" : ""}"${blocked ? "" : ' marker-end="url(#p-head)"'}/>`);
+    if (entry.hole) parts.push(blocked ? `<g class="p-sealed"><circle cx="${entry.x1}" cy="${Y(1)}" r="11"/><path d="M${entry.x1 - 6} ${Y(1) - 6} L${entry.x1 + 6} ${Y(1) + 6} M${entry.x1 + 6} ${Y(1) - 6} L${entry.x1 - 6} ${Y(1) + 6}"/></g>` : `<circle cx="${entry.x1}" cy="${Y(1)}" r="7" class="p-hole"/>`);
+    parts.push(`<text x="${entry.lx}" y="${entry.ly}" class="p-entry${blocked ? " sealed" : ""}" text-anchor="${entry.anchor}">${esc(blocked ? "壁の穴を塞いだ" : entry.label)}</text>`);
   });
 
   // 番号のピン。
@@ -430,15 +440,9 @@ function lifeChips(level = 0) {
   }).join("")}</ul>`;
 }
 
-// ---- 浸水の深さを建物に重ねる（2026-11-05） ----
-// ハザードマップの深さの帯（立地の行の value のまま）を、建物の階に置き換えて見せる。
-// 階の高さは分からないので「1階を約3m」とした描くための目安とし、その旨を必ず添える。判定はしない。
-const STORY_M = 3;
+// ---- 地図の深さの帯（立地の行の value のまま） ----
+// 一番深い帯は、画面1の地図に重ねる層と、土地の一行に使うだけ。建物の階には置き換えない（深さを主役にしない。CLAUDE.md の6）。
 const HAZARD_WORDS = { flood: "川があふれると", inland: "下水や水路があふれると", surge: "高潮のとき" };
-const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";
-// 深さと階の対応の出典。国交省「水害ハザードマップ作成の手引き」第3章 3.4.1 の本文（2026-11-05 に国交省のサイトの PDF で確認）。
-// 原文：「一般的な家屋の2階が水没する5m、2階床下に相当する3m、1階床高に相当する0.5m」。マンションの階の高さとは限らない。
-const STORY_SOURCE = "深さの区切りは、国交省「水害ハザードマップ作成の手引き」の区分（0.5m＝1階の床の高さ、3m＝2階の床の下、5m＝一般的な家屋の2階が水没）によります。";
 
 function parseBand(value) {
   const m = String(value || "").match(/^(\d+(?:\.\d+)?)?m?〜(\d+(?:\.\d+)?)?m?$/);
@@ -461,42 +465,7 @@ function deepestHazard() {
   return best;
 }
 
-// 深さを階の言葉にする（1階を約3mとした割り算だけ）。
-// 深さを階の言葉にする。5m までは国の手引きの区分の言い方に合わせ、それより深い所は1階を約3mとした割り算。
-function storyWords(band) {
-  if (band.high === null) return `${Math.ceil(band.low / STORY_M) + 1}階より上まで`;
-  if (band.high <= 0.5) return "1階の床の高さほどまで";
-  if (band.high <= 3) return "1階の床の上まで（2階の床の下）";
-  if (band.high <= 5) return "2階の床を超える深さ";
-  return `${Math.ceil(band.high / STORY_M)}階まで`;
-}
 
-// 小さな建物の横から見た絵に、想定の深さの水を重ねる。人の背丈を目盛りに添える。
-function depthPicture(band) {
-  const G = 150;
-  const px = 10; // 1m あたり
-  const top = 20;
-  const parts = [`<rect x="0" y="0" width="340" height="190" class="c-sky"/>`];
-  parts.push(`<rect x="0" y="${G}" width="340" height="40" class="c-soil"/>`);
-  for (let i = 0; i < 4; i += 1) {
-    const y = G - (i + 1) * STORY_M * px;
-    parts.push(`<rect x="150" y="${y}" width="130" height="${STORY_M * px}" class="c-floor"/>`);
-    parts.push(`<text x="158" y="${y + 19}" class="c-label">${i + 1}階</text>`);
-  }
-  parts.push(`<text x="286" y="${G - 4 * STORY_M * px + 4}" class="c-label">↑上の階</text>`);
-  parts.push(`<rect x="150" y="${G}" width="130" height="30" class="c-under"/>`);
-  parts.push(`<text x="158" y="${G + 20}" class="c-label">地下（あれば）</text>`);
-  const high = band.high === null ? (G - top) / px : Math.min(band.high, (G - top) / px);
-  parts.push(`<rect x="0" y="${G - high * px}" width="340" height="${high * px}" class="d-water"/>`);
-  if (band.low > 0) parts.push(`<line x1="0" y1="${G - band.low * px}" x2="340" y2="${G - band.low * px}" class="d-low"/>`);
-  parts.push(`<line x1="0" y1="${G - high * px}" x2="340" y2="${G - high * px}" class="d-high"/>`);
-  parts.push(`<text x="8" y="${G - high * px - 6}" class="d-label">${esc(band.value)}</text>`);
-  // 人の背丈（約1.7m）の目盛り
-  const h = 17;
-  parts.push(`<g class="d-person"><circle cx="100" cy="${G - h + 3}" r="3"/><line x1="100" y1="${G - h + 6}" x2="100" y2="${G - 6}"/><line x1="100" y1="${G - 6}" x2="96" y2="${G}"/><line x1="100" y1="${G - 6}" x2="104" y2="${G}"/><line x1="95" y1="${G - 12}" x2="105" y2="${G - 12}"/></g>`);
-  parts.push(`<line x1="0" y1="${G}" x2="340" y2="${G}" class="c-ground"/>`);
-  return `<svg class="depth-svg" viewBox="0 0 340 190" role="img" aria-label="${esc(`${HAZARD_WORDS[band.key]}${band.value}。${storyWords(band)}`)}">${parts.join("")}</svg>`;
-}
 
 // 深さの札の行と、地図に重ねる層の対応（洪水は想定最大を先に）。地図と札で同じ層を使う。
 const LAYERS_OF_ROW = { flood: ["flood_max", "flood_planned"], inland: ["inland"], surge: ["storm_surge"] };
@@ -508,112 +477,15 @@ function hazardLayer(band) {
   return (LAYERS_OF_ROW[band.key] || []).map((key) => hazards.find((item) => item.key === key && usable(item))).find(Boolean) || null;
 }
 
-// 札の前提（2026-11-05 本人の指摘で足した）。どの雨の想定か・どこの値か・帯のどちらの端か・1階の床の高さ。
-// 想定の名前の意味（言葉の意味だけ。確率の数字は書かない）。
-const SCENARIO_WORDS = { flood_max: "想定しうる最大の大雨", flood_planned: "川の整備の目標の大雨" };
-const SCENARIO_ORDER = ["flood_planned", "flood_max", "inland", "storm_surge", "tsunami"];
 
-// 同じ場所の想定を並べる（サーバーの reading.hazards のまま）。一番深いものだけを見せない。
-function scenarioRows() {
-  const hazards = S.place?.location?.reading?.hazards || [];
-  return SCENARIO_ORDER.map((key) => hazards.find((item) => item.key === key)).filter(Boolean).map((item) => {
-    let value = "データなし";
-    let cls = "none";
-    if (item.legend) {
-      value = item.legend;
-      cls = "color";
-    } else if (item.nearby_legend) {
-      value = `${item.nearby_legend}（この点ではなく近くに色）`;
-      cls = "color";
-    } else if (item.status === "no_color") {
-      value = "この点に色なし";
-      cls = "nocolor";
-    }
-    return { key: item.key, name: item.label, words: SCENARIO_WORDS[item.key] || "", value, cls };
-  });
-}
 
-// 水が引くまでの時間（浸水継続時間、想定最大規模）。サーバーが凡例の色で読んだ区分のまま。読めないときは出さない。
-// 継続時間は洪水（想定最大規模）の値なので、札の先頭が洪水のときだけ大きく出す。ほかのときは想定の表の1行（durationRow）に入れる。
-function durationItem() {
-  const reading = S.place?.location?.reading || {};
-  return (reading.durations || []).find((d) => d.legend || d.nearby_legend) || null;
-}
 
-function durationLine() {
-  const reading = S.place?.location?.reading || {};
-  const item = durationItem();
-  if (!item || deepestHazard()?.key !== "flood") return "";
-  const value = item.legend || `${item.nearby_legend}（この点ではなく近くに色）`;
-  const note = /2週間以上/.test(value) && reading.duration_note ? `<small>${esc(reading.duration_note)}</small>` : "";
-  return `<p class="duration">水が引くまで <b>${esc(value)}</b><small>${esc(item.label)}</small>${note}</p>`;
-}
 
-function scenarioTable() {
-  const rows = scenarioRows();
-  if (!rows.length) return "";
-  const duration = durationItem();
-  const durationRow = duration && deepestHazard()?.key !== "flood" ? `<tr class="color"><th>${esc(duration.label)}</th><td>${esc(duration.legend || `${duration.nearby_legend}（近くに色）`)}</td></tr>` : "";
-  return `<table class="scenarios"><caption>同じ場所の、ほかの想定</caption>${rows
-    .map((row) => `<tr class="${row.cls}"><th>${esc(row.name)}${row.words ? `<small>${esc(row.words)}</small>` : ""}</th><td>${esc(row.value)}</td></tr>`)
-    .join("")}${durationRow}</table>`;
-}
 
-function depthConditions(band) {
-  const lines = [];
-  lines.push(S.place?.site?.basis === "representative" ? "町丁の代表点の値で、建物の位置の値ではありません" : "建物の位置として選んだ点の値です");
-  // 点そのものに色がなく、近くの色の値を使ったときは、その旨（サーバーの文のまま）。
-  if (/先に色/.test(band.conclusion)) lines.push(band.conclusion);
-  if (band.high !== null && band.low > 0) lines.push(`${band.value}の深い方（${band.high}m）で描いています`);
-  lines.push("深さは地面から。1階の床が地面より高い建物では、その分浅くなります");
-  lines.push(STORY_NOTE);
-  lines.push(STORY_SOURCE);
-  return lines;
-}
 
-function depthCard() {
-  const band = deepestHazard();
-  if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p><details class="depth-more"><summary>内水（下水や水路）のこと</summary>${inlandNote()}</details>`;
-  return `<div class="depth">
-    <p class="depth-lead">${esc(leadWords(band))} <b>${esc(band.value)}</b></p>
-    <p class="depth-words">${esc(storyWords(band))}</p>
-    <div class="depth-art">${depthPicture(band)}</div>
-    ${durationLine()}
-    <p class="depth-why">${esc(depthWhy(band))}</p>
-    <p class="depth-short">${esc(depthShort(band))}</p>
-    <details class="depth-more"><summary>ほかの想定・前提・内水を見る</summary>
-      ${scenarioTable()}
-      ${inlandNote()}
-      <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
-    </details>
-  </div>`;
-}
 
-// なぜこの深さか。ハザードマップの深さが何の計算かを、想定ごとに言う（水防法の浸水想定：洪水は国や都道府県、高潮は都道府県、内水は都道府県や市区町村）。
-function depthWhy(band) {
-  const who = { flood: "国や都道府県", surge: "都道府県", inland: "都道府県や市区町村" }[band.key] || "国や自治体";
-  const what = { flood: "川があふれたり堤防が切れたりしたとき", surge: "高潮で海の水が入ってきたとき", inland: "下水や水路があふれたとき" }[band.key] || "大雨のとき";
-  const layer = hazardLayer(band);
-  const rain = layer && SCENARIO_WORDS[layer.key] ? `${SCENARIO_WORDS[layer.key]}で、` : "";
-  return `なぜこの深さ？　${rain}${what}に、水がどこまで広がり、どれだけたまるかを、${who}が計算した想定です。毎年の大雨でこの深さになるという意味ではありません。`;
-}
 
-// 札の表面に残す前提の1行（本人の指摘：前提が見えないと誤解する）。くわしい文は折りたたみの中。
-function depthShort(band) {
-  const parts = [];
-  const planned = scenarioRows().find((row) => row.key === "flood_planned");
-  if (band.key === "flood" && planned && planned.cls !== "color") parts.push(`川の整備の目標の大雨では${planned.value === "この点に色なし" ? "色なし" : planned.value}`);
-  parts.push(S.place?.site?.basis === "representative" ? "町丁の代表点の値" : "建物の位置の値");
-  parts.push("深い方の端で描いた目安");
-  return parts.join("・");
-}
 
-// 札の一行目。どの想定の深さかを、頭に言う（例：想定しうる最大の大雨で川があふれると）。
-function leadWords(band) {
-  const layer = hazardLayer(band);
-  const words = layer && SCENARIO_WORDS[layer.key];
-  return words ? `${words}で${HAZARD_WORDS[band.key]}` : HAZARD_WORDS[band.key];
-}
 
 // ---- 内水と、この辺りの経験（2026-11-05） ----
 // 内水（下水や水路があふれる）は、国の重ねるハザードマップにデータがない所が多い。市区町村が別に出していることがあるので案内する。
@@ -622,7 +494,7 @@ const WAGAMACHI = "https://disaportal.gsi.go.jp/hazardmap/";
 function inlandNote() {
   const inland = (S.place?.location?.reading?.hazards || []).find((item) => item.key === "inland");
   if (inland && (inland.legend || inland.nearby_legend)) return "";
-  return `<p class="inland-note">下水や水路があふれる浸水（内水）は、この地図にデータがありません。大雨のときの道路の冠水は、こちらによることがあります。市区町村が別に地図を出していることがあるので、<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ（国土地理院）</a>で市区町村を選んで確かめてください。</p>`;
+  return `<p class="inland-note">下水や水路があふれる浸水（内水）は、この地図にデータがありません。道路の冠水はこちらのことがあります。市区町村の地図は<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ（国土地理院）</a>で。</p>`;
 }
 
 // 住民が知っている、この辺りの経験。地図にない内水の手がかりになる。判定は変えず、依頼メモに「聞き取り」として載せる。
@@ -698,66 +570,33 @@ function profileWords(axis) {
   return line;
 }
 
-function profilePicture() {
+
+// ---- WHY に沿った画面1・2の部品（2026-11-05 作り直し） ----
+// 画面1の一行：命を守る避難の判断と、機械を守る足元の対策を混ぜない。
+const EVAC_LINE = "避難するかどうかは、自治体のハザードマップと警戒レベルで決めます。この道具は、地図に色がなくても浅い水で止まる、建物の電気と水の足元の対策を整理します。";
+
+// 画面1の土地の一行（横から見た図はやめ、言葉だけ）。
+function landLine() {
   const axis = profileAxis();
-  if (!axis) return "";
-  const W = 340;
-  const H = 170;
-  const padX = 18;
-  const top = 26;
-  const bottom = 132;
-  const heights = axis.points.map(([, h]) => h);
-  const center = axis.points.find(([d]) => d === 0)?.[1] ?? heights[Math.floor(heights.length / 2)];
-  const band = deepestHazard();
-  const waterHigh = band ? center + (band.high === null ? band.low + STORY_M : band.high) : null;
-  const waterLow = band ? center + band.low : null;
-  const values = [...heights, ...(waterHigh !== null ? [waterHigh] : [])];
-  const seaShown = Math.min(...heights) < 1;
-  if (seaShown) values.push(0);
-  let lo = Math.min(...values);
-  let hi = Math.max(...values);
-  if (hi - lo < 2) {
-    const mid = (hi + lo) / 2;
-    lo = mid - 1;
-    hi = mid + 1;
-  }
-  const pad = (hi - lo) * 0.12;
-  lo -= pad;
-  hi += pad;
-  const y = (h) => bottom - ((h - lo) / (hi - lo)) * (bottom - top);
-  const span = axis.points.length - 1 || 1;
-  const x = (i) => padX + (i / span) * (W - padX * 2);
-  const ground = axis.points.map(([, h], i) => `${x(i).toFixed(1)},${y(h).toFixed(1)}`);
-  const parts = [`<rect x="0" y="0" width="${W}" height="${H}" class="c-sky"/>`];
-  if (waterHigh !== null) {
-    parts.push(`<rect x="0" y="${y(waterHigh)}" width="${W}" height="${bottom - y(waterHigh) + 4}" class="t-water"/>`);
-    if (band.low > 0) parts.push(`<line x1="0" y1="${y(waterLow)}" x2="${W}" y2="${y(waterLow)}" class="d-low"/>`);
-    parts.push(`<line x1="0" y1="${y(waterHigh)}" x2="${W}" y2="${y(waterHigh)}" class="d-high"/>`);
-    parts.push(`<text x="6" y="${y(waterHigh) - 5}" class="t-label water">想定の水面（深さ ${esc(band.value)}）</text>`);
-  }
-  if (seaShown) {
-    parts.push(`<line x1="0" y1="${y(0)}" x2="${W}" y2="${y(0)}" class="t-sea"/>`);
-    parts.push(`<text x="${W - 6}" y="${y(0) - 4}" class="t-label sea" text-anchor="end">海面 0m</text>`);
-  }
-  parts.push(`<polygon points="${x(0)},${H} ${ground.join(" ")} ${x(span)},${H}" class="t-ground"/>`);
-  parts.push(`<polyline points="${ground.join(" ")}" class="t-line"/>`);
-  // 建物（真ん中の点）
-  const ci = axis.points.findIndex(([d]) => d === 0);
-  const bx = x(ci < 0 ? Math.floor(span / 2) : ci);
-  const by = y(center);
-  parts.push(`<rect x="${bx - 14}" y="${by - 40}" width="28" height="40" class="t-building"/>`);
-  parts.push(`<text x="${bx}" y="${by - 46}" class="t-label" text-anchor="middle">建物 ${center.toFixed(1)}m</text>`);
-  // 両端の高さ
-  const [, leftH] = axis.points[0];
-  const [, rightH] = axis.points[axis.points.length - 1];
-  parts.push(`<text x="4" y="${H - 6}" class="t-label">${axis.left} ${leftH.toFixed(1)}m</text>`);
-  parts.push(`<text x="${W - 4}" y="${H - 6}" class="t-label" text-anchor="end">${axis.right} ${rightH.toFixed(1)}m</text>`);
-  const words = profileWords(axis);
-  return `<div class="profile">
-    <p class="profile-head">この土地を横から見ると（${axis.left} → ${axis.right}、約200m）</p>
-    <svg class="profile-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(words || "土地を横から見た図")}">${parts.join("")}</svg>
-    ${words ? `<p class="profile-words">${esc(words)}</p>` : ""}
-    <p class="hint">高さは海面からの高さ（国土地理院の標高）。水面は、建物の点の高さに想定の深さを足した目安です。</p>
+  return axis ? profileWords(axis) : "";
+}
+
+// 対策の切り替え（what-019）。名前はサーバーの model_measures のまま。選んだ対策の固定の文（what-026）を言い換えずに添える。
+function measureChips() {
+  const b = S.building;
+  const list = b.model_measures || [];
+  if (!list.length) return "";
+  const chips = list.map((m) => `<button type="button" class="option${S.measure === m.key ? " chosen" : ""}" data-measure="${esc(m.key)}" aria-pressed="${S.measure === m.key}">${esc(m.short)}</button>`).join("");
+  const chosen = list.find((m) => m.key === S.measure);
+  const fixed = [];
+  if (S.measure === "hole") fixed.push(b.fixed.hole);
+  if (S.measure === "raise") fixed.push(b.fixed.raise);
+  fixed.push(b.fixed.tr_box ? `借室：${b.fixed.tr_box}` : "");
+  return `<div class="measures-switch">
+    <p class="own-head">対策を選ぶと、止まり方が変わります</p>
+    <div class="options">${chips}</div>
+    ${chosen ? `<p class="hint">${esc(chosen.label)}</p>` : ""}
+    ${fixed.filter(Boolean).map((text) => `<p class="fixed-line">${esc(text)}</p>`).join("")}
   </div>`;
 }
 
@@ -872,14 +711,15 @@ function screenOne() {
     picked = `<div class="picked">
         <p class="place"><b>${esc(S.place.site.label)}</b></p>
         <h2 class="question">この土地で水が来る道</h2>
-        ${depthCard()}
-        ${profilePicture()}
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
         ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置の値で読んでいます（地図を押すと選び直せます）" : "地図で、建物の場所を押してください（今は町丁の代表点の値）"}</p>`}
         ${terrain ? `<p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>` : ""}
+        ${landLine() ? `<p class="land-line">${esc(landLine())}</p>` : ""}
         <ul class="place-chips">${rows}</ul>
         ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
+        ${inlandNote()}
+        <p class="evac">${EVAC_LINE}</p>
         ${S.sampleId ? "" : ownQuestions()}
         ${S.sampleId ? "" : experienceQuestion()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
@@ -976,8 +816,8 @@ async function movePin(lat, lng) {
 }
 
 // ---- 2 止まるもの ----
-// 3段で見せる。①断面の切り絵で、どう浸水するか ②暮らしが止まるまでの時間 ③平面図で、どこを確かめるか。
-// 切り絵は見本の形（階数・地下の有無・機械の部屋）から描く説明用の模式で、部屋の色は判定のまま、止まるかはサーバーの scenario のまま。
+// 2段で見せる。①構内平面図の上で、水の位置①②③の順に水が入り、選んだ対策で浸かる部屋が変わる ②暮らしが止まるまでの時間。
+// 部屋の色は判定のまま、浸かる部屋と止まるかはサーバーの scenario（水の位置:対策）のまま。
 
 // 住民が過ごす時間の順（前の時間の再生と同じ段の名前。サーバーの五段の表の列の順）。
 const PHASES = [
@@ -987,125 +827,11 @@ const PHASES = [
   { key: "week", name: "数日〜1週間", line: "水を抜いても、浸かった機械は止まったまま。点検と修理を待つ" },
   { key: "months", name: "約2か月〜本復旧", line: "浸かった盤や部品が届いて付け替わるまで、止まったままのことがある" },
 ];
-const MACHINE_KEYS = [["elec", "panel_room"], ["tr"], ["pump"]];
 
-// 断面の切り絵（斜めから見た建物の切り口）。説明用の模式で、高さの値ではない。
-function cutaway(level = 0) {
-  const b = S.building;
-  const sample = b.sample;
-  const under = sample.archetype !== "ground";
-  const W = 360;
-  const G = under ? 196 : 236;
-  const x0 = 64;
-  const x1 = 262;
-  const dx = 30;
-  const dy = 18;
-  const top = 34;
-  const shown = Math.min(sample.floors || 6, 6);
-  // 地下のない建物は、1階を機械の部屋の帯（高め）にし、住まいの階をその上に並べる。
-  const band_ = under ? 0 : 62;
-  const homesShown = under ? shown : shown - 1;
-  const fh = (G - band_ - top) / homesShown;
-  const homes = level ? serviceState(level, "homes") : "running";
-  const evOff = level && serviceState(level, "ev") === "stopped";
-  const parts = [];
-  parts.push(`<rect x="0" y="0" width="${W}" height="300" class="c-sky"/>`);
-  // 地面と土
-  parts.push(`<rect x="0" y="${G}" width="${W}" height="${300 - G}" class="c-soil"/>`);
-  // 建物の上と横（斜めの面）
-  parts.push(`<polygon points="${x0},${top} ${x1},${top} ${x1 + dx},${top - dy} ${x0 + dx},${top - dy}" class="c-roof"/>`);
-  parts.push(`<polygon points="${x1},${top} ${x1 + dx},${top - dy} ${x1 + dx},${G - dy} ${x1},${G}" class="c-side"/>`);
-  // 住まいの階（窓の明かり）
-  for (let i = 0; i < homesShown; i += 1) {
-    const y = top + i * fh;
-    parts.push(`<rect x="${x0}" y="${y}" width="${x1 - x0}" height="${fh}" class="c-floor"/>`);
-    // 窓は4つ。右のエレベーターの通り道に重ねない。
-    for (let k = 0; k < 4; k += 1) {
-      const wx = x0 + 12 + k * 40;
-      const off = homes === "stopped";
-      parts.push(`<rect x="${wx}" y="${y + fh * 0.26}" width="26" height="${fh * 0.48}" rx="2" class="c-win${off ? " off" : ""}"/>`);
-    }
-  }
-  // 階数は、見本なら見本の値、自分の建物なら答えたときだけ。分からなければ「未確認」と書く。
-  const knownFloors = sample.custom ? Number(sample.answers?.floors) || 0 : sample.floors;
-  if (!knownFloors || knownFloors > shown) parts.push(`<path d="M${x0 - 4} ${top + fh * 1.5} l8 -5 l8 5 l8 -5" class="c-break"/>`);
-  parts.push(`<text x="${x1 + dx + 4}" y="${top - dy + 4}" class="c-label" text-anchor="end">${knownFloors ? `${knownFloors}階建て` : "階数は未確認"}</text>`);
-  // 機械の部屋（地下の階、なければ1階）
-  const roomTop = under ? G + 6 : G - band_ + 4;
-  const roomBottom = under ? G + 66 : G;
-  if (under) parts.push(`<rect x="${x0}" y="${G}" width="${x1 - x0}" height="${roomBottom - G + 4}" class="c-basement"/>`);
-  else parts.push(`<rect x="${x0}" y="${G - band_}" width="${x1 - x0}" height="${band_}" class="c-basement"/>`);
-  const roomW = (x1 - x0 - 40) / 3;
-  MACHINE_KEYS.forEach((keys, i) => {
-    const room = b.sample.views.flatMap((v) => v.rooms).find((r) => keys.includes(r.key));
-    if (!room) return;
-    const rowKey = KIND_ROWS[room.key];
-    const v = row(rowKey) ? row(rowKey).verdict : "unconfirmed";
-    const rx = x0 + 4 + i * (roomW + 2);
-    parts.push(`<rect x="${rx}" y="${roomTop}" width="${roomW}" height="${roomBottom - roomTop - 2}" class="c-room ${v}"/>`);
-    parts.push(`<text x="${rx + roomW / 2}" y="${roomTop + 16}" class="c-room-name ${v}">${esc(ROOM_SHORT[room.key])}</text>`);
-    parts.push(`<rect x="${rx + roomW / 2 - 12}" y="${roomBottom - 30}" width="24" height="18" rx="2" class="c-box"/>`);
-  });
-  // エレベーター（地下まで通る）
-  const evX = x1 - 32;
-  parts.push(`<rect x="${evX}" y="${top + 4}" width="26" height="${roomBottom - top - 2}" class="c-ev${evOff ? " off" : ""}"/>`);
-  parts.push(`<rect x="${evX + 4}" y="${top + fh * 1.2}" width="18" height="${fh * 0.7}" class="c-car"/>`);
-  parts.push(`<text x="${evX + 13}" y="${top + fh * 1.2 - 4}" class="c-ev-label">EV</text>`);
-  if (evOff) parts.push(`<text x="${evX + 13}" y="${top + fh * 2.4}" class="c-stop">止</text>`);
-  // 地面の線・道路・入り道
-  parts.push(`<line x1="0" y1="${G}" x2="${W}" y2="${G}" class="c-ground"/>`);
-  parts.push(`<text x="6" y="${G - 8}" class="c-label">道路</text>`);
-  // 自分の建物は、機械の部屋の位置が分からない。見本の形を借りていることを、絵の中に書く。
-  if (sample.custom) {
-    const where = sample.answers?.basement === "yes" ? "地下あり（機械の部屋の階は未確認）" : sample.answers?.basement === "no" ? "地下なし（機械の部屋の階は未確認）" : "地下の有無は未確認";
-    // 右上の「階数」の札と重ならないよう、左上に2行で書く。
-    parts.push(`<rect x="4" y="4" width="196" height="34" rx="4" class="c-tag"/>`);
-    parts.push(`<text x="10" y="18" class="c-tag-text">見本の形を借りた絵</text>`);
-    parts.push(`<text x="10" y="32" class="c-tag-sub">${esc(where)}</text>`);
-  }
-  const routes = [];
-  if (under) {
-    // スロープ（右から地下へ）と、道路の下の管から電気室の壁の穴へ
-    routes.push(`M${W - 6} ${G} L${x1 + 30} ${G} L${x1 + 2} ${roomBottom - 8}`);
-    parts.push(`<path d="M${W} ${G + 1} L${x1 + 30} ${G + 1} L${x1 + 2} ${roomBottom - 6} L${x1 + 2} ${roomBottom + 6} L${W} ${roomBottom + 6} Z" class="c-ramp"/>`);
-    parts.push(`<rect x="22" y="${G + 2}" width="16" height="16" class="c-hh"/>`);
-    routes.push(`M30 ${G + 18} L30 ${roomTop + 34} L${x0 + 2} ${roomTop + 34}`);
-    parts.push(`<circle cx="${x0 + 1}" cy="${roomTop + 34}" r="4" class="c-hole"/>`);
-  } else {
-    routes.push(`M8 ${G - 4} L${x0 + 2} ${G - 6}`);
-  }
-  // この場所の想定の深さ（ハザードマップの帯）。1階を約3mとして、切り絵の階の高さに合わせて引く。
-  const band = deepestHazard();
-  if (band) {
-    const yOf = (m) => {
-      if (under) return G - (m / STORY_M) * fh;
-      if (m <= STORY_M) return G - (m / STORY_M) * band_;
-      return G - band_ - ((m - STORY_M) / STORY_M) * fh;
-    };
-    const highM = band.high === null ? band.low + STORY_M : band.high;
-    const yHigh = Math.max(top - dy, yOf(highM));
-    parts.push(`<rect x="0" y="${yHigh}" width="${W}" height="${G - yHigh}" class="h-band"/>`);
-    parts.push(`<line x1="0" y1="${yHigh}" x2="${W}" y2="${yHigh}" class="h-line"/>`);
-    parts.push(`<text x="4" y="${yHigh - 5}" class="h-label">この場所の想定 ${esc(band.value)}</text>`);
-  }
-  // 水
-  if (level >= 1) {
-    parts.push(`<rect x="0" y="${G - 7}" width="${x0}" height="7" class="c-water"/>`);
-    parts.push(`<rect x="${x1 + dx}" y="${G - 7}" width="${W - x1 - dx}" height="7" class="c-water"/>`);
-  }
-  if (level >= 2) parts.push(`<rect x="${x0 + 2}" y="${roomBottom - 10}" width="${x1 - x0 - 4}" height="10" class="c-water"/>`);
-  if (level >= 3) parts.push(`<rect x="${x0 + 2}" y="${roomBottom - 34}" width="${x1 - x0 - 4}" height="34" class="c-water"/>`);
-  routes.forEach((d) => parts.push(`<path d="${d}" class="c-route${level >= 1 ? " on" : ""}" marker-end="url(#c-head)"/>`));
-  const label = level ? `もし水がここまで来たら：${CAPTIONS[level]}` : "建物の断面の模式";
-  return `<svg class="cut-svg" viewBox="0 0 ${W} ${under ? 270 : 252}" role="img" aria-label="${esc(label)}">
-    <defs><marker id="c-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker></defs>
-    ${parts.join("")}
-  </svg>`;
-}
 
 // 時間の段の文（サーバーの五段の表のその列の文のまま。重ねて出さない）。
 function phaseFacts(index) {
-  const table = S.building?.scenarios?.["3:plate"]?.table || [];
+  const table = scenario(3)?.table || [];
   const seen = new Set();
   return table
     .filter((item) => item.key !== "actions" && (item.stopped || item.key === "others"))
@@ -1128,7 +854,7 @@ function shapeWords(text) {
 
 function timeline() {
   const n = Number(S.floor);
-  const notes = S.building?.scenarios?.["3:plate"]?.notes || [];
+  const notes = scenario(3)?.notes || [];
   const stopped = TILES.filter((tile) => serviceState(3, SERVICE_OF_TILE[tile.key]) === "stopped").map((tile) => tile.label);
   const items = PHASES.map((phase, i) => {
     const facts = phaseFacts(i);
@@ -1157,21 +883,21 @@ function screenTwo() {
   const now = levels.find((item) => item.key === S.play);
   return `<section class="s2">
     <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
-    <h1 class="title">${esc(titleLine())}</h1>
-    <h2 class="part"><span>1</span>どう浸水するか</h2>
-    <div class="cut">${cutaway(S.play)}</div>
+    <h1 class="title">${esc(b.top_line.lead)}</h1>
+    <p class="lead-why">${esc(titleLine())}</p>
+    <h2 class="part"><span>1</span>水が入る順と、止まるもの</h2>
+    <div class="plan">${plan({ level: S.play })}</div>
     <div class="play-row">
       <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : "▶ 水が入る順に見る"}</button>
-      <span class="caption">${playing ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : (b.sample.custom ? "機械の部屋が止まると、上の階まで止まる" : `${b.sample.archetype === "ground" ? "1階" : "地下"}の機械が止まると、上の階まで止まる`)}</span>
+      <span class="caption">${playing ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : "道路 → 入り道 → 一番低い床 → 盤"}</span>
     </div>
     ${playing ? `<p class="hint">${PLAY_NOTE}</p>` : ""}
+    ${measureChips()}
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
     ${lifeChips(S.play)}
+    ${legend()}
     <h2 class="part"><span>2</span>暮らしが止まるまで</h2>
     ${timeline()}
-    <h2 class="part"><span>3</span>どこを確かめるか</h2>
-    <div class="plan">${plan()}</div>
-    ${legend()}
     <button type="button" class="primary" data-act="to3">${count ? `？を確かめる（未確認 ${count}）` : "確かめた答えを見直す"}</button>
   </section>`;
 }
@@ -1429,13 +1155,10 @@ function screenFour() {
 function summaryText() {
   const b = S.building;
   const lines = [`【マンション浸水ロードマップ】${where()}`, `・${titleLine()}`];
-  const band = deepestHazard();
-  if (band) lines.push(`・${leadWords(band)} ${band.value}（${storyWords(band)}。${STORY_NOTE}）`);
-  const duration = durationItem();
-  if (duration?.legend) lines.push(`・水が引くまで ${duration.legend}（${duration.label}）`);
-  // 一番深い想定だけにしない。同じ場所のほかの想定も1行ずつ。
-  const others = scenarioRows().filter((row) => row.cls !== "none");
-  if (others.length) lines.push(`・同じ場所の想定：${others.map((row) => `${row.name}${row.words ? `（${row.words}）` : ""} ${row.value}`).join("／")}`);
+  // 立地は札の値のまま（地図の想定）。深さを主役にしない。避難の判断は自治体の警戒レベルで。
+  const rows = (S.place?.location?.rows || []).map((item) => `${PLACE_SHORT[item.key] || item.label} ${item.value || ""}`.trim());
+  if (rows.length) lines.push(`・立地（地図の想定）：${rows.join("／")}`);
+  lines.push(`・${EVAC_LINE}`);
   const exp = experienceLine();
   if (exp) lines.push(`・この辺りの経験（住民の話）：${exp}`);
   const list = steps();
@@ -1827,6 +1550,9 @@ screen.addEventListener("click", (event) => {
     setEngineer(target.dataset.hv);
   } else if (target.dataset.kind) {
     setRoom(target.dataset.kind, target.dataset.choice);
+  } else if (target.dataset.measure) {
+    S.measure = target.dataset.measure;
+    render();
   } else if (target.dataset.drawing) {
     S.drawing = target.dataset.drawing;
     render();

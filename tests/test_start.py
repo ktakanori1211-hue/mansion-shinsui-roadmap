@@ -310,121 +310,13 @@ class PlanTest(unittest.TestCase):
         self.assertIn("reading.elevation?.points", js)
 
 
-class StoryTest(unittest.TestCase):
-    """画面2の3段（2026-11-05）：断面の切り絵・暮らしが止まるまで・平面図。住民に何がまずいかを伝える。"""
-
-    def test_three_parts_in_order(self):
-        js = read("start.js")
-        two = block(js, "function screenTwo()", "\n}\n")
-        parts = ["どう浸水するか", "暮らしが止まるまで", "どこを確かめるか"]
-        self.assertEqual([two.index(p) for p in parts], sorted(two.index(p) for p in parts))
-        self.assertIn("cutaway(S.play)", two)
-        self.assertIn("timeline()", two)
-
-    def test_cutaway_reads_the_server(self):
-        # 止まるかはサーバーの scenario、部屋の色は判定のまま。切り絵で新しい判定を作らない。
-        js = read("start.js")
-        cut = block(js, "function cutaway(", "\n}\n")
-        self.assertIn('serviceState(level, "homes")', cut)
-        self.assertIn('serviceState(level, "ev") === "stopped"', cut)
-        self.assertIn("row(rowKey) ? row(rowKey).verdict", cut)
-        self.assertNotIn('"risk"', cut)
-
-    def test_timeline_facts_come_from_the_server_table(self):
-        js = read("start.js")
-        facts = block(js, "function phaseFacts(", "\n}\n")
-        self.assertIn('S.building?.scenarios?.["3:plate"]?.table', facts)
-        line = block(js, "function timeline()", "\n}\n")
-        # 「この建物の日数ではありません」の一行（サーバーの notes）を出す。
-        self.assertIn("notes[0]", line)
-        self.assertIn('<details class="phase-more">', line)
-        # 段の名前と文に、日数などの新しい数字を書かない（数字はサーバーの表の文だけ）。
-        phases = re.sub(r'name: "[^"]*"', "", block(js, "const PHASES = [", "];"))
-        self.assertIsNone(re.search(r"\d+\s*(日|週|か月|年)", phases))
-
-    def test_server_table_has_the_example_and_note(self):
-        body = payload({}, [])
-        scenario = body["scenarios"]["3:plate"]
-        self.assertTrue(scenario["notes"])
-        others = next(item for item in scenario["table"] if item["key"] == "others")
-        self.assertIn("ほかの建物の例", others["cells"][3])
-        self.assertEqual(len(others["cells"]), 5)
-
-
-class DepthOnBuildingTest(unittest.TestCase):
-    """浸水の深さを建物の階に置き換える（2026-11-05）。深さは立地の行の値のまま、階は「1階を約3m」とした目安。"""
-
-    def test_depth_comes_from_the_place_rows(self):
-        js = read("start.js")
-        deepest = block(js, "function deepestHazard()", "\n}\n")
-        self.assertIn("S.place?.location?.rows", deepest)
-        self.assertIn("parseBand(item.value)", deepest)
-        self.assertIn("${depthCard()}", block(js, "function screenOne()", "\n}\n"))
-        self.assertIn("deepestHazard()", block(js, "function cutaway(", "\n}\n"))
-
-    def test_floors_are_said_to_be_an_assumption(self):
-        js = read("start.js")
-        self.assertIn('const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";', js)
-        self.assertIn("lines.push(STORY_NOTE);", block(js, "function depthConditions(band)", "\n}\n"))
-        # 国の手引きの区分は、原文（第3章 3.4.1）の言い方に合わせる。「床上浸水」などの別の言い方は使わない。
-        self.assertIn("0.5m＝1階の床の高さ、3m＝2階の床の下、5m＝一般的な家屋の2階が水没", js)
-        self.assertIn("lines.push(STORY_SOURCE);", block(js, "function depthConditions(band)", "\n}\n"))
-        for word in ("床上浸水", "床下浸水", "2階浸水"):
-            self.assertNotIn(word, js)
-
-    def test_card_states_its_conditions(self):
-        # 本人の指摘（2026-11-05）：どの雨の想定か・どこの値か・帯のどちらの端か・1階の床の高さを札に添える。
-        js = read("start.js")
-        conds = block(js, "function depthConditions(band)", "\n}\n")
-        # どの想定かは、札の一行目（leadWords）と、想定を並べる表で言う。
-        self.assertIn("SCENARIO_WORDS[layer.key]", block(js, "function leadWords(band)", "\n}\n"))
-        self.assertIn("${scenarioTable()}", block(js, "function depthCard()", "\n}\n"))
-        self.assertIn("町丁の代表点の値で、建物の位置の値ではありません", conds)
-        self.assertIn("の深い方（${band.high}m）で描いています", conds)
-        self.assertIn("1階の床が地面より高い建物では、その分浅くなります", conds)
-        self.assertIn("STORY_NOTE", conds)
-        self.assertIn("depthConditions(band)", block(js, "function depthCard()", "\n}\n"))
-        # 地図と札は同じ層を使う。
-        self.assertIn("hazardLayer(deepestHazard())", block(js, "function drawMap()", "\n}\n"))
-
-    def test_no_color_is_not_called_safe(self):
-        js = read("start.js")
-        self.assertIn("浸水しないという意味ではありません", block(js, "function depthCard()", "\n}\n"))
-
-    def test_bands_the_server_returns_are_parsed(self):
-        # サーバーの深さの帯の書き方（〜0.5m、0.5m〜3m、3m〜5m、20m〜）を読めるか、正規表現を同じ形で確かめる。
-        js = read("start.js")
-        pattern = re.search(r"String\(value \|\| \"\"\)\.match\(/(.+)/\);", js).group(1)
-        for text, low, high in (("〜0.5m", None, "0.5"), ("0.5m〜3m", "0.5", "3"), ("3m〜5m", "3", "5"), ("20m〜", "20", None)):
-            m = re.match(pattern, text)
-            self.assertIsNotNone(m, text)
-            self.assertEqual((m.group(1), m.group(2)), (low, high), text)
-        self.assertIsNone(re.match(pattern, "データなし"))
-
-
 class HonestShapeTest(unittest.TestCase):
     """本人の指摘（2026-11-05）：「11階建て」「地下の電気室」はどこから？ 3〜5mは本当？"""
 
-    def test_scenarios_are_listed_side_by_side(self):
-        # 一番深い想定だけを見せず、同じ場所のほかの想定（計画規模など）を並べる。値はサーバーの reading.hazards のまま。
-        js = read("start.js")
-        rows = block(js, "function scenarioRows()", "\n}\n")
-        self.assertIn("S.place?.location?.reading?.hazards", rows)
-        self.assertIn('"この点に色なし"', rows)
-        words = js_object(js, "SCENARIO_WORDS")
-        self.assertEqual(words["flood_max"], "想定しうる最大の大雨")
-        self.assertEqual(words["flood_planned"], "川の整備の目標の大雨")
-        # 想定の言葉に、確率や年数の数字を書かない。
-        self.assertIsNone(re.search(r"\d", "".join(words.values())))
-
     def test_own_building_floors_are_not_borrowed(self):
         js = read("start.js")
-        cut = block(js, "function cutaway(", "\n}\n")
-        self.assertIn("sample.custom ? Number(sample.answers?.floors) || 0 : sample.floors", cut)
-        self.assertIn('"階数は未確認"', cut)
-        self.assertIn("見本の形を借りた絵", cut)
         self.assertIn("（見本の形）", block(js, "function plan(", "\n}\n"))
-
+        self.assertIn("BORROWED", block(js, "function screenTwo()", "\n}\n"))
     def test_own_building_answers_are_sent(self):
         js = read("start.js")
         own = block(js, "function ownQuestions()", "\n}\n")
@@ -466,13 +358,6 @@ class NoDrawingTest(unittest.TestCase):
         self.assertIn("未確認", items[0]["text"])
         self.assertIn('item.from === "聞き取り"', read("start.js"))
 
-    def test_map_has_no_numbers_or_arrows(self):
-        # 本人の指摘（2026-11-05）：地図の数字と矢印は初見で分からない。地図は場所の確認だけにし、高さは横から見た図で見せる。
-        js = read("start.js")
-        draw = block(js, "function drawMap()", "\n}\n")
-        self.assertNotIn("m-height", draw)
-        self.assertNotIn("m-flow", draw)
-        self.assertIn("${profilePicture()}", block(js, "function screenOne()", "\n}\n"))
 
 
 class BuildingPinTest(unittest.TestCase):
@@ -514,7 +399,7 @@ class InlandTest(unittest.TestCase):
         self.assertIn("item.key === \"inland\"", note)
         self.assertIn("${WAGAMACHI}", note)
         self.assertIn('const WAGAMACHI = "https://disaportal.gsi.go.jp/hazardmap/";', js)
-        self.assertIn("${inlandNote()}", block(js, "function depthCard()", "\n}\n"))
+        self.assertIn("${inlandNote()}", block(js, "function screenOne()", "\n}\n"))
 
     def test_experience_goes_to_the_city_not_the_drawing(self):
         js = read("start.js")
@@ -547,27 +432,6 @@ class DurationTest(unittest.TestCase):
         self.assertIsNone(location.nearest_legend(self.Image((255, 153, 0)), 12, 10))
         self.assertIn("4週間以上", location.DURATION_NOTE)
 
-    def test_duration_is_not_shown_under_another_scenario(self):
-        # 継続時間は洪水（想定最大規模）の値。札の先頭が高潮などのときは、大きく出さずに表の1行にする。
-        from app import location
-
-        self.assertIn("洪水", location.DURATION_LAYERS[0][1])
-        js = read("start.js")
-        self.assertIn('deepestHazard()?.key !== "flood"', block(js, "function durationLine()", "\n}\n"))
-        self.assertIn("durationRow", block(js, "function scenarioTable()", "\n}\n"))
-
-    def test_sent_text_lists_the_other_scenarios(self):
-        js = read("start.js")
-        text = block(js, "function summaryText()", "\n}\n")
-        self.assertIn("scenarioRows()", text)
-        self.assertIn("experienceLine()", text)
-
-    def test_screen_shows_the_server_value_only(self):
-        js = read("start.js")
-        line = block(js, "function durationLine()", "\n}\n")
-        self.assertIn("reading.durations", block(js, "function durationItem()", "\n}\n"))
-        self.assertIn("reading.duration_note", line)
-        self.assertIsNone(re.search(r"\d+\s*(時間|日|週)", "".join(re.findall(r'"[^"\n]*"', line))))
 
 
 class BuildingFactsTest(unittest.TestCase):
@@ -621,11 +485,11 @@ class SendTest(unittest.TestCase):
         text = block(js, "function summaryText()", "\n}\n")
         self.assertIn("where()", text)
         self.assertIn("disclaimer()", text)
-        self.assertIn("STORY_NOTE", text)
+        self.assertIn("EVAC_LINE", text)
         self.assertIn("COST_FIXED", text)
         self.assertIn("見本の形を借りた説明です", text)
         self.assertNotIn("site.label", text)
-
+        self.assertIn("experienceLine()", text)
     def test_nothing_is_sent_to_the_server(self):
         js = read("start.js")
         send = block(js, "async function sendSummary()", "\n}\n")
@@ -640,58 +504,49 @@ class SendTest(unittest.TestCase):
             self.assertNotIn("postJSON", body)
 
 
-class FoldTest(unittest.TestCase):
-    """画面1を畳んで減らす（2026-11-05、原則1）。表面は太字・絵・水が引くまで・前提の1行。詳しい文は折りたたみ。"""
+class WhyFirstTest(unittest.TestCase):
+    """WHY / WHAT に戻した（2026-11-05 本人の指示）。絵は構内平面図と画面1の地図だけ。主役は足元の水（what-018）と対策（what-019）。"""
 
-    def test_details_are_folded_but_one_line_stays(self):
+    def test_only_the_plan_and_the_map_are_drawn(self):
         js = read("start.js")
-        card = block(js, "function depthCard()", "\n}\n")
-        # 色があるときの札（後ろの方の折りたたみ）。前の方は色がないときの内水の折りたたみ。
-        at = card.rindex('<details class="depth-more">')
-        more = card[at:]
-        for part in ("${scenarioTable()}", "${inlandNote()}", "depthConditions(band)"):
-            self.assertIn(part, more)
-        self.assertIn("depthShort(band)", card[:at])
-        short = block(js, "function depthShort(band)", "\n}\n")
-        self.assertIn("町丁の代表点の値", short)
-        self.assertIn("深い方の端で描いた目安", short)
+        for name in ("function depthPicture(", "function cutaway(", "function profilePicture(", "function depthCard("):
+            self.assertNotIn(name, js)
+        for text in ("1階を約3mとした目安", "深さの区切りは、国交省", "なぜこの深さ？"):
+            self.assertNotIn(text, js)
+        self.assertEqual(js.count("<svg class="), 1)  # 平面図だけ（地図は Leaflet）
+        one = block(js, "function screenOne()", "\n}\n")
+        self.assertIn("${EVAC_LINE}", one)
+        self.assertIn("landLine()", one)
 
-    def test_web_search_is_folded_but_says_what_it_sends(self):
+    def test_screen_two_leads_with_the_server_top_line(self):
         js = read("start.js")
-        box = block(js, "function factsBox()", "\n}\n")
-        self.assertIn('<details class="facts"', box)
-        self.assertIn("Anthropic の API に送り", box)
+        two = block(js, "function screenTwo()", "\n}\n")
+        self.assertIn("${esc(b.top_line.lead)}", two)
+        self.assertIn("plan({ level: S.play })", two)
+        self.assertIn("${measureChips()}", two)
+        self.assertEqual(two.count("plan("), 1)
 
-
-class ProfileTest(unittest.TestCase):
-    """土地を横から見た図と「なぜこの深さ？」（2026-11-05）。データから言えることだけを言う。"""
-
-    def test_profile_uses_the_server_heights(self):
+    def test_water_positions_follow_the_server_scenario(self):
         js = read("start.js")
-        axis = block(js, "function profileAxis()", "\n}\n")
-        self.assertIn("reading?.profile", axis)
-        picture = block(js, "function profilePicture()", "\n}\n")
-        self.assertIn("deepestHazard()", picture)
-        self.assertIn("海面 0m", picture)
-        self.assertIn("建物の点の高さに想定の深さを足した目安", picture)
+        self.assertIn("S.building?.scenarios?.[`${level}:${S.measure}`]", js)
+        drawn = block(js, "function plan(", "\n}\n")
+        self.assertIn("scenario(level)?.wet", drawn)
+        body = payload({}, [])
+        keys = {key for scenario in body["scenarios"].values() for key in scenario["wet"]}
+        mapped = set(re.findall(r"(\w+): \[", block(js, "const WET_ROOMS = {", "};")))
+        self.assertLessEqual(keys - {"drain", "park"}, mapped)
 
-    def test_words_only_say_what_the_data_shows(self):
+    def test_measures_and_fixed_lines_are_the_servers(self):
         js = read("start.js")
-        words = block(js, "function profileWords(axis)", "\n}\n")
-        self.assertIn("if (center < 0)", words)
-        self.assertIn("海面より低い土地", words)
-        self.assertIn("まわりより少し高い所", words)
-        # 坂と言うのは1m以上の差のときだけ（海面より低い平らな土地を「坂」と言わない）。
-        self.assertIn("Math.max(...lefts) >= center + 1", words)
-        # 低い土地でないときは「水が集まる」と言わない。
-        self.assertIn("if (deepestHazard() && (center < 0 || reading.basin || center < mean - 0.1))", words)
-
-    def test_why_line_names_who_calculated_it(self):
-        js = read("start.js")
-        why = block(js, "function depthWhy(band)", "\n}\n")
-        self.assertIn("毎年の大雨でこの深さになるという意味ではありません", why)
-        self.assertIn('flood: "国や都道府県"', why)
-        self.assertIn("${depthWhy(band)}", js.replace("esc(depthWhy(band))", "${depthWhy(band)}"))
+        chips = block(js, "function measureChips()", "\n}\n")
+        self.assertIn("b.model_measures", chips)
+        for key in ("b.fixed.hole", "b.fixed.raise", "b.fixed.tr_box"):
+            self.assertIn(key, chips)
+        body = payload({}, [])
+        for measure in body["model_measures"]:
+            for level in (1, 2, 3):
+                self.assertIn(f"{level}:{measure['key']}", body["scenarios"])
+        self.assertIn("壁の穴を塞いだのは、この図の入り道一つだけです", body["fixed"]["hole"])
 
 
 class PlanFileTest(unittest.TestCase):
