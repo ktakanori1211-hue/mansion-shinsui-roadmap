@@ -1026,10 +1026,11 @@ class LiveFindingsTest(unittest.TestCase):
         self.assertIn("確かめる人：—", assistant._context_text({"location": [row]}))
 
     def test_screen_sends_who_confirms_for_location(self):
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "app.js")
+        # 画面は立地の行をサーバーが返した形のまま（確かめる人の欄ごと）送り返す。
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "start.js")
         with open(path, encoding="utf-8") as file:
-            line = next(item for item in file if "location: this.locationState.location.rows.map" in item)
-        self.assertRegex(line, r"confirm_(short|by):")
+            source = file.read()
+        self.assertIn("location_rows: location.rows,", source)
 
     def test_measure_costs_pass_the_number_check(self):
         for measure in samples.MEASURES:

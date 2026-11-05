@@ -6,413 +6,60 @@
   <title>マンション浸水ロードマップ</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="ui-more.css">
-  <link rel="stylesheet" href="section-anim.css">
-  <script type="importmap">
-    {"imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-    }}
-  </script>
+  <link rel="stylesheet" href="start.css">
 </head>
 <body>
-  <header class="app-header">
-    <div class="app-title">
-      <h1>マンション浸水ロードマップ</h1>
-      <p>浸水のあとに水と電気がどれだけ止まりうるかを整理し、理事会に出せるA4一枚を作ります。<a class="easy-link" href="/">かんたん版に戻る</a></p>
-    </div>
-    <div class="claude-box">
-      <p class="claude-status" id="claude-status"></p>
-      <button type="button" class="key-toggle" id="key-toggle" hidden></button>
-      <form class="key-form" id="key-form" autocomplete="off" hidden>
-        <label for="key-input">APIキーを設定</label>
-        <input id="key-input" type="password" autocomplete="new-password" spellcheck="false" placeholder="ここに貼り付ける">
-        <button type="submit">保存</button>
-        <p class="key-note" id="key-note" role="status">このパソコンのホームのファイル（権限600）にだけ保存し、画面にもログにも出しません。</p>
-      </form>
-    </div>
+  <!-- 画面は1本（2026-11-05 一本化）。1画面に、図1枚・太字1行・ボタン1つ。
+       絵は構内平面図だけ。判定はサーバーの決まりのまま（/api/building の equipment）。この画面は新しい判定を作らない。 -->
+  <header class="top">
+    <a class="brand" href="/">マンション浸水ロードマップ</a>
+    <span class="top-links">
+      <a class="sources-link" href="/sources.html">根拠と資料</a>
+      <button type="button" class="key-toggle" id="key-toggle" hidden>○ Claude</button>
+    </span>
   </header>
+  <form class="key-form" id="key-form" autocomplete="off" hidden>
+    <label for="key-input">Claude の APIキー</label>
+    <input id="key-input" type="password" autocomplete="new-password" spellcheck="false" placeholder="ここに貼り付ける">
+    <button type="submit">保存</button>
+    <p class="hint" id="key-note" role="status">このパソコンのホームのファイル（権限600）にだけ保存し、画面にもログにも出しません。</p>
+  </form>
 
-  <nav class="stage-tabs" id="stage-tabs" aria-label="3つの段階">
-    <button type="button" data-tab="1"><b>1</b>場所<small>土地の弱さ</small></button>
-    <button type="button" data-tab="2"><b>2</b>建物<small>図面と3D</small></button>
-    <button type="button" data-tab="3"><b>3</b>A4・費用<small>印刷・共有・相談</small></button>
-    <button type="button" class="materials-link" data-tab="materials">根拠と資料</button>
-    <button type="button" class="chat-toggle primary" id="chat-toggle" hidden>AIに相談する</button>
+  <nav class="steps" id="steps" aria-label="4つの画面">
+    <button type="button" data-go="1"><b>1</b>場所</button>
+    <button type="button" data-go="2" disabled><b>2</b>止まるもの</button>
+    <button type="button" data-go="3" disabled><b>3</b>確かめる</button>
+    <button type="button" data-go="4" disabled><b>4</b>渡す</button>
   </nav>
 
-  <section class="why-bar" id="why-bar" aria-label="天気の場面と、何が止まるか">
-    <p class="why-title"><b>地図の色がなくても浸水する。</b>この土地で重なりうる天気の場面です。押すと地図で水が広がります。</p>
-    <div class="scene-cards" id="scene-cards" aria-label="天気の場面。押すと地図で水が広がります"></div>
-    <span class="why-op" aria-hidden="true">＝</span>
-    <article class="why-card why-stop">
-      <p class="why-kicker">どの場面でも、地下の電気室やポンプに水が入ると</p>
-      <p class="why-big">水・トイレ・エレベーターが止まるおそれ</p>
-      <p class="why-sub">入り道は壁の穴とポンプ制御盤。費用は③で見られます。</p>
-      <details class="why-more"><summary>補足</summary><p>壁の穴とポンプ制御盤の止水は、管理会社の仕事にも点検の項目にも入っていないことがあります。壁の穴は、地中から高圧のケーブルで電気を引き込む建物の話で、書類で確かめます。給水ポンプの制御盤が浸かると、受電が生きていても断水につながることがあります。建物の規約と予算によっては、マンション側の部屋の壁の穴の止水などを理事会で決められる場合があります。理事会で決められるか、管理費か修繕積立金かは、管理会社に規約・予算書・総会の議事録で確かめてもらいます。</p></details>
-    </article>
-  </section>
+  <main class="screen" id="screen" aria-live="polite"></main>
 
-  <main class="stages">
-    <section class="hero" id="hero" aria-label="このサイトでできること">
-      <p class="hero-kicker">住民に「うちは大丈夫？」と聞かれたら</p>
-      <p class="hero-question">地図の色がなくても浸水する。</p>
-      <p class="hero-lead">だから、水が引いた翌朝に何日で水が出るかを、建物で確かめる。<br><b>水が止まればトイレも風呂も使えず、エレベーターが止まれば高い階は階段です。</b></p>
-      <ol class="hero-steps">
-        <li><b>1</b>場所を入れる</li>
-        <li><b>2</b>建物の形を選ぶ</li>
-        <li><b>3</b>A4を印刷・共有する</li>
-      </ol>
-      <details class="fold hero-scope"><summary>対象の範囲</summary><p>対象：東京電力パワーグリッドの区域の、高圧で電気を受けるマンション。低圧・テナントの入る建物・ほかの区域にも同じ形で広げられます。戸建ては対象外です。今の見本には借室のみの建物も含みます。</p></details>
-    </section>
-    <section class="stage" data-stage="1" aria-label="第1段階">
-      <div class="stage1-grid">
-        <div class="stage1-left">
-          <div class="card" id="step-address">
-            <form id="address-form">
-              <label for="address">住所・マンション名・郵便番号・駅名</label>
-              <div class="search-row">
-                <input id="address" name="address" type="text" autocomplete="off" placeholder="例：千葉市幸町／261-0001／新浦安駅">
-                <button type="submit" class="primary">調べる</button>
-              </div>
-              <div class="search-tools">
-                <button type="button" id="geo-button">現在地から</button>
-                <details class="fold fold-inline"><summary>入れた言葉の扱い</summary><p>「調べる」を押したときに1回だけ探します。入れた言葉は国土地理院、OpenStreetMap、郵便番号の検索サービスに送ります（API キーがあるときは Claude と、その Web 検索にも）。地図を押して場所を選ぶこともできます。</p></details>
-              </div>
-            </form>
-            <p class="search-message" id="search-message" hidden></p>
-            <div class="candidates" id="candidates" hidden></div>
-            <p class="error" id="address-error" role="alert" hidden></p>
-            <div class="demo" id="demo-points" hidden>
-              <p class="mini-head">架空の見本（建物はどれも架空です）</p>
-              <div class="demo-buttons" id="demo-buttons"></div>
-            </div>
-          </div>
-          <div class="card terrain-card" id="terrain-card">
-            <div class="terrain" id="terrain"><p class="hint">場所を選ぶと、ここに土地の形が出ます。</p></div>
-          </div>
-        </div>
-
-        <section class="card map-card" id="map-card" aria-label="地図">
-          <div class="layer-choices" id="layer-choices" role="radiogroup" aria-label="重ねる地図"></div>
-          <div class="landform-tags" id="landform-tags" hidden></div>
-          <details class="fold map-more">
-            <summary>表示の設定と、地図で詳しく調べる</summary>
-            <div class="map-tools">
-              <label class="control-inline"><input type="checkbox" id="relief-toggle"> 色別標高図</label>
-              <button type="button" id="tap-water">水が来そうな側を押す</button>
-              <button type="button" id="tap-door">電気室の扉の側を押す</button>
-              <span class="tap-status" id="tap-status"></span>
-            </div>
-          </details>
-          <p class="map-pin-note" id="map-pin-note">住所を探すか、地図を押して場所を選んでください。</p>
-          <div id="map" class="map"></div>
-          <div class="scene-result" id="scene-result" role="status" hidden></div>
-          <div class="map-legend" id="map-legend"></div>
-          <p class="map-fixed">地図に色がないことは、安全という意味ではありません。斜線はデータが取れていない所です。</p>
-        </section>
-
-        <div class="card location-card" id="step-location">
-          <div class="location-head">
-            <h2>立地の5項目</h2>
-            <button type="button" class="primary next-inline" data-go="2">次へ：建物 ➔</button>
-          </div>
-          <div id="location-body" aria-live="polite"><p class="hint">場所を選ぶと、ここに五つの項目の判定が出ます。</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="stage" data-stage="2" aria-label="第2段階">
-      <!-- ②の一番上：電気を知らない人にも一目で伝わる「うちのマンションで起きること」（web/glance.js）。 -->
-      <section class="card glance" id="glance" hidden aria-label="うちのマンションで起きること"></section>
-
-      <p class="hint stage-empty" id="stage2-empty">①で場所を選ぶと、ここが出ます。</p>
-      <section class="card type-chooser" id="type-chooser" hidden aria-label="建物の形を選ぶ">
-        <h2>あなたの建物に近い形を選んでください</h2>
-        <p class="hint">図面がなくても大丈夫です。選んだ形の見本の図面と3Dで説明します。あとで質問に答えると、形が変わることがあります。</p>
-        <div class="type-options" id="type-options"></div>
-        <div class="type-upload">
-          <label class="plan-file-label" for="type-file">図面を持っていれば入れる（PDFか画像）</label>
-          <input type="file" id="type-file" accept="application/pdf,image/png,image/jpeg">
-        </div>
-      </section>
-
-      <!-- 理事会が最初に見るのは上の1枚だけ。ほかは「くわしく見る」に畳む（2026-11-04。目をやる所を減らす）。 -->
-      <details class="stage2-more" id="stage2-more" hidden>
-        <summary>くわしく見る（時間の流れ・断面図・3D・建物の質問・何が止まるか）</summary>
-      <div class="top-banner" id="top-banner" hidden>
-        <button type="button" class="primary banner-next" data-go="3">次へ：③A4・費用 ➔</button>
-        <p class="top-banner-question">水が引いた翌朝、この建物は何日で水が出るか</p>
-        <p class="top-banner-lead" id="top-banner-lead"></p>
-        <ol class="answer-steps top-banner-steps" id="top-banner-steps"></ol>
-        <p class="top-banner-dir" id="top-banner-dir"></p>
-        <details class="top-banner-more"><summary>根拠と補足</summary><p class="top-banner-notes" id="top-banner-notes"></p></details>
-      </div>
-      <!-- ②の主役は「浸水の進み方」の一枚のカード（2026-11-04 作り直し）。断面図を大きく出し、3D・平面図・系統図は同じ窓で切り替える。
-           どの図も、拡大・移動・全画面で見られる（図面のビューアー）。 -->
-      <section class="card sim-card" id="plan-card" aria-label="浸水の進み方" hidden>
-        <div class="sim-head">
-          <h2>水はこの順に入り、こう止まる</h2>
-          <p class="plan-message" id="plan-message"></p>
-          <p class="model-fixed strong" id="model-fixed-top"></p>
-        </div>
-        <div class="plan-tabs" id="plan-tabs"></div>
-        <div class="sim-viewer" id="sim-viewer">
-          <div class="viewer-tools" id="viewer-tools">
-            <button type="button" data-zoom="in" aria-label="拡大">＋</button>
-            <button type="button" data-zoom="out" aria-label="縮小">－</button>
-            <button type="button" data-zoom="fit">全体</button>
-            <button type="button" data-zoom="full">全画面</button>
-            <span class="viewer-hint">ドラッグで移動・ホイール（または2本指）で拡大</span>
-          </div>
-          <div class="plan-stage" id="plan-stage" hidden>
-            <div class="plan-fit" id="plan-fit">
-              <img id="plan-image" alt="図面" draggable="false">
-              <div class="plan-pins" id="plan-pins"></div>
-            </div>
-          </div>
-          <div class="model-view" id="model-view" hidden><p class="hint model-fail" id="model-fail" hidden></p></div>
-        </div>
-        <div class="sim-controls" id="model-card">
-          <div class="stop-count" id="stop-count" aria-live="polite"></div>
-          <p class="scene-context" id="scene-context" hidden></p>
-          <div class="model-controls">
-            <!-- 水の位置は、下の再生のバーの①②③の札で選ぶ（ボタンとバーを一つにまとめた）。ラジオは状態の受け皿として残す。 -->
-            <div class="control-group" role="radiogroup" aria-label="水の位置" hidden><span class="control-name">水の位置</span><div class="pills" id="water-controls"></div></div>
-            <div class="control-group" role="radiogroup" aria-label="対策"><span class="control-name">対策を選ぶと、止まる数が変わる</span><div class="pills" id="measure-controls"></div></div>
-          </div>
-          <p class="control-caption" id="control-caption"></p>
-          <p class="fixed-note strong model-safety" id="model-safety" hidden></p>
-          <div class="model-focus-buttons" id="focus-buttons"></div>
-          <p class="tr-note" id="tr-note"></p>
-        </div>
-        <p class="plan-direction" id="plan-direction" hidden></p>
-        <div class="pin-card" id="pin-card" hidden></div>
-        <details class="fold plan-read">
-          <summary>図面を読み取る・自分の図面を入れる</summary>
-          <div class="plan-actions" id="plan-actions"></div>
-        </details>
-        <div id="plan-rooms"></div>
-        <div id="plan-absent"></div>
-      </section>
-
-      <section class="card" id="step-building" hidden aria-label="建物の質問">
-        <h2>建物の質問に答えると、「未確認」が減ります</h2>
-        <div id="building-body"></div>
-      </section>
-
-      <div class="card" id="step-result" hidden>
-        <h2>住民の暮らしで、何が止まるか</h2>
-        <div id="result-body"></div>
-      </div>
-
-      <div class="card" id="model-lower" hidden>
-        <div class="fixed-block" id="model-fixed"></div>
-        <details class="fold lower-more">
-          <summary>停電の連鎖と、水が引いたあとの時間の流れを開く</summary>
-          <div class="chain" id="chain"></div>
-          <div class="table-scroll"><div id="timeline"></div></div>
-          <div class="fixed-block" id="timeline-below"></div>
-        </details>
-      </div>
-
-      </details>
-
-      <div class="stage-next"><button type="button" class="primary" data-go="3">次へ：③A4・費用</button></div>
-    </section>
-
-    <section class="stage" data-stage="3" aria-label="第3段階">
-      <!-- ③は「このあと、あなたがすること」から始める（2026-11-04 作り直し）。当事者が次に動く順に、紙と答えの戻し方を並べる。 -->
-      <section class="card next-steps" id="next-steps" aria-label="このあと、あなたがすること">
-        <h2>このあと、あなたがすること</h2>
-        <ol class="next-list">
-          <li><b>理事会で、表裏1枚を配る</b><span>次の理事会の議題にする</span><button type="button" class="primary" data-step="board">表裏1枚を見る・印刷</button></li>
-          <li><b>管理会社に、依頼メモを渡す</b><span>未確認の所を、図面や点検の記録で確かめてもらう</span><button type="button" data-step="memo">依頼メモを見る</button></li>
-          <li><b>返ってきた答えを、②の質問に入れる</b><span>「未確認」が減り、何日で戻るかの答えに近づく</span><button type="button" data-step="answers">②の質問へ</button></li>
-        </ol>
-      </section>
-      <section class="card cost-tiers" id="cost-tiers" hidden aria-label="いくらで、誰が決めるか">
-        <h2>いくらで、誰が決めるか</h2>
-        <p class="cost-tiers-lead" id="cost-tiers-lead"></p>
-        <div class="cost-tier-grid" id="cost-tier-grid"></div>
-        <div class="cost-next">
-          <button type="button" data-open-cost="sim-card">使える補助を調べる</button>
-          <button type="button" data-open-cost="consult-card">専門家に調査・見積もりを相談する</button>
-        </div>
-      </section>
-
-      <details class="card stage3-cost" id="stage3-cost" hidden>
-        <summary>費用の桁と補助・専門家への相談</summary>
-        <section id="sim-card" aria-label="試算" hidden>
-          <h2>対策を選ぶと、桁と決め方と補助が変わります</h2>
-          <div id="sim-body"></div>
-        </section>
-        <section id="consult-card" aria-label="相談" hidden>
-          <h2>次の一歩</h2>
-          <button type="button" class="primary" id="consult-button">専門家に調査・見積もりを相談する</button>
-          <p class="hint">この道具から専門家へは送りません。送るのは管理組合です。</p>
-          <details class="fold"><summary>条件を開く</summary><p>押すと、この画面の内容から文書を作ります。API キーがあるときは、文面を整えるために内容が Anthropic の API を通ります。</p></details>
-          <div id="consult-body"></div>
-        </section>
-      </details>
-
-      <!-- 印刷で .card を隠す決まりがあるので、紙の置き場は .card にしない（見た目は ui-more.css でカードと同じにする）。 -->
-      <div class="sheet-area" id="sheet-area">
-        <h2>渡す紙</h2>
-      <div class="sheet-tabs" id="sheet-tabs" role="tablist" aria-label="誰に渡す紙か">
-        <button type="button" role="tab" data-sheets="board" class="active"><b>理事会へ</b><small>表裏1枚</small></button>
-        <button type="button" role="tab" data-sheets="memo"><b>管理会社へ</b><small>依頼メモ</small></button>
-        <button type="button" role="tab" data-sheets="engineer"><b>電気主任技術者へ</b><small>確認表</small></button>
-        <button type="button" role="tab" data-sheets="extra"><b>別紙</b><small>くわしい版・条件と出典</small></button>
-        <button type="button" role="tab" data-sheets="all" class="sheet-tab-all">全部まとめて</button>
-      </div>
-      <p class="sheet-tab-note" id="sheet-tab-note">理事会に配る表裏1枚です。両面に印刷し、防災のファイルに綴じます。</p>
-        <div class="print-row">
-          <button type="button" class="primary" id="print-button">この紙を印刷（PDFに保存もできます）</button>
-          <button type="button" id="sheet-size">大きくして読む</button>
-          <button type="button" class="polish-button" id="polish-button">文を Claude で読みやすく整える</button>
-          <details class="fold"><summary>プリンターがないとき</summary><p>PDFに保存して、コンビニのネットプリントで印刷できます。両面なら長辺とじで。</p></details>
-        </div>
-        <p class="hint" id="polish-note"></p>
-      <div class="sheets" id="sheets" data-show="board">
-        <article class="sheet" id="sheet-front" data-for="board">
-          <p class="sheet-face">おもて(事前)</p>
-          <p class="sheet-address" id="sheet-address">住所：まだ入っていません</p>
-          <h2 class="sheet-headline">水が引いた翌朝、この建物は何日で水が出るか</h2>
-          <div id="sheet-top"><p class="placeholder">建物の情報が入ると、ここに一行目が出ます。</p></div>
-          <h3>どこから水が来るか</h3>
-          <div id="sheet-location"><p class="placeholder">住所を入れると、公開データの値が出ます。</p></div>
-          <h3>何が止まるか</h3>
-          <div id="sheet-equipment"><p class="placeholder">建物の図面と書類から埋まります。</p></div>
-          <h3>いくらで、誰が決めるか</h3>
-          <div id="sheet-measures"><p class="placeholder">確かめた内容に応じて、費用の桁と決める場が並びます。</p></div>
-          <h3>大雨が近づいたら</h3>
-          <div id="sheet-rain"><p class="placeholder">どの合図で誰が何をするかが出ます。</p></div>
-        </article>
-
-        <article class="sheet" id="sheet-back" data-for="board">
-          <p class="sheet-face">裏(事後)</p>
-          <h3>水が来ている間と、水が引いた翌朝</h3>
-          <div id="sheet-during"><p class="placeholder">誰がどの順で何をし、誰に連絡するかが出ます。</p></div>
-          <h3>何日で戻るか</h3>
-          <div id="sheet-days"><p class="placeholder">ほかの建物の例と一般的な目安を、出典つきで出します。</p></div>
-          <h3>水が引いたあと、管理組合がすること</h3>
-          <div id="sheet-after"><p class="placeholder">記録写真、費用の出どころ、泊まる先が出ます。</p></div>
-          <p class="sheet-pointer back-pointer">電気主任技術者の方へ確かめていただく項目と、水に浸かった機器の表は、後ろの「依頼メモ（電気主任技術者の方へ）」のページにあります。</p>
-          <p class="sheet-pointer back-handover"><b>この紙は防災のファイルに綴じ、依頼メモの答えと一緒に次の理事に渡します。</b></p>
-          <section class="disclaimer" aria-label="この一枚について">
-            <h3>この一枚について</h3>
-            <ul>
-              <li>本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する</li>
-              <li>浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない</li>
-              <li>本シートは予報ではなく、現時点の静的な整理である</li>
-              <li>費用は桁の目安で、保安法人・工事業者の見積りに置き換えること</li>
-            </ul>
-          </section>
-        </article>
-
-        <article class="sheet" id="sheet-detail" data-for="extra" hidden>
-          <p class="sheet-face">別紙（おもての表のくわしい版）</p>
-          <p class="sheet-address" id="sheet-detail-address"></p>
-          <div id="sheet-detail-notes"></div>
-          <h3>何が止まるか（分かったこと）</h3>
-          <div id="sheet-detail-equipment"></div>
-          <h3>いくらで、誰が決めるか（担当・補助と、決め方の補足）</h3>
-          <div id="sheet-detail-measures"></div>
-        </article>
-
-        <article class="sheet" id="sheet-basis" data-for="extra" hidden>
-          <p class="sheet-face">別紙（条件と出典）</p>
-          <p class="sheet-address" id="sheet-basis-address"></p>
-          <h3>どこから水が来るか</h3>
-          <div id="sheet-basis-rows"></div>
-          <p class="sheet-pointer scope-line">対象：東京電力パワーグリッドの区域の、高圧で電気を受けるマンション。低圧・テナントの入る建物・ほかの区域にも同じ形で広げられます。戸建ては対象外です。今の見本には借室のみの建物も含みます。</p>
-        </article>
-
-        <article class="sheet" id="sheet-memo" data-for="memo" hidden>
-          <p class="sheet-face">依頼メモ（未確認を、確認する先ごとに）</p>
-          <p class="sheet-address" id="sheet-memo-address"></p>
-          <div id="sheet-memo-body"></div>
-        </article>
-
-        <article class="sheet" id="sheet-engineer-memo" data-for="engineer" hidden>
-          <p class="sheet-face">依頼メモ（電気主任技術者の方へ）</p>
-          <p class="sheet-address" id="sheet-engineer-address"></p>
-          <h3>電気主任技術者の方へ</h3>
-          <div id="sheet-engineer"><p class="placeholder">確認していただく項目が出ます。</p></div>
-        </article>
-      </div>
-      </div>
-
-      <details class="card other-docs" id="exits-card">
-        <summary>ほかに作れる文書（理事会の議題のたたき台・補助と手続きの順番のメモ）</summary>
-        <div class="button-row exit-tabs" id="exit-tabs">
-          <button type="button" data-exit="a" class="active">渡す紙（A4）</button>
-          <button type="button" data-exit="b">理事会の議題のたたき台</button>
-          <button type="button" data-exit="c">補助と手続きの順番のメモ</button>
-        </div>
-        <div class="card exit-doc" id="exit-doc" hidden><pre id="exit-text"></pre></div>
-      </details>
-
-      <details class="card" id="share-card">
-        <summary>紙の代わりにリンクで渡す（パスワードと有効期限つき）</summary>
-        <div class="share-form">
-          <label for="share-password">パスワード（8文字以上）</label>
-          <input type="password" id="share-password" autocomplete="new-password">
-          <label for="share-days">有効期限</label>
-          <select id="share-days">
-            <option value="7">1週間</option>
-            <option value="30">1か月</option>
-            <option value="90">3か月</option>
-          </select>
-          <button type="button" class="primary" id="share-button">共有リンクを発行</button>
-        </div>
-        <details class="fold"><summary>条件を開く</summary><p>パスワードを忘れると元に戻せません。ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。入れるのは一枚と依頼メモと議題だけで、図面とチャットは入れません。受け取った人が保存した写しや印刷した紙は消せません。</p></details>
-        <div class="share-result" id="share-result" hidden></div>
-      </details>
-    </section>
-
-    <section class="stage" data-stage="materials" aria-label="根拠と資料">
-      <div class="materials" id="materials-body"><p class="hint">資料を読み込んでいます。</p></div>
-    </section>
-  </main>
-
-  <footer class="legal-footer" id="legal-footer" aria-label="必ず読む文">
-    <p><b>安全</b><span id="legal-safety">本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する</span></p>
-    <p><b>データ</b><span>浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない。本シートは予報ではなく、現時点の静的な整理である</span></p>
-    <p id="legal-basis-box" hidden><b>この値</b><span id="legal-basis"></span></p>
+  <!-- 固定の免責。畳まず、言い換えず、どの画面でも出す。 -->
+  <footer class="fixed-note">
+    <p id="fixed-disclaimer">本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する</p>
   </footer>
 
-  <aside class="chat" id="chat" aria-label="AIに相談" hidden>
+  <!-- 質問する（チャット）。押したときだけ開く。浸水・停電中の危険な場所への立入・操作・接触は、サーバーが AI を通さず固定の文で答える。 -->
+  <button type="button" class="chat-toggle" id="chat-toggle">質問する</button>
+  <aside class="chat" id="chat" aria-label="質問する" hidden>
     <div class="chat-head">
-      <strong>AIに相談する</strong>
+      <strong>質問する</strong>
       <button type="button" id="chat-close">閉じる</button>
     </div>
     <p class="chat-fixed">本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する。予報ではありません。</p>
     <p class="chat-route" id="chat-route" aria-live="polite"></p>
     <div class="chat-log" id="chat-log" aria-live="polite"></div>
-    <form id="chat-form">
+    <form class="chat-form" id="chat-form">
       <input id="chat-input" type="text" autocomplete="off" aria-label="質問" placeholder="例：ケーブルを通す壁の穴ってどういうこと？">
-      <button type="submit" class="primary">送る</button>
+      <button type="submit">送る</button>
     </form>
   </aside>
 
+  <!-- 印刷だけに出す紙（依頼メモ・理事会A4表裏・費用と補助）。 -->
+  <section class="print-memo" id="print-memo" aria-hidden="true"></section>
+
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="map.js"></script>
-  <script src="scenes.js"></script>
-  <script src="app.js"></script>
-  <script src="glance.js"></script>
-  <script src="plan.js"></script>
-  <script src="panels.js"></script>
-  <script src="section-anim.js"></script>
-  <script src="sim.js"></script>
-  <script src="materials.js"></script>
-  <script src="chat.js"></script>
-  <script src="share-crypto.js"></script>
-  <script src="share.js"></script>
-  <script type="module" src="model3d.js"></script>
+  <script src="start.js"></script>
 </body>
 </html>

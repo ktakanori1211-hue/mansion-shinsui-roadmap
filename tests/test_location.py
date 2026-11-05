@@ -90,11 +90,12 @@ class SceneLayerTest(unittest.TestCase):
         import pathlib
         import re
 
-        source = (pathlib.Path(__file__).resolve().parent.parent / "web" / "scenes.js").read_text(encoding="utf-8")
+        # 画面の地図は、サーバーが読んだ層（reading.hazards の layer）だけを重ね、層の名前を自分で持たない。
+        source = (pathlib.Path(__file__).resolve().parent.parent / "web" / "start.js").read_text(encoding="utf-8")
         used = set(re.findall(r'"(0\d_[a-z0-9_]+)"', source))
         read = {layer for _, _, layer in location.HAZARD_LAYERS}
-        self.assertTrue(used)
         self.assertLessEqual(used, read)
+        self.assertIn("shown.layer", source)
 
     def test_tsunami_is_read(self):
         self.assertIn("tsunami", [key for key, _, _ in location.HAZARD_LAYERS])

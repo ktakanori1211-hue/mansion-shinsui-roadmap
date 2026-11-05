@@ -1,0 +1,74 @@
+/* 根拠と資料（sources.html）。materials.js が描く部品の見た目だけを持つ。 */
+:root {
+  --ink: #1a1a1c;
+  --ink-muted: #5a5a60;
+  --line: #dfe2e8;
+  --surface: #ffffff;
+  --page: #eef0f4;
+  --navy: #13294b;
+  --risk: #a3201a;
+  --unconfirmed: #7a5200;
+  --clear: #1c6b3a;
+  --hot-deep: #a3201a;
+  --hot-deep-bg: #fbe9e7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif; line-height: 1.7; }
+.top { max-width: 980px; margin: 0 auto; padding: 14px 16px 6px; display: flex; justify-content: space-between; align-items: center; }
+.brand { color: var(--navy); font-weight: 800; text-decoration: none; }
+.top a.back { color: #0b4fa8; font-size: 14px; }
+.materials { max-width: 980px; margin: 0 auto; padding: 8px 16px 40px; }
+.materials h1 { font-size: 22px; margin: 6px 0 4px; }
+.materials details, .materials section { background: var(--surface); border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; }
+.hint { color: var(--ink-muted); font-size: 13px; }
+.error { color: var(--risk); }
+.materials > .hint { margin: 4px 0 10px; }
+.mt-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.mt-toc a { padding: 3px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--navy); font-size: 12.5px; text-decoration: none; }
+.mt-toc a:hover { border-color: var(--navy); }
+.mt-section { scroll-margin-top: 64px; }
+.mt-head { display: flex; align-items: baseline; gap: 8px; }
+.mt-head h2 { margin: 0; font-size: 17px; }
+.mt-lead { margin: 6px 0 10px; font-size: 15px; font-weight: 700; line-height: 1.6; }
+.mt-label { flex: none; padding: 0 7px; border-radius: 4px; background: #e4e4e7; font-size: 11px; font-weight: 700; }
+.mt-fact { background: #dbeafe; color: #1e3a8a; }
+.mt-hypo { background: #fef3c7; color: #7a5200; }
+.mt-decided { background: #dcfce7; color: #14532d; }
+.mt-caution { background: var(--hot-deep-bg); color: var(--hot-deep); }
+.mt-section p, .mt-eng p { font-size: 13.5px; line-height: 1.75; }
+.mt-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 10px; }
+.mt-figure { padding: 8px 10px; border-top: 3px solid var(--navy); background: #f6f7f9; }
+.mt-figure b { display: block; color: var(--navy); font-size: 24px; line-height: 1.2; }
+.mt-figure span { font-size: 12px; line-height: 1.5; color: #43464e; }
+.mt-voices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.mt-voice { padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid #e0b64a; border-radius: 6px; background: #fffdf6; }
+.mt-voice p { margin: 3px 0; }
+.mt-voice-who { color: #7a5200; font-size: 12px !important; font-weight: 700; }
+.mt-voice-honne { font-weight: 700; }
+.mt-voice-answer { font-size: 13px !important; }
+.mt-voice-note { color: var(--ink-muted); font-size: 12px !important; }
+.mt-mini { display: inline-block; margin-right: 6px; color: var(--ink-muted); font-size: 11.5px !important; font-weight: 700; }
+.mt-steps { margin: 0 0 8px; padding-left: 22px; }
+.mt-steps li { margin: 4px 0; font-size: 13.5px; line-height: 1.7; }
+.mt-steps strong { display: block; }
+.mt-verdicts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.mt-verdict { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.mt-verdict-risk { border-top: 4px solid var(--risk); }
+.mt-verdict-unconfirmed { border-top: 4px solid var(--unconfirmed); }
+.mt-verdict-clear { border-top: 4px solid var(--clear); }
+.mt-verdict-short { margin: 6px 0 2px; font-weight: 700; }
+.mt-part { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--line); background: #fafafa; }
+.mt-hypo-edge { border-left-color: #e0b64a; }
+.mt-fact-edge { border-left-color: #3b6fd6; }
+.mt-caution-edge { border-left-color: var(--hot-deep); }
+.mt-part-head { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 4px; }
+.mt-sources { margin: 2px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 12px; line-height: 1.6; }
+.mt-source-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 18px; }
+.mt-source-groups h3 { margin: 8px 0 2px; font-size: 13.5px; }
+.mt-eng { margin: 10px 0 20px; padding: 6px 12px; border: 2px solid var(--hot-deep); border-radius: 8px; background: #fff8f7; scroll-margin-top: 64px; }
+.mt-eng summary { color: var(--hot-deep); font-weight: 800; cursor: pointer; }
+.mt-eng-item { margin: 10px 0; padding-top: 8px; border-top: 1px solid #f0d4d0; }
+@media (max-width: 760px) {
+  .mt-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mt-voices, .mt-verdicts, .mt-source-groups { grid-template-columns: 1fr; }
+}

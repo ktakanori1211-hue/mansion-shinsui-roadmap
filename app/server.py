@@ -70,9 +70,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/":
-            # 最初の画面は、かんたん版（4つの画面）。くわしい版は /index.html のまま。
-            self.path = "/start.html" + (f"?{parsed.query}" if parsed.query else "")
+        if parsed.path == "/start.html":
+            # 画面は index.html の1本（2026-11-05 一本化）。前のかんたん版の入口も同じ画面を出す。
+            self.path = "/index.html" + (f"?{parsed.query}" if parsed.query else "")
             super().do_GET()
         elif parsed.path == "/api/location":
             self._location(urllib.parse.parse_qs(parsed.query))

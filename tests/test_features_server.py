@@ -436,9 +436,11 @@ class MeasureOwnerTest(unittest.TestCase):
 
 class RainTest(unittest.TestCase):
     def test_f032_third_line_is_the_a4_text(self):
-        js = (ROOT / "web" / "panels.js").read_text(encoding="utf-8")
+        # 大雨の一行は、サーバーの文（RAIN_THIRD）のまま理事会A4の表に出す。画面に文を写さない。
+        js = (ROOT / "web" / "start.js").read_text(encoding="utf-8")
+        self.assertIn("rain?.third", js)
         for text in building.RAIN_THIRD.values():
-            self.assertIn(text, js)
+            self.assertNotIn(text, js)
 
     def test_f032_lines_by_building(self):
         a = building.rain_lines(samples.SAMPLES["a"])
