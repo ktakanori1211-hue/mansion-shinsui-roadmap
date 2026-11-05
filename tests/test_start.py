@@ -363,10 +363,23 @@ class DepthOnBuildingTest(unittest.TestCase):
     def test_floors_are_said_to_be_an_assumption(self):
         js = read("start.js")
         self.assertIn('const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";', js)
-        self.assertIn("${STORY_NOTE}", block(js, "function depthCard()", "\n}\n"))
+        self.assertIn("lines.push(STORY_NOTE);", block(js, "function depthConditions(band)", "\n}\n"))
         # 国の手引きの区分の言い方（床上浸水など）は、原文を確かめるまで使わない。
         for word in ("床上浸水", "床下浸水", "2階浸水"):
             self.assertNotIn(word, js)
+
+    def test_card_states_its_conditions(self):
+        # 本人の指摘（2026-11-05）：どの雨の想定か・どこの値か・帯のどちらの端か・1階の床の高さを札に添える。
+        js = read("start.js")
+        conds = block(js, "function depthConditions(band)", "\n}\n")
+        self.assertIn("layer.label", conds)
+        self.assertIn("町丁の代表点の値で、建物の位置の値ではありません", conds)
+        self.assertIn("の深い方（${band.high}m）で描いています", conds)
+        self.assertIn("1階の床が地面より高い建物では、その分浅くなります", conds)
+        self.assertIn("STORY_NOTE", conds)
+        self.assertIn("depthConditions(band)", block(js, "function depthCard()", "\n}\n"))
+        # 地図と札は同じ層を使う。
+        self.assertIn("hazardLayer(deepestHazard())", block(js, "function drawMap()", "\n}\n"))
 
     def test_no_color_is_not_called_safe(self):
         js = read("start.js")

@@ -478,6 +478,30 @@ function depthPicture(band) {
   return `<svg class="depth-svg" viewBox="0 0 340 190" role="img" aria-label="${esc(`${HAZARD_WORDS[band.key]}${band.value}。${storyWords(band)}`)}">${parts.join("")}</svg>`;
 }
 
+// 深さの札の行と、地図に重ねる層の対応（洪水は想定最大を先に）。地図と札で同じ層を使う。
+const LAYERS_OF_ROW = { flood: ["flood_max", "flood_planned"], inland: ["inland"], surge: ["storm_surge"] };
+
+function hazardLayer(band) {
+  if (!band) return null;
+  const hazards = S.place?.location?.reading?.hazards || [];
+  const usable = (item) => item.status === "color" || item.nearby_legend;
+  return (LAYERS_OF_ROW[band.key] || []).map((key) => hazards.find((item) => item.key === key && usable(item))).find(Boolean) || null;
+}
+
+// 札の前提（2026-11-05 本人の指摘で足した）。どの雨の想定か・どこの値か・帯のどちらの端か・1階の床の高さ。
+function depthConditions(band) {
+  const layer = hazardLayer(band);
+  const lines = [];
+  if (layer) lines.push(`${layer.label}の想定${/想定最大/.test(layer.label) ? "（想定しうる最大の大雨）" : ""}`);
+  lines.push(S.place?.site?.basis === "representative" ? "町丁の代表点の値で、建物の位置の値ではありません" : "建物の位置として選んだ点の値です");
+  // 点そのものに色がなく、近くの色の値を使ったときは、その旨（サーバーの文のまま）。
+  if (/先に色/.test(band.conclusion)) lines.push(band.conclusion);
+  if (band.high !== null && band.low > 0) lines.push(`${band.value}の深い方（${band.high}m）で描いています`);
+  lines.push("深さは地面から。1階の床が地面より高い建物では、その分浅くなります");
+  lines.push(STORY_NOTE);
+  return lines;
+}
+
 function depthCard() {
   const band = deepestHazard();
   if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p>`;
@@ -485,7 +509,7 @@ function depthCard() {
     <p class="depth-lead">${esc(HAZARD_WORDS[band.key])} <b>${esc(band.value)}</b></p>
     <p class="depth-words">${esc(storyWords(band))}</p>
     <div class="depth-art">${depthPicture(band)}</div>
-    <p class="hint">${STORY_NOTE}${band.conclusion ? `（${esc(band.conclusion)}）` : ""}</p>
+    <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
   </div>`;
 }
 
@@ -578,11 +602,7 @@ function drawMap() {
   L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: `<a href="${TILE_PAGE}" target="_blank" rel="noopener">地理院タイル</a>` }).addTo(map);
   const hazards = reading.hazards || [];
   // 上の深さの札と同じ想定の層を重ねる（洪水は想定最大を先に）。なければ色のある層。
-  const LAYERS_OF_ROW = { flood: ["flood_max", "flood_planned"], inland: ["inland"], surge: ["storm_surge"] };
-  const deepest = deepestHazard();
-  const wanted = deepest ? LAYERS_OF_ROW[deepest.key] || [] : [];
-  const usable = (item) => item.status === "color" || item.nearby_legend;
-  const shown = wanted.map((key) => hazards.find((item) => item.key === key && usable(item))).find(Boolean)
+  const shown = hazardLayer(deepestHazard())
     || hazards.find((item) => item.status === "color") || hazards.find((item) => item.nearby_legend) || null;
   if (shown) {
     L.tileLayer(HAZARD_URL.replace("{layer}", shown.layer), {
