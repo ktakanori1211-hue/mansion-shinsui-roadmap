@@ -167,7 +167,7 @@ class ChatTest(unittest.TestCase):
         actions = block(js, "async function applyAction", "\n}\n")
         for kind in ("focus", "water", "measure", "statement"):
             self.assertIn(f'action.type === "{kind}"', actions)
-        self.assertIn("statements: S.statements,", js)
+        self.assertIn("statements: [...S.statements, ...obsStatements()],", js)
 
 
 class ColorMeaningTest(unittest.TestCase):
@@ -435,6 +435,41 @@ class HonestShapeTest(unittest.TestCase):
         self.assertEqual(no_basement["floors"], 7)
         self.assertEqual(no_basement["archetype"], "ground")
         self.assertEqual(samples.client_view(no_basement)["answers"]["floors"], 7)
+
+
+class NoDrawingTest(unittest.TestCase):
+    """本人の指摘（2026-11-05）：図面がない人も使えるように。地図の矢印は数字と食い違わないように。"""
+
+    def test_no_drawing_path_does_not_change_colors(self):
+        js = read("start.js")
+        three = block(js, "function screenThree()", "\n}\n")
+        self.assertIn("${drawingQuestion()}", three)
+        self.assertIn("hasDrawing() ? cards + readCard() : observeCards()", three)
+        self.assertIn("管理会社に頼む紙を作る", three)
+        # 見て答えたことは、確かめた印（confirmed）にせず、聞き取り（statements）として送る。
+        observe = block(js, "async function setObservation(", "\n}\n")
+        self.assertNotIn("S.choices", observe)
+        self.assertIn("S.obs[key]", observe)
+        self.assertIn("色は、図面で確かめるまで変えません", block(js, "function observeCards()", "\n}\n"))
+
+    def test_observations_reach_the_memo_but_not_the_verdict(self):
+        # サーバーは、聞き取りを依頼メモに「竣工図で確かめます（未確認）」として載せ、判定は変えない。
+        base = payload({"rooms_floor": "unknown"}, [], sample_id=None)
+        heard = building.building_payload(samples.apply_answers(None, {"rooms_floor": "unknown"}, "千葉市 幸町2丁目"), [], RISKY_PLACE, False, {}, [], ["住民が見たこと：地下へ降りるスロープか階段がある"], [], False)
+        self.assertEqual(verdicts(base), verdicts(heard))
+        items = [item for section in heard["memos"] for item in section["items"] if item["from"] == "聞き取り"]
+        self.assertEqual(len(items), 1)
+        self.assertIn("未確認", items[0]["text"])
+        self.assertIn('item.from === "聞き取り"', read("start.js"))
+
+    def test_map_arrows_only_from_higher_points(self):
+        js = read("start.js")
+        draw = block(js, "function drawMap()", "\n}\n")
+        self.assertIn("(reading.high_directions || []).includes(p.label)", draw)
+        self.assertNotIn("reading.basin)", draw)
+        legend = block(js, "function mapLegend()", "\n}\n")
+        self.assertIn("海面からの高さ", legend)
+        self.assertIn("reading.hazard_legend", legend)
 
 
 class PlanFileTest(unittest.TestCase):

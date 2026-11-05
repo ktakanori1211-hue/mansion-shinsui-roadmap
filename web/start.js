@@ -34,6 +34,9 @@ const S = {
   statements: [],
   // 自分の建物で、住民が答えられる2つ（何階建てか・地下はあるか）。分からないときは空のまま。
   own: { floors: "", basement: "unknown" },
+  // 画面3：図面が手元にあるか（null は未回答）と、図面がない人が見て答えたこと。
+  drawing: null,
+  obs: {},
   map: null,
 };
 
@@ -304,7 +307,9 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   const parts = [];
   const wet = new Set();
   parts.push(`<rect x="0" y="0" width="${VW}" height="${VH}" class="p-ground"/>`);
-  parts.push(`<text x="${PAD}" y="30" class="p-floor">${esc(view.name.replace("平面図", ""))}の平面図${sample.custom ? "（見本の形）" : ""}</text>`);
+  // 自分の建物は「（見本の形）」と添える。上の「スロープから」の札と重ならないよう、短く小さく書く。
+  const floorName = esc(view.name.replace("平面図", ""));
+  parts.push(sample.custom ? `<text x="${PAD}" y="30" class="p-floor small">${floorName}（見本の形）</text>` : `<text x="${PAD}" y="30" class="p-floor">${floorName}の平面図</text>`);
 
   // 道路（1階の平面図の下の辺の外）。
   const roadY = Y(1) + 18;
@@ -611,6 +616,7 @@ function screenOne() {
         <h2 class="question">この土地で水が来る道</h2>
         ${depthCard()}
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
+        ${mapLegend()}
         <p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>
         <ul class="place-chips">${rows}</ul>
         ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
@@ -675,9 +681,13 @@ function drawMap() {
     .forEach((p) => {
       const [a, b, angle] = DIRS[p.key];
       const at = [lat + a * dLat, lng + b * dLng];
-      const higher = center && p.elevation_m > center.elevation_m;
-      L.marker(at, { interactive: false, icon: L.divIcon({ className: `m-height${higher ? " up" : ""}`, html: `${p.elevation_m.toFixed(1)}m`, iconSize: [52, 22], iconAnchor: [26, 11] }) }).addTo(map);
-      if (higher || reading.basin) {
+      // 高い・低いは、サーバーと同じ目安（0.1m 以上の差）で決める。差がそれより小さい所は「ほぼ同じ」。
+      const higher = (reading.high_directions || []).includes(p.label);
+      const lower = (reading.low_directions || []).includes(p.label);
+      const cls = higher ? " up" : lower ? " down" : " same";
+      L.marker(at, { interactive: false, icon: L.divIcon({ className: `m-height${cls}`, html: `${p.elevation_m.toFixed(1)}m`, iconSize: [52, 22], iconAnchor: [26, 11] }) }).addTo(map);
+      // 水の矢印は、建物より高い方からだけ引く（凹みでも、低い方からは引かない）。
+      if (higher) {
         const mid = [lat + a * dLat * 0.5, lng + b * dLng * 0.5];
         L.marker(mid, { interactive: false, icon: L.divIcon({ className: "m-flow", html: `<span style="transform:rotate(${angle + 90}deg)">➜</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
       }
@@ -934,17 +944,82 @@ function screenThree() {
       <div class="plan">${plan({ pins: pinsOf(steps()), small: true })}</div>
     </div>
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
-    ${cards}
-    <div class="qcard read">
+    ${drawingQuestion()}
+    ${hasDrawing() ? cards + readCard() : observeCards()}
+    <button type="button" class="primary" data-act="to4">${hasDrawing() ? "管理会社と理事会に渡す" : "管理会社に頼む紙を作る"}</button>
+  </section>`;
+}
+
+// ---- 図面がない人の道（2026-11-05） ----
+// 色が赤・緑に変わるのは、図面で確かめた答えのときだけ（見た目や聞いた話では変えない）。
+// 図面がない人は、住民が見て答えられる3つを「聞き取り」として依頼メモに載せ、管理会社が竣工図で確かめる材料にする。
+const OBSERVE = [
+  { key: "slope", title: "地下へ降りる車路のスロープや、地下への階段はありますか？", options: [["yes", "ある"], ["no", "ない"], ["unknown", "分からない"]], says: { yes: "地下へ降りるスロープか階段がある", no: "地下へ降りるスロープや階段は見当たらない" } },
+  { key: "door", title: "「電気室」「受変電室」などの表示がある扉を見たことはありますか？", options: [["basement", "地下で見た"], ["ground", "1階で見た"], ["none", "見たことがない"]], says: { basement: "「電気室」などの表示の扉を地下で見た", ground: "「電気室」などの表示の扉を1階で見た" } },
+  { key: "plate", title: "入口や駐車場の入口に、止水板が置いてありますか？", options: [["yes", "ある"], ["no", "ない"], ["unknown", "分からない"]], says: { yes: "入口か駐車場の入口に止水板が置いてある", no: "止水板は見当たらない" } },
+];
+
+function hasDrawing() {
+  if (S.drawing) return S.drawing === "yes";
+  return Boolean(S.sampleId);
+}
+
+function drawingQuestion() {
+  const chosen = S.drawing || (S.sampleId ? "yes" : "");
+  const chips = [["yes", "ある（管理会社に見てもらえる）"], ["no", "ない・分からない"]]
+    .map(([key, word]) => `<button type="button" class="option${chosen === key ? " chosen" : ""}" data-drawing="${key}" aria-pressed="${chosen === key}">${word}</button>`)
+    .join("");
+  return `<div class="qcard ask-drawing"><p class="qtitle">竣工図（建物の図面）は、ありますか？</p><div class="options">${chips}</div></div>`;
+}
+
+function observeCards() {
+  const cards = OBSERVE.map((q) => {
+    const chosen = S.obs[q.key] || "";
+    const chips = q.options
+      .map(([key, word]) => `<button type="button" class="option${chosen === key ? " chosen" : ""}" data-obs="${q.key}" data-value="${key}" aria-pressed="${chosen === key}">${word}</button>`)
+      .join("");
+    return `<div class="qcard observe"><p class="qtitle">${esc(q.title)}</p><div class="options">${chips}</div></div>`;
+  }).join("");
+  return `<p class="hint observe-note">図面がなくても進めます。見て分かることを入れると、管理会社への依頼メモに「住民が見たこと」として載ります。色は、図面で確かめるまで変えません。</p>${cards}`;
+}
+
+// 住民が見たことを、サーバーの聞き取り（statements）の文にする。
+function obsStatements() {
+  return OBSERVE.map((q) => q.says[S.obs[q.key]]).filter(Boolean).map((text) => `住民が見たこと：${text}`);
+}
+
+// 依頼メモに載せる、聞き取りの文（サーバーの memos の文のまま）。
+function heardItems() {
+  // 見出し「住民が見たこと」の下に並べるので、文の頭の同じ言葉は外す。
+  return (S.building?.memos || []).flatMap((section) => section.items || []).filter((item) => item.from === "聞き取り").map((item) => item.text.replace("「住民が見たこと：", "「"));
+}
+
+async function setObservation(key, value) {
+  if (S.obs[key] === value) delete S.obs[key];
+  else S.obs[key] = value;
+  await loadBuilding();
+  render();
+}
+
+function readCard() {
+  return `<div class="qcard read">
       <p class="qtitle">図面の写真から読む（Claude）</p>
       <div class="options">
         <label class="option file">写真・PDFを選ぶ<input type="file" id="plan-file" accept="image/*,application/pdf"></label>
         ${S.sampleId ? `<button type="button" class="option" data-act="read-sample">見本の図面で試す</button>` : ""}
       </div>
       ${readResult()}
-    </div>
-    <button type="button" class="primary" data-act="to4">管理会社と理事会に渡す</button>
-  </section>`;
+    </div>`;
+}
+
+// 地図の下の凡例：数字の意味・矢印の意味・色の深さの帯（サーバーの hazard_legend のまま）。
+function mapLegend() {
+  const reading = S.place?.location?.reading || {};
+  const chips = (reading.hazard_legend || []).map((item) => `<span class="lg"><i style="background:${esc(item.color)}"></i>${esc(item.label)}</span>`).join("");
+  return `<div class="map-legend">
+    <p>数字＝海面からの高さ（標高）。<span class="up">茶</span>は建物より0.1m以上高い所、<span class="down">青</span>は低い所、灰はほぼ同じ高さ。矢印は高い方から。</p>
+    ${chips ? `<p class="lg-row">色の深さ：${chips}</p>` : ""}
+  </div>`;
 }
 
 function floorChoice(floor) {
@@ -1099,6 +1174,7 @@ function printSheet() {
       <div class="sheet-plan">${plan({ pins: pinsOf(list) })}</div>
       <p>図の番号の所を、竣工図と点検の記録で確かめてください。住民・理事・管理員は、電気やポンプの部屋に入りません。</p>
       <ol class="print-asks">${asks}</ol>
+      ${heardItems().length ? `<p><b>住民が見たこと</b></p><ul>${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul>` : ""}
       <p>答えが分かったら、マンション浸水ロードマップの「3 確かめる」に入れると、図の色が変わります。</p>
       ${fixed}
     </div>`;
@@ -1166,6 +1242,8 @@ async function choosePlace(params, sampleId, demoId) {
     S.building = null;
     S.choices = {};
     S.own = { floors: "", basement: "unknown" };
+    S.drawing = null;
+    S.obs = {};
     S.extra = {};
     S.read = null;
     S.reached = 1;
@@ -1211,7 +1289,7 @@ async function loadBuilding() {
     low_directions: reading.low_directions || [],
     high_directions: reading.high_directions || [],
     basin: Boolean(reading.basin),
-    statements: S.statements,
+    statements: [...S.statements, ...obsStatements()],
     location_rows: location.rows,
   });
   // 色が変わった部屋を光らせる。
@@ -1356,6 +1434,11 @@ screen.addEventListener("click", (event) => {
     setEngineer(target.dataset.hv);
   } else if (target.dataset.kind) {
     setRoom(target.dataset.kind, target.dataset.choice);
+  } else if (target.dataset.drawing) {
+    S.drawing = target.dataset.drawing;
+    render();
+  } else if (target.dataset.obs) {
+    setObservation(target.dataset.obs, target.dataset.value);
   } else if (target.dataset.own) {
     S.own.basement = target.dataset.own;
     document.querySelectorAll("[data-own]").forEach((b) => {

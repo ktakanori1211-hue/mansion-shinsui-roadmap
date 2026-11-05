@@ -104,9 +104,22 @@ button { font: inherit; }
 /* 地図の上の印 */
 .m-height { background: #fff; border: 1.5px solid #8a96a8; border-radius: 6px; font-size: 12px; font-weight: 700; text-align: center; line-height: 19px; color: #3c4656; }
 .m-height.up { border-color: #8a5a12; color: #8a5a12; }
+.m-height.down { border-color: #2f6fb0; color: #2f6fb0; }
+.m-height.same { border-color: #b8bec8; color: #6b717c; }
 .m-flow span { display: block; font-size: 22px; line-height: 26px; text-align: center; color: var(--water); font-weight: 800; text-shadow: 0 0 3px #fff; }
 .m-site b { display: block; background: var(--navy); color: #fff; border-radius: 8px; font-size: 13px; text-align: center; line-height: 28px; }
 .m-legend { background: rgba(255, 255, 255, .92); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 700; color: var(--ink); }
+
+.map-legend { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: -4px; }
+.map-legend p { margin: 0; }
+.map-legend .up { color: #8a5a12; font-weight: 800; }
+.map-legend .down { color: #2f6fb0; font-weight: 800; }
+.lg-row { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; margin-top: 2px !important; }
+.lg { display: inline-flex; align-items: center; gap: 3px; }
+.lg i { width: 12px; height: 10px; border-radius: 2px; display: inline-block; border: 1px solid rgba(0,0,0,.1); }
+.qcard.ask-drawing { border-left-color: var(--navy); }
+.qcard.observe { border-left-color: #8f96a1; }
+.observe-note { background: #f6f7f9; border-radius: 8px; padding: 8px 10px; }
 
 /* 構内平面図 */
 .plan { border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #f7f8fa; }
@@ -115,6 +128,7 @@ button { font: inherit; }
 .plan-svg.small { max-height: 38vh; }
 .p-ground { fill: #f7f8fa; }
 .p-floor { font-size: 22px; font-weight: 800; fill: var(--navy); }
+.p-floor.small { font-size: 17px; fill: #6b4700; }
 .p-road { fill: #d9dde3; transition: fill .4s; }
 .p-road.p-flooded { fill: #9cc4ec; }
 .p-road-label { font-size: 20px; font-weight: 700; fill: #4a5361; }
