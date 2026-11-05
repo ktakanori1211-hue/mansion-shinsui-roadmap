@@ -247,7 +247,7 @@ class AnswerLoopTest(unittest.TestCase):
         self.assertEqual(verdicts(moved)["power"], "risk")
         self.assertEqual(verdicts(moved)["tr"], "risk")
         js = read("start.js")
-        self.assertIn('data-hv="yes"', js)
+        self.assertIn('chip("yes", "書いてある")', js)
         self.assertIn('S.extra.tr = choice === "absent" ? "no" : "yes";', js)
         self.assertIn('basement: "地下", ground: "1階"', js)
 
@@ -386,8 +386,70 @@ class BuildingPinTest(unittest.TestCase):
         self.assertIn("share|search|reverse|location", source)
 
     def test_risky_headline_names_the_item(self):
+        # 表面はリスクありの項目だけを、知らない人の言葉で（2026-11-05 本人の指摘）。名前のない項目は短い名前を頭に付ける。
         js = read("start.js")
-        self.assertIn("${PLACE_SHORT[item.key] || item.label}：", block(js, "function placeHeadline()", "\n}\n"))
+        head = block(js, "function placeHeadline()", "\n}\n")
+        self.assertIn('item.verdict === "risk"', head)
+        self.assertIn("PLACE_PLAIN[item.key]", head)
+        self.assertIn("${PLACE_SHORT[item.key] || item.label}：", head)
+        self.assertNotIn("深さの帯", block(js, "const PLACE_PLAIN = {", "};"))
+
+    def test_unconfirmed_places_are_counted_not_hidden(self):
+        # 危ない項目だけにしても、残りは「未確認で、安全という意味ではない」と数で言う（W3、判定表1-2・1-4）。空にもしない。
+        js = read("start.js")
+        head = block(js, "function placeHeadline()", "\n}\n")
+        self.assertIn('item.verdict === "unconfirmed"', head)
+        self.assertIn("は未確認です。安全という意味ではありません。", head)
+        self.assertIn("つとも未確認です", head)
+        self.assertIn('text: "地図だけでは、まだ分かりません"', head)
+        one = block(js, "function screenOne()", "\n}\n")
+        self.assertIn("terrain.rest", one)
+        # 5つの札と土地の一行と内水の案内は、折りたたみの中に残す。記録なしは浸水なしと読ませない（判定表1-1）。
+        more = one[one.index('<details class="place-more">'):one.index("</details>", one.index('<details class="place-more">'))]
+        for part in ('<ul class="place-chips">', "landLine()", "recordNote()", "inlandNote()"):
+            self.assertIn(part, more)
+        self.assertIn("記録がないことは、浸水がなかったことを示しません。", block(js, "function recordNote()", "\n}\n"))
+
+    def test_map_colour_says_which_water(self):
+        # 地図の色が何の水かを言う。重ねていない層に色があれば、そう言う。深さは判定表1-1の3段にまとめる。
+        js = read("start.js")
+        legend = block(js, "function mapLegend()", "\n}\n")
+        self.assertIn("地図の色は、${esc(plain.long)}です。", legend)
+        self.assertIn("の色は、この地図には重ねていません。", legend)
+        self.assertIn("色がないことは、安全という意味ではありません。", legend)
+        bands = block(js, "function legendBands(", "\n}\n")
+        for label in ('"0.5m未満"', '"0.5〜3m"', '"3m超"'):
+            self.assertIn(label, bands)
+        for key in ("flood_max", "flood_planned", "storm_surge", "inland"):
+            self.assertIn(f"{key}: {{", block(js, "const LAYER_PLAIN = {", "};"))
+        self.assertIn("LAYER_PLAIN[shown.key]", block(js, "function drawMap()", "\n}\n"))
+
+    def test_engineer_question_says_what_and_why(self):
+        # 「名前がある」だけでは分からない（本人の指摘）。どの紙の、だれが持つ紙か、なぜ聞くかを添える。
+        js = read("start.js")
+        q = block(js, "function engineerQuestion()", "\n}\n")
+        self.assertIn("電気設備の点検の報告書", q)
+        self.assertIn("管理会社か理事会が持っている", q)
+        for word in ('"書いてある"', '"書いていない"', '"分からない"'):
+            self.assertIn(word, q)
+        # 「書いていない」で判定を変えない（hantei-030、how-017）。依頼メモに「住民が見たこと」として載せるだけ。
+        setter = block(js, "async function setEngineer(", "\n}\n")
+        self.assertIn('if (answer === "yes") S.extra.hv = "yes";', setter)
+        self.assertNotIn('S.extra.hv = "no"', js)
+        self.assertIn('S.hvSaid === "no"', block(js, "function obsStatements()", "\n}\n"))
+
+    def test_measure_shows_who_decides_and_cost_band(self):
+        # what-017：対策を切り替えると、要る決議と桁が変わる。桁には固定の文を添える（what-038）。
+        js = read("start.js")
+        self.assertIn("${decideLine()}", block(js, "function measureChips()", "\n}\n"))
+        line = block(js, "function decideLine()", "\n}\n")
+        for part in ("m.decision", "m.range", "m.account", "COST_FIXED"):
+            self.assertIn(part, line)
+        body = payload({}, [])
+        keys = {m["key"] for m in body["measures"]}
+        mapping = dict(re.findall(r'(\w+): "(\w+)"', block(js, "const MODEL_MEASURE = {", "};")))
+        self.assertEqual(set(mapping), {m["key"] for m in body["model_measures"]})
+        self.assertLessEqual(set(mapping.values()), keys)
 
 
 class InlandTest(unittest.TestCase):

@@ -596,21 +596,51 @@ function measureChips() {
     <p class="own-head">対策を選ぶと、止まり方が変わります</p>
     <div class="options">${chips}</div>
     ${chosen ? `<p class="hint">${esc(chosen.label)}</p>` : ""}
+    ${decideLine()}
     ${fixed.filter(Boolean).map((text) => `<p class="fixed-line">${esc(text)}</p>`).join("")}
   </div>`;
 }
 
+// 選んだ対策の「だれが決めるか」と「費用の桁」（what-017：切り替えると要る決議と桁が変わる。W1・W5：理事長が知りたいこと）。
+// 文はサーバーの measures の decision・range・account のまま。桁には固定の文を必ず添える（what-038）。
+const MODEL_MEASURE = { plate: "plate", hole: "hole", raise: "panel" };
+
+function decideLine() {
+  const m = measures().find((item) => item.key === MODEL_MEASURE[S.measure]);
+  if (!m) return "";
+  const cost = m.range ? `${m.range}${m.account ? `（${m.account}）` : ""}` : "";
+  return `<p class="decide"><span><b>だれが決める</b>${esc(m.decision || "")}</span>${cost ? `<span><b>費用の桁</b>${esc(cost)}</span>` : ""}</p>
+    ${cost ? `<p class="hint">${COST_FIXED}</p>` : ""}`;
+}
+
 // ---- 1 場所 ----
 
-// 地図の下の太字1行。凹みを一番に、次に確かめた立地のリスク（浸水の記録など）、なければ土地の高さ。
+// 地図の下の表面（2026-11-05 本人の指摘「要素が多すぎる。危なかった所だけ出す」）。
+// 表面には、リスクあり（確定）の項目だけを、電気も防災も知らない人の言葉で出す。凹みを一番に（原則3）。
+// 残りは隠さず「未確認で、安全という意味ではない」と一行で数を言う（W3、判定表1-2・1-4）。深さの帯は表面に出さない（原則6）。
+const PLACE_PLAIN = {
+  flood: "川があふれると、水につかる想定の場所です",
+  inland: "下水や水路があふれると、水につかる想定の場所です",
+  surge: "高潮のとき、水につかる想定の場所です",
+};
+
 function placeHeadline() {
+  const rows = S.place?.location?.rows || [];
   const terrain = terrainLine();
-  if (terrain.verdict === "risk") return { ...terrain, sub: "" };
-  const risky = (S.place?.location?.rows || []).filter((item) => item.verdict === "risk");
-  // どの項目の話かが分かるよう、項目の短い名前を頭に付ける（例：高潮：想定に色あり）。
-  if (risky.length) return { verdict: "risk", text: risky.map((item) => `${PLACE_SHORT[item.key] || item.label}：${item.conclusion || item.value || ""}`).join("／"), sub: "" };
-  // 土地の高さの言い方は「土地を横から見た図」に任せる（地図の下で別の言い方をして食い違わないように）。
-  return null;
+  // 色は、その行のサーバーの判定のまま（画面で risk を作らない）。
+  const lines = [];
+  if (terrain.verdict === "risk") lines.push({ verdict: terrain.verdict, text: terrain.text });
+  rows
+    .filter((item) => item.verdict === "risk" && item.key !== "ground")
+    .forEach((item) => lines.push({ verdict: item.verdict, text: PLACE_PLAIN[item.key] || item.conclusion || `${PLACE_SHORT[item.key] || item.label}：${item.value || ""}` }));
+  const open = rows.filter((item) => item.verdict === "unconfirmed" && !(item.key === "ground" && terrain.verdict === "risk"));
+  // 「下水・水路」の中黒と区別するため、読点でつなぐ。
+  const names = open.map((item) => PLACE_SHORT[item.key] || item.label).join("、");
+  let rest = "";
+  if (open.length && lines.length) rest = `ほかの${open.length}つ（${names}）は未確認です。安全という意味ではありません。`;
+  else if (open.length) rest = `${open.length}つとも未確認です（${names}）。安全という意味ではありません。`;
+  // 危ない項目がないときも空にしない（空は「安全」と読まれる）。最上段の三つめの書き出し「まだ分からない」と同じ扱い。
+  return { lines: lines.length ? lines : [{ verdict: "unconfirmed", text: "地図だけでは、まだ分かりません" }], rest };
 }
 
 function terrainLine() {
@@ -714,11 +744,15 @@ function screenOne() {
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
         ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置の値で読んでいます（地図を押すと選び直せます）" : "地図で、建物の場所を押してください（今は町丁の代表点の値）"}</p>`}
-        ${terrain ? `<p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>` : ""}
-        ${landLine() ? `<p class="land-line">${esc(landLine())}</p>` : ""}
-        <ul class="place-chips">${rows}</ul>
-        ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
-        ${inlandNote()}
+        ${terrain.lines.map((line) => `<p class="terrain ${line.verdict}">${esc(line.text)}</p>`).join("")}
+        ${terrain.rest ? `<p class="place-rest">${esc(terrain.rest)}</p>` : ""}
+        <details class="place-more"><summary>5つの項目をくわしく</summary>
+          <ul class="place-chips">${rows}</ul>
+          ${landLine() ? `<p class="land-line">${esc(landLine())}</p>` : ""}
+          ${recordNote()}
+          ${representative ? `<p class="hint">高さと色は町丁の代表点の値です。</p>` : ""}
+          ${inlandNote()}
+        </details>
         <p class="evac">${EVAC_LINE}</p>
         ${S.sampleId ? "" : ownQuestions()}
         ${S.sampleId ? "" : experienceQuestion()}
@@ -758,10 +792,7 @@ function drawMap() {
   S.map = map;
   L.control.attribution({ prefix: false }).addTo(map);
   L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: `<a href="${TILE_PAGE}" target="_blank" rel="noopener">地理院タイル</a>` }).addTo(map);
-  const hazards = reading.hazards || [];
-  // 上の深さの札と同じ想定の層を重ねる（洪水は想定最大を先に）。なければ色のある層。
-  const shown = hazardLayer(deepestHazard())
-    || hazards.find((item) => item.status === "color") || hazards.find((item) => item.nearby_legend) || null;
+  const shown = shownLayer();
   if (shown) {
     L.tileLayer(HAZARD_URL.replace("{layer}", shown.layer), {
       maxNativeZoom: 17,
@@ -780,7 +811,7 @@ function drawMap() {
     const legend = L.control({ position: "topleft" });
     legend.onAdd = () => {
       const div = L.DomUtil.create("div", "m-legend");
-      div.textContent = `色＝${shown.label}の想定`;
+      div.textContent = `色＝${LAYER_PLAIN[shown.key]?.short || shown.label}`;
       return div;
     };
     legend.addTo(map);
@@ -943,7 +974,7 @@ function screenThree() {
     const unsure = q.row === "power" && b.sample.engineer_unsure;
     const chosen = S.choices[kind] || "none";
     const options = unsure
-      ? `<p class="hint">先に、点検報告書で電気主任技術者の名前を確かめます。</p><div class="options"><button type="button" class="option" data-hv="yes">名前がある</button><button type="button" class="option chosen" data-hv="none" aria-pressed="true">まだ</button></div>`
+      ? engineerQuestion()
       : `<div class="options">${[...q.options, "none"]
           .map((o) => `<button type="button" class="option${chosen === o ? " chosen" : ""}" data-kind="${kind}" data-choice="${o}" aria-pressed="${chosen === o}">${OPTION_WORDS[o]}</button>`)
           .join("")}</div>`;
@@ -1001,7 +1032,21 @@ function observeCards() {
 
 // 住民が見たことを、サーバーの聞き取り（statements）の文にする。
 function obsStatements() {
-  return OBSERVE.map((q) => q.says[S.obs[q.key]]).filter(Boolean).map((text) => `住民が見たこと：${text}`);
+  const seen = OBSERVE.map((q) => q.says[S.obs[q.key]]).filter(Boolean);
+  if (S.hvSaid === "no") seen.push("電気設備の点検の報告書に、電気主任技術者の名前が見当たらなかった");
+  return seen.map((text) => `住民が見たこと：${text}`);
+}
+
+// ②の前に聞く、電気主任技術者の名前（2026-11-05 本人の指摘「名前があるの意味がよく分からない」）。
+// 何の紙の、どこを見るか、だれが持っているか（what-046）と、なぜ聞くか（what-022：主任技術者がいるかで、浸水の日の連絡先と手順が変わる）を添える。
+// 「書いていない」では判定を変えない。受電設備なしと読むのは、書類に「受電設備なし」と「選任なし」の両方があるときだけ（hantei-030、how-017）。
+function engineerQuestion() {
+  const said = S.hvSaid || "";
+  const chip = (key, word) => `<button type="button" class="option${said === key ? " chosen" : ""}" data-hv="${key}" aria-pressed="${said === key}">${word}</button>`;
+  return `<p class="qsub">先に1つ。管理会社か理事会が持っている「電気設備の点検の報告書」に、<b>電気主任技術者</b>の名前が書いてありますか？</p>
+    <p class="hint">電気の点検を任された人がいるかで、浸水の日にだれへ連絡し、だれが電気を切るかが変わります。</p>
+    <div class="options">${chip("yes", "書いてある")}${chip("no", "書いていない")}${chip("none", "分からない")}</div>
+    ${said === "no" ? `<p class="hint">名前がないことだけでは、電気を受ける部屋がないとは決めません。依頼メモで管理会社に確かめてもらいます。</p>` : ""}`;
 }
 
 // 依頼メモに載せる、聞き取りの文（サーバーの memos の文のまま）。
@@ -1029,10 +1074,58 @@ function readCard() {
 }
 
 // 地図の下の凡例：数字の意味・矢印の意味・色の深さの帯（サーバーの hazard_legend のまま）。
+// 地図に重ねる層（上の深さの札と同じ想定。洪水は想定最大を先に）。なければ色のある層。
+function shownLayer() {
+  const hazards = S.place?.location?.reading?.hazards || [];
+  return hazardLayer(deepestHazard()) || hazards.find((item) => item.status === "color") || hazards.find((item) => item.nearby_legend) || null;
+}
+
+// 地図の色が「何の水か」を、知らない人の言葉で言う（2026-11-05 本人の指摘「この色が何の水位か分かりにくい」）。
+// 正式な層の名前は（ ）に残す。深さを階に置き換える説明や、出典のない「何年に1度」は足さない（原則6、数字の決まり）。
+const LAYER_PLAIN = {
+  flood_max: { family: "flood", short: "川があふれたとき", long: "近くの川があふれたときに、水につかる想定の範囲（洪水・想定最大規模＝考えうる最大の大雨の想定）" },
+  flood_planned: { family: "flood", short: "川があふれたとき", long: "近くの川があふれたときに、水につかる想定の範囲（洪水・計画規模）" },
+  storm_surge: { family: "surge", short: "高潮のとき", long: "高潮のときに、水につかる想定の範囲（高潮）" },
+  inland: { family: "inland", short: "下水・水路があふれたとき", long: "下水や水路があふれたときに、水につかる想定の範囲（内水）" },
+};
+const FAMILY_NAME = { flood: "川の洪水", surge: "高潮", inland: "下水・水路" };
+
+// 色の濃さは、判定表1-1の3段（0.5m 未満／0.5〜3m／3m 超）にまとめる。札はこの帯で動かさない。
+function legendBands(legend) {
+  const bands = [["0.5m未満", []], ["0.5〜3m", []], ["3m超", []]];
+  legend.forEach((item) => {
+    const band = parseBand(item.label);
+    if (!band) return;
+    const i = band.high !== null && band.high <= 0.5 ? 0 : band.low >= 3 ? 2 : 1;
+    bands[i][1].push(item.color);
+  });
+  return bands.filter(([, colors]) => colors.length);
+}
+
 function mapLegend() {
   const reading = S.place?.location?.reading || {};
-  const chips = (reading.hazard_legend || []).map((item) => `<span class="lg"><i style="background:${esc(item.color)}"></i>${esc(item.label)}</span>`).join("");
-  return chips ? `<div class="map-legend"><details><summary>地図の色の深さ</summary><p class="lg-row">${chips}</p></details></div>` : "";
+  const shown = shownLayer();
+  if (!shown) return `<p class="map-caption">この地図には、水につかる想定の色を重ねていません（この地点では、川・高潮・下水の想定の色が読めなかったため）。色がないことは、安全という意味ではありません。</p>`;
+  const plain = LAYER_PLAIN[shown.key] || { family: "", long: shown.label };
+  // 地図に重ねていない層にも色があるときは、そう言う（見出しと地図が食い違って見えないように）。
+  const others = [...new Set((reading.hazards || [])
+    .filter((item) => (item.status === "color" || item.nearby_legend) && LAYER_PLAIN[item.key]?.family !== plain.family)
+    .map((item) => FAMILY_NAME[LAYER_PLAIN[item.key]?.family] || item.label))];
+  // 「下水・水路」の中黒と区別するため、読点でつなぐ。
+  const bands = legendBands(reading.hazard_legend || [])
+    .map(([label, colors]) => `<span class="lg">${colors.map((c) => `<i style="background:${esc(c)}"></i>`).join("")}${label}</span>`)
+    .join("");
+  return `<div class="map-legend">
+    <p class="map-caption">地図の色は、${esc(plain.long)}です。色が濃いほど深い想定です。${others.length ? `${esc(others.join("、"))}の色は、この地図には重ねていません。` : ""}</p>
+    ${bands ? `<details><summary>色の濃さ（想定の深さ）</summary><p class="lg-row">${bands}</p></details>` : ""}
+  </div>`;
+}
+
+// 浸水の記録がリスクありでないときの添え書き（判定表1-1：記録なし＝浸水なし、とは読まない）。
+function recordNote() {
+  const record = (S.place?.location?.rows || []).find((item) => item.key === "record");
+  if (!record || record.verdict === "risk") return "";
+  return `<p class="hint">浸水の記録：記録がないことは、浸水がなかったことを示しません。</p>`;
 }
 
 function floorChoice(floor) {
@@ -1337,6 +1430,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.own = { floors: "", basement: "unknown" };
     S.drawing = null;
     S.obs = {};
+    S.hvSaid = "";
     S.exp = "";
     S.facts = null;
     S.extra = {};
@@ -1426,6 +1520,7 @@ async function setRoom(kind, choice) {
 async function setEngineer(answer) {
   if (answer === "yes") S.extra.hv = "yes";
   else delete S.extra.hv;
+  S.hvSaid = answer === "none" ? "" : answer;
   await loadBuilding();
   render();
 }
