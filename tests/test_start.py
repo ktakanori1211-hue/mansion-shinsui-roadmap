@@ -112,7 +112,8 @@ class FixedTextTest(unittest.TestCase):
         self.assertIn('"実際の浸水速度の予測ではなく、水が順番に入る仕組みの模式です。"', js)
         self.assertIn('stopped: "止まる想定"', js)
         # 時刻や速さの目安を書かない。
-        strings = "".join(re.findall(r'"[^"\n]*"', js))
+        # 段の名前（数日〜1週間、約2か月〜本復旧）は前の時間の再生と同じ、サーバーの五段の表の列の名前なので除く。
+        strings = "".join(re.findall(r'"[^"\n]*"', re.sub(r'name: "[^"]*"', "", js)))
         self.assertEqual(re.findall(r"\d+\s*(分|時間|秒|日|か月)", strings), [])
 
     def test_sheet_address_is_town_level(self):
@@ -305,6 +306,47 @@ class PlanTest(unittest.TestCase):
         self.assertIn("周りより低い凹み", terrain)
         self.assertIn("reading.hazards", js)
         self.assertIn("reading.elevation?.points", js)
+
+
+class StoryTest(unittest.TestCase):
+    """画面2の3段（2026-11-05）：断面の切り絵・暮らしが止まるまで・平面図。住民に何がまずいかを伝える。"""
+
+    def test_three_parts_in_order(self):
+        js = read("start.js")
+        two = block(js, "function screenTwo()", "\n}\n")
+        parts = ["どう浸水するか", "暮らしが止まるまで", "どこを確かめるか"]
+        self.assertEqual([two.index(p) for p in parts], sorted(two.index(p) for p in parts))
+        self.assertIn("cutaway(S.play)", two)
+        self.assertIn("timeline()", two)
+
+    def test_cutaway_reads_the_server(self):
+        # 止まるかはサーバーの scenario、部屋の色は判定のまま。切り絵で新しい判定を作らない。
+        js = read("start.js")
+        cut = block(js, "function cutaway(", "\n}\n")
+        self.assertIn('serviceState(level, "homes")', cut)
+        self.assertIn('serviceState(level, "ev") === "stopped"', cut)
+        self.assertIn("row(rowKey) ? row(rowKey).verdict", cut)
+        self.assertNotIn('"risk"', cut)
+
+    def test_timeline_facts_come_from_the_server_table(self):
+        js = read("start.js")
+        facts = block(js, "function phaseFacts(", "\n}\n")
+        self.assertIn('S.building?.scenarios?.["3:plate"]?.table', facts)
+        line = block(js, "function timeline()", "\n}\n")
+        # 「この建物の日数ではありません」の一行（サーバーの notes）を出す。
+        self.assertIn("notes[0]", line)
+        self.assertIn('<details class="phase-more">', line)
+        # 段の名前と文に、日数などの新しい数字を書かない（数字はサーバーの表の文だけ）。
+        phases = re.sub(r'name: "[^"]*"', "", block(js, "const PHASES = [", "];"))
+        self.assertIsNone(re.search(r"\d+\s*(日|週|か月|年)", phases))
+
+    def test_server_table_has_the_example_and_note(self):
+        body = payload({}, [])
+        scenario = body["scenarios"]["3:plate"]
+        self.assertTrue(scenario["notes"])
+        others = next(item for item in scenario["table"] if item["key"] == "others")
+        self.assertIn("ほかの建物の例", others["cells"][3])
+        self.assertEqual(len(others["cells"]), 5)
 
 
 class SheetTest(unittest.TestCase):

@@ -166,6 +166,59 @@ button { font: inherit; }
 .life em { font-style: normal; font-weight: 900; font-size: 18px; line-height: 1.2; }
 .life small { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
 .life li.stopped small { color: #fff; }
+.life li.stopped em { font-size: 15px; word-break: keep-all; }
+
+/* 2 止まるもの：3段の見出し、断面の切り絵、時間の段 */
+.part { display: flex; align-items: center; gap: 8px; margin: 10px 0 -4px; font-size: 17px; font-weight: 800; }
+.part span { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 13px; text-align: center; line-height: 24px; }
+.cut { border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.cut-svg { display: block; width: 100%; height: auto; }
+.cut-svg text { font-family: inherit; }
+.c-sky { fill: #f4f7fb; }
+.c-soil { fill: #ece3d1; }
+.c-roof { fill: #d9dde3; stroke: #8f96a1; stroke-width: 1; }
+.c-side { fill: #c8cdd5; stroke: #8f96a1; stroke-width: 1; }
+.c-floor { fill: #fff; stroke: #6b717c; stroke-width: 1.2; }
+.c-win { fill: #f6c768; transition: fill .4s; }
+.c-win.off { fill: #9aa0a9; }
+.c-break { fill: none; stroke: #6b717c; stroke-width: 1.5; }
+.c-label { font-size: 11px; font-weight: 700; fill: #4a5361; }
+.c-basement { fill: #fff; stroke: #2b2f36; stroke-width: 2; }
+.c-room { stroke-width: 2; }
+.c-room.risk { fill: var(--risk-bg); stroke: var(--risk-line); }
+.c-room.unconfirmed { fill: var(--unconfirmed-bg); stroke: var(--unconfirmed-line); stroke-dasharray: 5 3; }
+.c-room.clear { fill: var(--clear-bg); stroke: var(--clear-line); }
+.c-room-name { font-size: 12px; font-weight: 800; text-anchor: middle; }
+.c-room-name.risk { fill: var(--risk); }
+.c-room-name.unconfirmed { fill: #6b4700; }
+.c-room-name.clear { fill: var(--clear); }
+.c-box { fill: #fff; stroke: #4a5361; stroke-width: 1.2; }
+.c-ev { fill: #e8f0fa; stroke: #2f5f9e; stroke-width: 1.2; }
+.c-ev.off { fill: #f6d6d3; stroke: var(--risk-line); }
+.c-car { fill: #2f5f9e; }
+.c-ev-label { font-size: 10px; font-weight: 800; fill: #2f5f9e; text-anchor: middle; }
+.c-stop { font-size: 14px; font-weight: 900; fill: var(--risk); text-anchor: middle; }
+.c-ground { stroke: #5b4a2e; stroke-width: 3; }
+.c-ramp { fill: #d9dde3; stroke: #8f96a1; stroke-width: 1; }
+.c-hh { fill: #fff; stroke: #4a5361; stroke-width: 1.2; }
+.c-hole { fill: #fff; stroke: var(--water); stroke-width: 2.5; }
+.c-water { fill: var(--water); opacity: .55; }
+.c-route { fill: none; stroke: var(--water); stroke-width: 3; stroke-dasharray: 6 4; }
+.c-route.on { stroke-width: 4.5; stroke-dasharray: none; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 3px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.phase { position: relative; }
+.phase::before { content: ""; position: absolute; left: -21px; top: 4px; width: 11px; height: 11px; border-radius: 50%; background: var(--unconfirmed-line); }
+.phase.before::before { background: #8f96a1; }
+.phase.day::before, .phase.morning::before { background: var(--risk-line); }
+.phase-name { margin: 0; font-size: 15px; font-weight: 800; }
+.phase-line { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.phase-lead { margin: 1px 0 0; font-size: 16px; font-weight: 800; line-height: 1.45; }
+.phase.day .phase-lead, .phase.morning .phase-lead { color: var(--risk); }
+.phase-lead small { display: block; font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.phase-more summary { font-size: 12px; color: var(--accent); cursor: pointer; }
+.facts { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.facts b { font-size: 14px; }
+.facts small { display: block; font-size: 11.5px; color: var(--muted); }
 
 /* 3 確かめる */
 .sticky { position: sticky; top: 0; z-index: 3; background: var(--card); padding: 8px 0 6px; margin: -8px 0 0; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 6px 8px -8px rgba(0, 0, 0, .25); }

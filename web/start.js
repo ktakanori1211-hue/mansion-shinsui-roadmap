@@ -194,14 +194,6 @@ function titleLine() {
   return `${where ? `${where}の` : ""}機械が水につかると、全部の家で${joinJa(names)}が止まります`;
 }
 
-// 戻るまでの目安。サーバーの五段の表の「ほかの建物の例」の文のまま。
-function example() {
-  const table = S.building?.scenarios?.["3:plate"]?.table || [];
-  const found = table.find((item) => /ほかの建物の例/.test(item.label));
-  const cell = found?.cells?.[3];
-  return cell && cell !== "—" ? cell : "";
-}
-
 function serviceState(level, key) {
   const services = S.building?.scenarios?.[`${level}:plate`]?.services || [];
   return services.find((item) => item.key === key)?.state || "unknown";
@@ -551,25 +543,174 @@ function drawMap() {
 }
 
 // ---- 2 止まるもの ----
+// 3段で見せる。①断面の切り絵で、どう浸水するか ②暮らしが止まるまでの時間 ③平面図で、どこを確かめるか。
+// 切り絵は見本の形（階数・地下の有無・機械の部屋）から描く説明用の模式で、部屋の色は判定のまま、止まるかはサーバーの scenario のまま。
+
+// 住民が過ごす時間の順（前の時間の再生と同じ段の名前。サーバーの五段の表の列の順）。
+const PHASES = [
+  { key: "before", name: "大雨が近づいたとき", line: "外の道路に水がたまり始める。建物の中はまだ使える" },
+  { key: "day", name: "水が来た当日", line: "スロープや壁の穴から地下へ水が入り、エレベーター、続いて水と電気が止まる" },
+  { key: "morning", name: "水が引いた翌朝", line: "外の道路は乾いても、地下には水が残る。水を抜くまで機械室に入れない" },
+  { key: "week", name: "数日〜1週間", line: "水を抜いても、浸かった機械は止まったまま。点検と修理を待つ" },
+  { key: "months", name: "約2か月〜本復旧", line: "浸かった盤や部品が届いて付け替わるまで、止まったままのことがある" },
+];
+const MACHINE_KEYS = [["elec", "panel_room"], ["tr"], ["pump"]];
+
+// 断面の切り絵（斜めから見た建物の切り口）。説明用の模式で、高さの値ではない。
+function cutaway(level = 0) {
+  const b = S.building;
+  const sample = b.sample;
+  const under = sample.archetype !== "ground";
+  const W = 360;
+  const G = under ? 196 : 236;
+  const x0 = 64;
+  const x1 = 262;
+  const dx = 30;
+  const dy = 18;
+  const top = 34;
+  const shown = Math.min(sample.floors || 6, 6);
+  // 地下のない建物は、1階を機械の部屋の帯（高め）にし、住まいの階をその上に並べる。
+  const band = under ? 0 : 62;
+  const homesShown = under ? shown : shown - 1;
+  const fh = (G - band - top) / homesShown;
+  const homes = level ? serviceState(level, "homes") : "running";
+  const evOff = level && serviceState(level, "ev") === "stopped";
+  const parts = [];
+  parts.push(`<rect x="0" y="0" width="${W}" height="300" class="c-sky"/>`);
+  // 地面と土
+  parts.push(`<rect x="0" y="${G}" width="${W}" height="${300 - G}" class="c-soil"/>`);
+  // 建物の上と横（斜めの面）
+  parts.push(`<polygon points="${x0},${top} ${x1},${top} ${x1 + dx},${top - dy} ${x0 + dx},${top - dy}" class="c-roof"/>`);
+  parts.push(`<polygon points="${x1},${top} ${x1 + dx},${top - dy} ${x1 + dx},${G - dy} ${x1},${G}" class="c-side"/>`);
+  // 住まいの階（窓の明かり）
+  for (let i = 0; i < homesShown; i += 1) {
+    const y = top + i * fh;
+    parts.push(`<rect x="${x0}" y="${y}" width="${x1 - x0}" height="${fh}" class="c-floor"/>`);
+    // 窓は4つ。右のエレベーターの通り道に重ねない。
+    for (let k = 0; k < 4; k += 1) {
+      const wx = x0 + 12 + k * 40;
+      const off = homes === "stopped";
+      parts.push(`<rect x="${wx}" y="${y + fh * 0.26}" width="26" height="${fh * 0.48}" rx="2" class="c-win${off ? " off" : ""}"/>`);
+    }
+  }
+  if ((sample.floors || 0) > shown) {
+    parts.push(`<path d="M${x0 - 4} ${top + fh * 1.5} l8 -5 l8 5 l8 -5" class="c-break"/>`);
+    parts.push(`<text x="${x1 + dx + 4}" y="${top - dy + 4}" class="c-label" text-anchor="end">${sample.floors}階建て</text>`);
+  }
+  // 機械の部屋（地下の階、なければ1階）
+  const roomTop = under ? G + 6 : G - band + 4;
+  const roomBottom = under ? G + 66 : G;
+  if (under) parts.push(`<rect x="${x0}" y="${G}" width="${x1 - x0}" height="${roomBottom - G + 4}" class="c-basement"/>`);
+  else parts.push(`<rect x="${x0}" y="${G - band}" width="${x1 - x0}" height="${band}" class="c-basement"/>`);
+  const roomW = (x1 - x0 - 40) / 3;
+  MACHINE_KEYS.forEach((keys, i) => {
+    const room = b.sample.views.flatMap((v) => v.rooms).find((r) => keys.includes(r.key));
+    if (!room) return;
+    const rowKey = KIND_ROWS[room.key];
+    const v = row(rowKey) ? row(rowKey).verdict : "unconfirmed";
+    const rx = x0 + 4 + i * (roomW + 2);
+    parts.push(`<rect x="${rx}" y="${roomTop}" width="${roomW}" height="${roomBottom - roomTop - 2}" class="c-room ${v}"/>`);
+    parts.push(`<text x="${rx + roomW / 2}" y="${roomTop + 16}" class="c-room-name ${v}">${esc(ROOM_SHORT[room.key])}</text>`);
+    parts.push(`<rect x="${rx + roomW / 2 - 12}" y="${roomBottom - 30}" width="24" height="18" rx="2" class="c-box"/>`);
+  });
+  // エレベーター（地下まで通る）
+  const evX = x1 - 32;
+  parts.push(`<rect x="${evX}" y="${top + 4}" width="26" height="${roomBottom - top - 2}" class="c-ev${evOff ? " off" : ""}"/>`);
+  parts.push(`<rect x="${evX + 4}" y="${top + fh * 1.2}" width="18" height="${fh * 0.7}" class="c-car"/>`);
+  parts.push(`<text x="${evX + 13}" y="${top + fh * 1.2 - 4}" class="c-ev-label">EV</text>`);
+  if (evOff) parts.push(`<text x="${evX + 13}" y="${top + fh * 2.4}" class="c-stop">止</text>`);
+  // 地面の線・道路・入り道
+  parts.push(`<line x1="0" y1="${G}" x2="${W}" y2="${G}" class="c-ground"/>`);
+  parts.push(`<text x="6" y="${G - 8}" class="c-label">道路</text>`);
+  const routes = [];
+  if (under) {
+    // スロープ（右から地下へ）と、道路の下の管から電気室の壁の穴へ
+    routes.push(`M${W - 6} ${G} L${x1 + 30} ${G} L${x1 + 2} ${roomBottom - 8}`);
+    parts.push(`<path d="M${W} ${G + 1} L${x1 + 30} ${G + 1} L${x1 + 2} ${roomBottom - 6} L${x1 + 2} ${roomBottom + 6} L${W} ${roomBottom + 6} Z" class="c-ramp"/>`);
+    parts.push(`<rect x="22" y="${G + 2}" width="16" height="16" class="c-hh"/>`);
+    routes.push(`M30 ${G + 18} L30 ${roomTop + 34} L${x0 + 2} ${roomTop + 34}`);
+    parts.push(`<circle cx="${x0 + 1}" cy="${roomTop + 34}" r="4" class="c-hole"/>`);
+  } else {
+    routes.push(`M8 ${G - 4} L${x0 + 2} ${G - 6}`);
+  }
+  // 水
+  if (level >= 1) {
+    parts.push(`<rect x="0" y="${G - 7}" width="${x0}" height="7" class="c-water"/>`);
+    parts.push(`<rect x="${x1 + dx}" y="${G - 7}" width="${W - x1 - dx}" height="7" class="c-water"/>`);
+  }
+  if (level >= 2) parts.push(`<rect x="${x0 + 2}" y="${roomBottom - 10}" width="${x1 - x0 - 4}" height="10" class="c-water"/>`);
+  if (level >= 3) parts.push(`<rect x="${x0 + 2}" y="${roomBottom - 34}" width="${x1 - x0 - 4}" height="34" class="c-water"/>`);
+  routes.forEach((d) => parts.push(`<path d="${d}" class="c-route${level >= 1 ? " on" : ""}" marker-end="url(#c-head)"/>`));
+  const label = level ? `もし水がここまで来たら：${CAPTIONS[level]}` : "建物の断面の模式";
+  return `<svg class="cut-svg" viewBox="0 0 ${W} ${under ? 270 : 252}" role="img" aria-label="${esc(label)}">
+    <defs><marker id="c-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker></defs>
+    ${parts.join("")}
+  </svg>`;
+}
+
+// 時間の段の文（サーバーの五段の表のその列の文のまま。重ねて出さない）。
+function phaseFacts(index) {
+  const table = S.building?.scenarios?.["3:plate"]?.table || [];
+  const seen = new Set();
+  return table
+    .filter((item) => item.key !== "actions" && (item.stopped || item.key === "others"))
+    .map((item) => item.cells?.[index])
+    .filter((cell) => cell && cell !== "—" && cell !== "止まる想定" && !seen.has(cell) && seen.add(cell));
+}
+
+function factLine(text) {
+  const head = text.replace(/（.*$/, "");
+  const note = text.slice(head.length);
+  return `<li><b>${esc(head)}</b>${note ? `<small>${esc(note)}</small>` : ""}</li>`;
+}
+
+// 時間の段。表面は段の名前と太字1行（原則1）。段の説明と、ほかの目安は折りたたみに入れる。
+function timeline() {
+  const n = Number(S.floor);
+  const notes = S.building?.scenarios?.["3:plate"]?.notes || [];
+  const stopped = TILES.filter((tile) => serviceState(3, SERVICE_OF_TILE[tile.key]) === "stopped").map((tile) => tile.label);
+  const items = PHASES.map((phase, i) => {
+    const facts = phaseFacts(i);
+    let lead = "";
+    if (phase.key === "before") lead = "建物の中は、まだ使える";
+    if (phase.key === "day") lead = stopped.length ? `止まる想定：${stopped.join("・")}` : phase.line;
+    if (phase.key === "morning") lead = n >= 2 ? `${n}階まで、水もごみも階段で運ぶ` : "地下に水が残り、機械室に入れない";
+    if (phase.key === "week" || phase.key === "months") lead = facts.find((cell) => /ほかの建物の例/.test(cell) && !/本復旧/.test(cell)) || facts[0] || phase.line;
+    const head = lead.replace(/（.*$/, "");
+    const note = lead.slice(head.length);
+    const rest = facts.filter((cell) => cell !== lead);
+    return `<li class="phase ${phase.key}">
+      <p class="phase-name">${esc(phase.name)}</p>
+      <p class="phase-lead">${esc(head)}${note ? `<small>${esc(note)}</small>` : ""}</p>
+      <details class="phase-more"><summary>くわしく</summary><p class="phase-line">${esc(phase.line)}</p>${rest.length ? `<ul class="facts">${rest.map(factLine).join("")}</ul>` : ""}</details>
+    </li>`;
+  }).join("");
+  return `<ol class="timeline">${items}</ol>${notes[0] ? `<p class="hint">${esc(notes[0])}</p>` : ""}`;
+}
 
 function screenTwo() {
   const b = S.building;
   const count = openCount();
   const playing = S.play > 0;
-  const sample = example();
+  const levels = b.water_levels || [];
+  const now = levels.find((item) => item.key === S.play);
   return `<section class="s2">
     <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
     <h1 class="title">${esc(titleLine())}</h1>
-    <div class="plan">${plan({ level: S.play })}</div>
+    <h2 class="part"><span>1</span>どう浸水するか</h2>
+    <div class="cut">${cutaway(S.play)}</div>
     <div class="play-row">
       <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : "▶ 水が入る順に見る"}</button>
-      <span class="caption">${playing ? `<b>${S.play}. ${esc(CAPTIONS[S.play])}</b>` : ""}</span>
+      <span class="caption">${playing ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : `${b.sample.archetype === "ground" ? "1階" : "地下"}の機械が止まると、上の階まで止まる`}</span>
     </div>
     ${playing ? `<p class="hint">${PLAY_NOTE}</p>` : ""}
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
-    ${playing ? "" : legend()}
     ${lifeChips(S.play)}
-    ${sample && !playing ? `<p class="hint">${esc(sample)}</p>` : ""}
+    <h2 class="part"><span>2</span>暮らしが止まるまで</h2>
+    ${timeline()}
+    <h2 class="part"><span>3</span>どこを確かめるか</h2>
+    <div class="plan">${plan()}</div>
+    ${legend()}
     <button type="button" class="primary" data-act="to3">${count ? `？を確かめる（未確認 ${count}）` : "確かめた答えを見直す"}</button>
   </section>`;
 }
