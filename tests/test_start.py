@@ -349,6 +349,40 @@ class StoryTest(unittest.TestCase):
         self.assertEqual(len(others["cells"]), 5)
 
 
+class DepthOnBuildingTest(unittest.TestCase):
+    """浸水の深さを建物の階に置き換える（2026-11-05）。深さは立地の行の値のまま、階は「1階を約3m」とした目安。"""
+
+    def test_depth_comes_from_the_place_rows(self):
+        js = read("start.js")
+        deepest = block(js, "function deepestHazard()", "\n}\n")
+        self.assertIn("S.place?.location?.rows", deepest)
+        self.assertIn("parseBand(item.value)", deepest)
+        self.assertIn("${depthCard()}", block(js, "function screenOne()", "\n}\n"))
+        self.assertIn("deepestHazard()", block(js, "function cutaway(", "\n}\n"))
+
+    def test_floors_are_said_to_be_an_assumption(self):
+        js = read("start.js")
+        self.assertIn('const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";', js)
+        self.assertIn("${STORY_NOTE}", block(js, "function depthCard()", "\n}\n"))
+        # 国の手引きの区分の言い方（床上浸水など）は、原文を確かめるまで使わない。
+        for word in ("床上浸水", "床下浸水", "2階浸水"):
+            self.assertNotIn(word, js)
+
+    def test_no_color_is_not_called_safe(self):
+        js = read("start.js")
+        self.assertIn("浸水しないという意味ではありません", block(js, "function depthCard()", "\n}\n"))
+
+    def test_bands_the_server_returns_are_parsed(self):
+        # サーバーの深さの帯の書き方（〜0.5m、0.5m〜3m、3m〜5m、20m〜）を読めるか、正規表現を同じ形で確かめる。
+        js = read("start.js")
+        pattern = re.search(r"String\(value \|\| \"\"\)\.match\(/(.+)/\);", js).group(1)
+        for text, low, high in (("〜0.5m", None, "0.5"), ("0.5m〜3m", "0.5", "3"), ("3m〜5m", "3", "5"), ("20m〜", "20", None)):
+            m = re.match(pattern, text)
+            self.assertIsNotNone(m, text)
+            self.assertEqual((m.group(1), m.group(2)), (low, high), text)
+        self.assertIsNone(re.match(pattern, "データなし"))
+
+
 class PlanFileTest(unittest.TestCase):
     """図面のファイル（2026-11-05）。何百MB・何GBの全部込みの竣工図は、ブラウザで読み込む前に止める。"""
 

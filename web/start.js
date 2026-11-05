@@ -415,6 +415,80 @@ function lifeChips(level = 0) {
   }).join("")}</ul>`;
 }
 
+// ---- 浸水の深さを建物に重ねる（2026-11-05） ----
+// ハザードマップの深さの帯（立地の行の value のまま）を、建物の階に置き換えて見せる。
+// 階の高さは分からないので「1階を約3m」とした描くための目安とし、その旨を必ず添える。判定はしない。
+const STORY_M = 3;
+const HAZARD_WORDS = { flood: "川があふれると", inland: "下水や水路があふれると", surge: "高潮のとき" };
+const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";
+
+function parseBand(value) {
+  const m = String(value || "").match(/^(\d+(?:\.\d+)?)?m?〜(\d+(?:\.\d+)?)?m?$/);
+  if (!m || (m[1] === undefined && m[2] === undefined)) return null;
+  const low = m[1] === undefined ? 0 : Number(m[1]);
+  const high = m[2] === undefined ? null : Number(m[2]);
+  return { low, high };
+}
+
+// 立地の行のうち、一番深い想定（洪水・内水・高潮）。なければ null。
+function deepestHazard() {
+  const rows = (S.place?.location?.rows || []).filter((item) => HAZARD_WORDS[item.key]);
+  let best = null;
+  rows.forEach((item) => {
+    const band = parseBand(item.value);
+    if (!band) return;
+    const depth = band.high === null ? band.low + 10 : band.high;
+    if (!best || depth > best.depth) best = { ...band, depth, key: item.key, value: item.value, conclusion: item.conclusion || "" };
+  });
+  return best;
+}
+
+// 深さを階の言葉にする（1階を約3mとした割り算だけ）。
+function storyWords(band) {
+  if (band.high === null) return `${Math.ceil(band.low / STORY_M) + 1}階より上まで`;
+  if (band.high <= 0.5) return "1階の床の近くまで";
+  const floor = Math.ceil(band.high / STORY_M);
+  return floor <= 1 ? "1階が水につかる深さ" : `1階の天井を超え、${floor}階まで`;
+}
+
+// 小さな建物の横から見た絵に、想定の深さの水を重ねる。人の背丈を目盛りに添える。
+function depthPicture(band) {
+  const G = 150;
+  const px = 10; // 1m あたり
+  const top = 20;
+  const parts = [`<rect x="0" y="0" width="340" height="190" class="c-sky"/>`];
+  parts.push(`<rect x="0" y="${G}" width="340" height="40" class="c-soil"/>`);
+  for (let i = 0; i < 4; i += 1) {
+    const y = G - (i + 1) * STORY_M * px;
+    parts.push(`<rect x="150" y="${y}" width="130" height="${STORY_M * px}" class="c-floor"/>`);
+    parts.push(`<text x="158" y="${y + 19}" class="c-label">${i + 1}階</text>`);
+  }
+  parts.push(`<text x="286" y="${G - 4 * STORY_M * px + 4}" class="c-label">↑上の階</text>`);
+  parts.push(`<rect x="150" y="${G}" width="130" height="30" class="c-under"/>`);
+  parts.push(`<text x="158" y="${G + 20}" class="c-label">地下（あれば）</text>`);
+  const high = band.high === null ? (G - top) / px : Math.min(band.high, (G - top) / px);
+  parts.push(`<rect x="0" y="${G - high * px}" width="340" height="${high * px}" class="d-water"/>`);
+  if (band.low > 0) parts.push(`<line x1="0" y1="${G - band.low * px}" x2="340" y2="${G - band.low * px}" class="d-low"/>`);
+  parts.push(`<line x1="0" y1="${G - high * px}" x2="340" y2="${G - high * px}" class="d-high"/>`);
+  parts.push(`<text x="8" y="${G - high * px - 6}" class="d-label">${esc(band.value)}</text>`);
+  // 人の背丈（約1.7m）の目盛り
+  const h = 17;
+  parts.push(`<g class="d-person"><circle cx="100" cy="${G - h + 3}" r="3"/><line x1="100" y1="${G - h + 6}" x2="100" y2="${G - 6}"/><line x1="100" y1="${G - 6}" x2="96" y2="${G}"/><line x1="100" y1="${G - 6}" x2="104" y2="${G}"/><line x1="95" y1="${G - 12}" x2="105" y2="${G - 12}"/></g>`);
+  parts.push(`<line x1="0" y1="${G}" x2="340" y2="${G}" class="c-ground"/>`);
+  return `<svg class="depth-svg" viewBox="0 0 340 190" role="img" aria-label="${esc(`${HAZARD_WORDS[band.key]}${band.value}。${storyWords(band)}`)}">${parts.join("")}</svg>`;
+}
+
+function depthCard() {
+  const band = deepestHazard();
+  if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p>`;
+  return `<div class="depth">
+    <p class="depth-lead">${esc(HAZARD_WORDS[band.key])} <b>${esc(band.value)}</b></p>
+    <p class="depth-words">${esc(storyWords(band))}</p>
+    <div class="depth-art">${depthPicture(band)}</div>
+    <p class="hint">${STORY_NOTE}${band.conclusion ? `（${esc(band.conclusion)}）` : ""}</p>
+  </div>`;
+}
+
 // ---- 1 場所 ----
 
 // 地図の下の太字1行。凹みを一番に、次に確かめた立地のリスク（浸水の記録など）、なければ土地の高さ。
@@ -459,6 +533,7 @@ function screenOne() {
     picked = `<div class="picked">
         <p class="place"><b>${esc(S.place.site.label)}</b></p>
         <h2 class="question">この土地で水が来る道</h2>
+        ${depthCard()}
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         <p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>
         <ul class="place-chips">${rows}</ul>
@@ -502,7 +577,13 @@ function drawMap() {
   L.control.attribution({ prefix: false }).addTo(map);
   L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: `<a href="${TILE_PAGE}" target="_blank" rel="noopener">地理院タイル</a>` }).addTo(map);
   const hazards = reading.hazards || [];
-  const shown = hazards.find((item) => item.status === "color") || hazards.find((item) => item.nearby_legend) || null;
+  // 上の深さの札と同じ想定の層を重ねる（洪水は想定最大を先に）。なければ色のある層。
+  const LAYERS_OF_ROW = { flood: ["flood_max", "flood_planned"], inland: ["inland"], surge: ["storm_surge"] };
+  const deepest = deepestHazard();
+  const wanted = deepest ? LAYERS_OF_ROW[deepest.key] || [] : [];
+  const usable = (item) => item.status === "color" || item.nearby_legend;
+  const shown = wanted.map((key) => hazards.find((item) => item.key === key && usable(item))).find(Boolean)
+    || hazards.find((item) => item.status === "color") || hazards.find((item) => item.nearby_legend) || null;
   if (shown) {
     L.tileLayer(HAZARD_URL.replace("{layer}", shown.layer), {
       maxNativeZoom: 17,
@@ -570,9 +651,9 @@ function cutaway(level = 0) {
   const top = 34;
   const shown = Math.min(sample.floors || 6, 6);
   // 地下のない建物は、1階を機械の部屋の帯（高め）にし、住まいの階をその上に並べる。
-  const band = under ? 0 : 62;
+  const band_ = under ? 0 : 62;
   const homesShown = under ? shown : shown - 1;
-  const fh = (G - band - top) / homesShown;
+  const fh = (G - band_ - top) / homesShown;
   const homes = level ? serviceState(level, "homes") : "running";
   const evOff = level && serviceState(level, "ev") === "stopped";
   const parts = [];
@@ -598,10 +679,10 @@ function cutaway(level = 0) {
     parts.push(`<text x="${x1 + dx + 4}" y="${top - dy + 4}" class="c-label" text-anchor="end">${sample.floors}階建て</text>`);
   }
   // 機械の部屋（地下の階、なければ1階）
-  const roomTop = under ? G + 6 : G - band + 4;
+  const roomTop = under ? G + 6 : G - band_ + 4;
   const roomBottom = under ? G + 66 : G;
   if (under) parts.push(`<rect x="${x0}" y="${G}" width="${x1 - x0}" height="${roomBottom - G + 4}" class="c-basement"/>`);
-  else parts.push(`<rect x="${x0}" y="${G - band}" width="${x1 - x0}" height="${band}" class="c-basement"/>`);
+  else parts.push(`<rect x="${x0}" y="${G - band_}" width="${x1 - x0}" height="${band_}" class="c-basement"/>`);
   const roomW = (x1 - x0 - 40) / 3;
   MACHINE_KEYS.forEach((keys, i) => {
     const room = b.sample.views.flatMap((v) => v.rooms).find((r) => keys.includes(r.key));
@@ -632,6 +713,20 @@ function cutaway(level = 0) {
     parts.push(`<circle cx="${x0 + 1}" cy="${roomTop + 34}" r="4" class="c-hole"/>`);
   } else {
     routes.push(`M8 ${G - 4} L${x0 + 2} ${G - 6}`);
+  }
+  // この場所の想定の深さ（ハザードマップの帯）。1階を約3mとして、切り絵の階の高さに合わせて引く。
+  const band = deepestHazard();
+  if (band) {
+    const yOf = (m) => {
+      if (under) return G - (m / STORY_M) * fh;
+      if (m <= STORY_M) return G - (m / STORY_M) * band_;
+      return G - band_ - ((m - STORY_M) / STORY_M) * fh;
+    };
+    const highM = band.high === null ? band.low + STORY_M : band.high;
+    const yHigh = Math.max(top - dy, yOf(highM));
+    parts.push(`<rect x="0" y="${yHigh}" width="${W}" height="${G - yHigh}" class="h-band"/>`);
+    parts.push(`<line x1="0" y1="${yHigh}" x2="${W}" y2="${yHigh}" class="h-line"/>`);
+    parts.push(`<text x="4" y="${yHigh - 5}" class="h-label">この場所の想定 ${esc(band.value)}</text>`);
   }
   // 水
   if (level >= 1) {

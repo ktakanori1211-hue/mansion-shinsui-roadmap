@@ -220,6 +220,26 @@ button { font: inherit; }
 .facts b { font-size: 14px; }
 .facts small { display: block; font-size: 11.5px; color: var(--muted); }
 
+/* 浸水の深さを建物に重ねる */
+.depth { display: flex; flex-direction: column; gap: 4px; border: 2px solid var(--water); border-radius: 12px; padding: 10px 12px; background: #f3f8fe; }
+.depth-lead { margin: 0; font-size: 15px; font-weight: 700; color: #1d4f8a; }
+.depth-lead b { font-size: 26px; font-weight: 900; color: #0d3f7a; margin-left: 4px; }
+.depth-words { margin: 0; font-size: 18px; font-weight: 900; color: var(--risk); }
+.depth-art { border-radius: 8px; overflow: hidden; }
+.depth-svg { display: block; width: 100%; height: auto; }
+.depth-svg text { font-family: inherit; }
+.depth-none { margin: 0; font-size: 13px; color: var(--muted); border-left: 4px solid #b8bec8; padding-left: 8px; }
+.c-under { fill: #fff; stroke: #6b717c; stroke-width: 1.2; stroke-dasharray: 4 3; }
+.d-water { fill: var(--water); opacity: .38; }
+.d-high { stroke: #0d3f7a; stroke-width: 2; }
+.d-low { stroke: #0d3f7a; stroke-width: 1; stroke-dasharray: 4 3; }
+.d-label { font-size: 13px; font-weight: 900; fill: #0d3f7a; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.d-person circle { fill: #4a5361; }
+.d-person line { stroke: #4a5361; stroke-width: 2; }
+.h-band { fill: var(--water); opacity: .12; }
+.h-line { stroke: #0d3f7a; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.h-label { font-size: 11px; font-weight: 800; fill: #0d3f7a; paint-order: stroke; stroke: #f4f7fb; stroke-width: 3px; }
+
 /* 3 確かめる */
 .sticky { position: sticky; top: 0; z-index: 3; background: var(--card); padding: 8px 0 6px; margin: -8px 0 0; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 6px 8px -8px rgba(0, 0, 0, .25); }
 .count-bar { display: flex; align-items: center; gap: 10px; }
