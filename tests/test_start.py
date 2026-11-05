@@ -705,6 +705,54 @@ class ShrinkPhotoTest(unittest.TestCase):
         self.assertIn("return null;", shrink[shrink.index("catch"):])
 
 
+class NameVariantTest(unittest.TestCase):
+    """建物名の表記ゆれ（2026-11-05）。外の地図は呼ばず、比べ方と探し直しの回数を確かめる。"""
+
+    def test_name_key_folds_common_variants(self):
+        from app.search import _name_key
+
+        for a, b in (("キャッスル", "キヤツスル"), ("ヴィラ", "ビラ"), ("グリ－ンコ－ト", "グリーンコート"), ("パーク・ハウス", "パークハウス"), ("ﾊﾟｰｸﾊｳｽ", "パークハウス"), ("ハイツ ", "ハイツ")):
+            self.assertEqual(_name_key(a), _name_key(b), (a, b))
+        self.assertNotEqual(_name_key("パークハウス"), _name_key("パークタワー"))
+
+    def test_spaced_name_splits_at_script_changes(self):
+        from app.search import spaced_name
+
+        self.assertEqual(spaced_name("グリーンコート幸町ミッドタワー"), "グリーンコート 幸町 ミッドタワー")
+        self.assertEqual(spaced_name("グリ－ンコ－ト幸町"), "グリーンコート 幸町")
+        self.assertEqual(spaced_name("グリーンハイツ幸町第2"), "グリーンハイツ 幸町第2")
+
+    def test_osm_is_retried_once_with_the_spaced_name(self):
+        from unittest import mock
+        from app import search
+
+        calls = []
+        places = []
+
+        def fake_osm(query, place="", names=None):
+            calls.append(query)
+            places.append(place)
+            return [] if len(calls) == 1 else [{"label": "見本", "longitude": 139.0, "latitude": 35.0, "source": "OpenStreetMap"}]
+
+        with mock.patch.object(search, "_osm", side_effect=fake_osm), mock.patch.object(search.time, "sleep") as sleep, mock.patch.object(search, "_gsi", return_value=[]):
+            result = search.search("グリーンコート幸町ミッドタワー")
+        self.assertEqual(calls, ["グリーンコート幸町ミッドタワー", "グリーンコート 幸町 ミッドタワー"])
+        sleep.assert_called_once_with(search.OSM_INTERVAL_SECONDS)
+        # 探し直しの地名の手がかりは、区切った形から取る（名前の一部が混ざった「幸町ミッド」にしない）。
+        self.assertEqual(places[1], "幸町")
+        self.assertEqual(result["candidates"][0]["label"], "見本")
+
+    def test_no_retry_when_the_name_is_already_spaced(self):
+        from unittest import mock
+        from app import claude, search
+
+        calls = []
+        with mock.patch.object(search, "_osm", side_effect=lambda q, place="", names=None: calls.append(q) or []), mock.patch.object(search.time, "sleep"), mock.patch.object(search, "_gsi", return_value=[]), mock.patch.object(search, "_place_candidates", return_value=[]), mock.patch.object(claude, "available", return_value=False):
+            with self.assertRaises(Exception):
+                search.search("グリーンコート 幸町 ミッドタワー")
+        self.assertEqual(len(calls), 1)
+
+
 class SheetTest(unittest.TestCase):
     def test_four_screens_one_button_each(self):
         js = read("start.js")

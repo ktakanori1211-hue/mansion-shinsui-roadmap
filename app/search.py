@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -20,6 +21,8 @@ ZIPCLOUD_URL = "https://zipcloud.ibsnet.co.jp/api/search"
 REVERSE_URL = "https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress"
 USER_AGENT = "mansion-shinsui-roadmap (hackathon demo; one lookup per button press)"
 MAX_CANDIDATES = 8
+# 公開地図（Nominatim）の使い方の決まり：1秒に1回まで。
+OSM_INTERVAL_SECONDS = 1.0
 
 _KANJI = "〇一二三四五六七八九"
 _BUILDING_WORDS = r"マンション|ハイツ|エクセル|コーポ|レジデンス|パレス|パーク|タワー|コート|メゾン|ハイム|ヴィラ|シティ|ガーデン|プラザ|ビル|団地|住宅|荘"
@@ -27,9 +30,64 @@ _BUILDING_WORDS = r"マンション|ハイツ|エクセル|コーポ|レジデ�
 _OSM_EXCLUDED = {"shop", "amenity", "office", "craft", "leisure", "tourism", "emergency", "healthcare", "club", "aeroway", "historic"}
 
 
+# 表記の揺れをそろえる表（2026-11-05）。小さい字は大きい字に、ヴ行はバ行に、長音の記号は「ー」にする。
+# 登記や看板では「キヤツスル」のように大きい字で書くことがあり、入力の「－」「-」も長音のつもりのことが多い。
+_SMALL_KANA = str.maketrans("ァィゥェォッャュョヮヵヶぁぃぅぇぉっゃゅょゎ", "アイウエオツヤユヨワカケあいうえおつやゆよわ")
+_VU = [("ヴァ", "バ"), ("ヴィ", "ビ"), ("ヴェ", "ベ"), ("ヴォ", "ボ"), ("ヴ", "ブ")]
+_DASHES = r"[ー－‐\-−–—―]"
+
+
+def _fold_kana(text: str) -> str:
+    """カタカナ・ひらがなの表記の揺れをそろえる（比べるときだけ使い、表示はそのまま）。"""
+    for before, after in _VU:
+        text = text.replace(before, after)
+    text = re.sub(_DASHES, "ー", text)
+    return text.translate(_SMALL_KANA)
+
+
 def _name_key(text: str) -> str:
-    """表記の揺れ（全角半角、大文字小文字、空白、中黒）を除いて名前を比べる。"""
-    return re.sub(r"[\s　・･·.,]", "", unicodedata.normalize("NFKC", text)).casefold()
+    """表記の揺れ（全角半角、大文字小文字、空白、中黒、小さい字、ヴ、長音の記号）を除いて名前を比べる。"""
+    return _fold_kana(re.sub(r"[\s　・･·.,]", "", unicodedata.normalize("NFKC", text))).casefold()
+
+
+def _script_of(char: str) -> str:
+    if re.match(r"[ァ-ヴー]", char):
+        return "katakana"
+    if re.match(r"[一-龥々〆]", char):
+        return "kanji"
+    if re.match(r"[ぁ-ん]", char):
+        return "hiragana"
+    if re.match(r"[A-Za-z0-9]", char):
+        return "latin"
+    return "other"
+
+
+def spaced_name(query: str) -> str:
+    """名前をカタカナ・漢字・ひらがな・英数字の切れ目で区切る（「グリーンコート幸町ミッドタワー」→「グリーンコート 幸町 ミッドタワー」。名前は架空の例）。
+    公開地図の検索は、登録された名前の区切りと合わないと候補を返さないので、見つからないときだけ、この形で探し直す。
+    カタカナの間の「－」「-」は長音の「ー」にする。中黒は区切りにする。"""
+    text = unicodedata.normalize("NFKC", query)
+    text = re.sub(r"(?<=[ァ-ヴ])[－‐\-−–—―](?=[ァ-ヴ]|$|\s)", "ー", text)
+    text = re.sub(r"[・･·]", " ", text)
+    parts, current, kind = [], "", None
+    for char in text:
+        if char in " 　":
+            if current:
+                parts.append(current)
+            current, kind = "", None
+            continue
+        this = _script_of(char)
+        # 「第2」「2号棟」のように、数字は前の語につなげる（区切らない）。
+        if char.isdigit() and current:
+            this = kind
+        if current and this != kind:
+            parts.append(current)
+            current = ""
+        current += char
+        kind = this
+    if current:
+        parts.append(current)
+    return " ".join(parts)
 
 
 def _looks_like_address(query: str) -> bool:
@@ -255,6 +313,15 @@ def search(query: str) -> dict:
             return {"query": query, "candidates": candidates, "message": "", "hints": {}}
 
     candidates = _osm(query, place, _name_tokens(query))
+    if not candidates:
+        # 公開地図は、登録された名前の区切りと合わないと見つからない。区切った形で、1回だけ探し直す。
+        # 公開地図の使い方の決まり（1秒に1回まで）を守るため、1秒待つ。
+        spaced = spaced_name(query)
+        if spaced != query:
+            time.sleep(OSM_INTERVAL_SECONDS)
+            # 地名の手がかりも、区切った形から取り直す（区切る前は「幸町ミッド」のように名前の一部が混ざるため）。
+            spaced_place = building_part_removed(spaced) if place else ""
+            candidates = _osm(spaced, spaced_place, _name_tokens(spaced))
     if candidates:
         return {"query": query, "candidates": candidates, "message": "公開地図（OpenStreetMap）の候補です。地図で確かめてください。", "hints": {}}
 

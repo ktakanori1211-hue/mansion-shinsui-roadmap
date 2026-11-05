@@ -707,6 +707,12 @@ class ClaudeRequestTest(unittest.TestCase):
 
 
 class SearchTest(unittest.TestCase):
+    def setUp(self):
+        # 公開地図の探し直しの前の1秒の待ちを、検査では待たない（2026-11-05）。
+        patcher = mock.patch.object(search.time, "sleep")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_empty_query_is_rejected(self):
         with self.assertRaises(AddressError):
             search.search("  ")
@@ -856,7 +862,8 @@ class SearchTest(unittest.TestCase):
         with mock.patch.object(search, "_gsi", return_value=place), mock.patch.object(search, "_osm", return_value=[]) as osm, mock.patch.object(search, "_claude_infer", return_value=None):
             with self.assertRaises(AddressError):
                 search.search("ブリリア有明")
-        osm.assert_called_once()
+        # 公開地図は、入力のままと、区切った形（ブリリア 有明）の2回まで。似た地名は建物として取らない。
+        self.assertEqual([call.args[0] for call in osm.call_args_list], ["ブリリア有明", "ブリリア 有明"])
 
     def test_place_name_alone_still_finds_the_place(self):
         place = [{"label": "千葉県浦安市新浦安", "longitude": 1, "latitude": 1, "source": "国土地理院"}]
