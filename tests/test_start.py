@@ -115,6 +115,8 @@ class FixedTextTest(unittest.TestCase):
         self.assertIn('stopped: "止まる想定"', js)
         # 時刻や速さの目安を書かない。
         # 段の名前（数日〜1週間、約2か月〜本復旧）は前の時間の再生と同じ、サーバーの五段の表の列の名前なので除く。
+        # 保存の期限の選択肢（1週間・1か月・3か月）は予測の時間ではないので除く。
+        js = re.sub(r"const SAVE_DAYS = \[.*?\];", "", js)
         strings = "".join(re.findall(r'"[^"\n]*"', re.sub(r'name: "[^"]*"', "", js)))
         self.assertEqual(re.findall(r"\d+\s*(分|時間|秒|日|か月)", strings), [])
 
@@ -315,7 +317,7 @@ class HonestShapeTest(unittest.TestCase):
 
     def test_own_building_floors_are_not_borrowed(self):
         js = read("start.js")
-        self.assertIn("（見本の形）", block(js, "function plan(", "\n}\n"))
+        self.assertIn("（よくある形の例）", block(js, "function plan(", "\n}\n"))
         self.assertIn("BORROWED", block(js, "function screenTwo()", "\n}\n"))
     def test_own_building_answers_are_sent(self):
         js = read("start.js")
@@ -385,39 +387,43 @@ class BuildingPinTest(unittest.TestCase):
         source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("share|search|reverse|location", source)
 
-    def test_risky_headline_names_the_item(self):
-        # 表面はリスクありの項目だけを、知らない人の言葉で（2026-11-05 本人の指摘）。名前のない項目は短い名前を頭に付ける。
+    def test_every_place_item_is_on_the_surface(self):
+        # 5つの項目を1行ずつ表面に出す（2026-11-05 本人の指摘「折りたたまないと状況が分からないのは不親切」、9章 how-035 の一段目）。
         js = read("start.js")
-        head = block(js, "function placeHeadline()", "\n}\n")
-        self.assertIn('item.verdict === "risk"', head)
-        self.assertIn("PLACE_PLAIN[item.key]", head)
-        self.assertIn("${PLACE_SHORT[item.key] || item.label}：", head)
-        self.assertNotIn("深さの帯", block(js, "const PLACE_PLAIN = {", "};"))
-
-    def test_unconfirmed_places_are_counted_not_hidden(self):
-        # 危ない項目だけにしても、残りは「未確認で、安全という意味ではない」と数で言う（W3、判定表1-2・1-4）。空にもしない。
-        js = read("start.js")
-        head = block(js, "function placeHeadline()", "\n}\n")
-        self.assertIn('item.verdict === "unconfirmed"', head)
-        self.assertIn("は未確認です。安全という意味ではありません。", head)
-        self.assertIn("つとも未確認です", head)
-        self.assertIn('text: "地図だけでは、まだ分かりません"', head)
+        lines = block(js, "function placeLines()", "\n}\n")
+        self.assertIn("verdict: item.verdict", lines)
+        self.assertIn('who: item.verdict === "unconfirmed" ? item.confirm_short', lines)
         one = block(js, "function screenOne()", "\n}\n")
-        self.assertIn("terrain.rest", one)
-        # 5つの札と土地の一行と内水の案内は、折りたたみの中に残す。記録なしは浸水なしと読ませない（判定表1-1）。
-        more = one[one.index('<details class="place-more">'):one.index("</details>", one.index('<details class="place-more">'))]
+        self.assertIn('<ul class="place-lines">', one)
+        self.assertIn("LOOK[line.verdict]", one)
+        self.assertNotIn("深さの帯", block(js, "const PLACE_PLAIN = {", "};"))
+        # 色がない・データがない項目は「安全」と読ませない（W3、判定表1-2）。記録なしは浸水なしと読ませない（判定表1-1）。
+        self.assertIn("色がないことは、安全という意味ではありません", block(js, "function hazardPlain(", "\n}\n"))
+        self.assertIn("記録がないことは、浸水がなかったことを示しません", block(js, "function recordPlain(", "\n}\n"))
+        # 数値と出典は二段目に残す。折りたたみは押せると分かる形にする。
+        more = one[one.index('<details class="place-more more">'):one.index("</details>", one.index('<details class="place-more more">'))]
         for part in ('<ul class="place-chips">', "landLine()", "recordNote()", "inlandNote()"):
             self.assertIn(part, more)
-        self.assertIn("記録がないことは、浸水がなかったことを示しません。", block(js, "function recordNote()", "\n}\n"))
+        self.assertIn('details.more > summary::before', read("start.css"))
+
+    def test_terrain_colour_comes_from_the_server(self):
+        # 凹みでも、サーバーの判定が未確認なら赤にしない（判定表1-3・1-4。df44f8b の不具合の再発を防ぐ）。
+        js = read("start.js")
+        terrain = block(js, "function terrainLine", "\n}\n")
+        self.assertNotIn("verdict", terrain)
+        self.assertIn("地図の標高による仮の目安", block(js, "function groundPlain(", "\n}\n"))
 
     def test_map_colour_says_which_water(self):
-        # 地図の色が何の水かを言う。重ねていない層に色があれば、そう言う。深さは判定表1-1の3段にまとめる。
+        # 地図の色が何の水かを言い、建物（代表点）の場所の色を、色見本つきで表面に出す。重ねていない層に色があれば、そう言う。
         js = read("start.js")
         legend = block(js, "function mapLegend()", "\n}\n")
         self.assertIn("地図の色は、${esc(plain.long)}です。", legend)
         self.assertIn("の色は、この地図には重ねていません。", legend)
         self.assertIn("色がないことは、安全という意味ではありません。", legend)
-        bands = block(js, "function legendBands(", "\n}\n")
+        self.assertIn('"建物の場所" : "町丁の代表点"', legend)
+        self.assertIn("reading.hazard_legend", legend)
+        self.assertNotIn("<details", legend)
+        bands = block(js, "function bandWord(", "\n}\n")
         for label in ('"0.5m未満"', '"0.5〜3m"', '"3m超"'):
             self.assertIn(label, bands)
         for key in ("flood_max", "flood_planned", "storm_surge", "inland"):
@@ -764,3 +770,69 @@ class SheetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SecondReviewTest(unittest.TestCase):
+    """本人の2回目の指摘（2026-11-05）：停電の連鎖、暮らしの札、画面3の問い、自分の建物の図面、工事金額、保存と共有。"""
+
+    def test_wet_panel_room_stops_each_home(self):
+        # 分電盤室が浸かると、各戸の電気も止まる想定（本人決定。部屋で決める）。電気室の建物（見本A）は今のまま。
+        own = payload({"rooms_floor": "unknown", "basement": "no"}, [], sample_id=None)
+        self.assertIn(["hv", "homes"], [list(edge) for edge in own["chain"]["edges"]])
+        state = {s["key"]: s["state"] for s in own["scenarios"]["3:plate"]["services"]}
+        self.assertEqual(state["homes"], "stopped")
+        sealed = {s["key"]: s["state"] for s in own["scenarios"]["3:hole"]["services"]}
+        self.assertEqual(sealed["homes"], "unknown")
+        a = payload({}, [])
+        self.assertNotIn(["hv", "homes"], [list(edge) for edge in a["chain"]["edges"]])
+
+    def test_life_tiles_say_the_water_level_and_why_unknown(self):
+        js = read("start.js")
+        tiles = block(js, "function lifeChips(", "\n}\n")
+        self.assertIn("水が${LEVEL_MARK[level]", tiles)
+        self.assertIn('"分からない"', tiles)
+        self.assertIn("建物側からは分からない", tiles)
+        # 止まる想定に入らない札を「使える」と言わない（what-029）。
+        self.assertNotIn('"使える"', tiles)
+
+    def test_screen_three_names_the_rooms_and_splits_the_engineer_question(self):
+        js = read("start.js")
+        titles = block(js, "const QUESTIONS = [", "];")
+        for word in ("ポンプ室", "電気室（共用の分電盤室のこともあります）", "借室（東京電力の変圧器の部屋）"):
+            self.assertIn(word, titles)
+        three = block(js, "function screenThree()", "\n}\n")
+        self.assertIn('<div class="qcard engineer">${engineerQuestion()}</div>', three)
+        self.assertNotIn('<details class="qresult', three)
+
+    def test_own_building_asks_for_the_drawing_first(self):
+        js = read("start.js")
+        first = block(js, "function ownDrawingFirst()", "\n}\n")
+        self.assertIn("よくある形の例", first)
+        self.assertIn("${READ_NOTICE}", first)
+        self.assertIn("${b.sample.custom ? ownDrawingFirst() : \"\"}", block(js, "function screenTwo()", "\n}\n"))
+        self.assertIn("Anthropic の API に送って読みます", block(js, "const READ_NOTICE", ";"))
+
+    def test_costs_compute_only_from_an_entered_estimate(self):
+        # 出典のない円は足さない。見積り額を入れたときだけ計算する（what-064）。補助の率と上限は確かめた制度の文のまま。
+        js = read("start.js")
+        calc = block(js, "const AID_CALC = {", "};")
+        self.assertIn("rate: 2 / 3, cap: 8330000, unit: 1000", calc)
+        self.assertIn("rate: 1 / 2, cap: 750000, unit: 100", calc)
+        line = block(js, "function estimateLine(", "\n}\n")
+        self.assertIn("if (!(amount > 0)) return \"\";", line)
+        rows = block(js, "function costRows(", "\n}\n")
+        for part in ("m.label", "m.owner", "data-est"):
+            self.assertIn(part, rows)
+        self.assertIn("costRows(true, true)", block(js, "function a4Back()", "\n}\n"))
+
+    def test_save_keeps_password_out_and_leaves_drawings_and_chat_out(self):
+        js = read("start.js")
+        fields = block(js, "const SAVE_FIELDS = [", "];")
+        for word in ('"read"', '"chat', '"claude"', '"savePass"', '"openKey"'):
+            self.assertNotIn(word, fields)
+        self.assertIn("crypto.getRandomValues", block(js, "function randomPassword(", "\n}\n"))
+        save = block(js, "async function saveAs(", "\n}\n")
+        self.assertIn("/?open=${stored.id}#${sealed.linkKey}", save)
+        self.assertNotIn("password}", save.replace("savePassword()", ""))
+        self.assertIn("期限が過ぎています", block(js, "async function openSaved()", "\n}\n"))
+        self.assertNotIn("データが外に出ない", block(js, "function saveBox()", "\n}\n"))

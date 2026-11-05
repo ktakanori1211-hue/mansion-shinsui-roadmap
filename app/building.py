@@ -892,7 +892,25 @@ def _number_memos(sections: List[dict], equipment: List[dict]) -> List[dict]:
 
 
 # 停電の連鎖の図の箱とつながり。
+def has_room(sample: dict, key: str) -> bool:
+    return any(room.get("key") == key for view in sample.get("views") or [] for room in view.get("rooms") or [])
+
+
+# 分電盤室が浸かると、各戸の電気も止まる想定にする（2026-11-05 本人決定。電気主任技術者としての実務の判断）。
+# 部屋で決める：図に「分電盤室」（共用部のおおもとのスイッチ盤の部屋）がある建物では、その盤から各戸へ電気が行くとみる。
+# 高圧受電の電気室（受電の箱）が浸かったときの各戸は、今のまま（各戸は借室から）。
+PANEL_ROOM_HOMES_NOTE = "分電盤室が浸かると、共用部だけでなく各戸の電気も止まる想定です（分電盤室から各戸へ電気が行く建物の想定）。"
+
+
 def chain_nodes(sample: dict, confirmed: Optional[List[str]] = None) -> dict:
+    result = _chain_with_room(sample, confirmed)
+    if not is_bulk(sample, confirmed) and has_room(sample, "panel_room") and ("hv", "homes") not in result["edges"]:
+        result["edges"] = [*result["edges"], ("hv", "homes")]
+        result["note"] = PANEL_ROOM_HOMES_NOTE
+    return result
+
+
+def _chain_with_room(sample: dict, confirmed: Optional[List[str]] = None) -> dict:
     answers = sample.get("answers") or {}
     if is_bulk(sample, confirmed):
         nodes = [
@@ -1030,6 +1048,7 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
 
     hv_wet = "hv" in wet
     tr_wet = "tr" in wet
+    homes_by_panel = "homes" in stopped and not tr_wet and ("hv", "homes") in chain["edges"]
     panel_wet = "panel" in wet
     no_stop = not stopped
 
@@ -1075,12 +1094,12 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
             "label": "各戸の電気（東京電力の設備の位置は未確認）" if tr_unseen else "各戸の電気（東京電力の変圧器の部屋）",
             "cells": [
                 "—",
-                mark("tr") if tr_wet else "建物側から分からない",
-                "東京電力パワーグリッドが判断" if tr_wet else "—",
+                mark("tr") if tr_wet else "止まる想定（分電盤室が浸かるため）" if homes_by_panel else "建物側から分からない",
+                "東京電力パワーグリッドが判断" if tr_wet else f"止まる想定のまま、{checker}が確かめるまで戻さない" if homes_by_panel else "—",
                 guide_days if tr_wet else "目安なし＊",
                 "—",
             ],
-            "stopped": tr_wet,
+            "stopped": tr_wet or homes_by_panel,
             "note": FIXED["tr_box"],
         },
     ]
