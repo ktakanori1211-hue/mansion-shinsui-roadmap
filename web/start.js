@@ -573,16 +573,29 @@ function depthConditions(band) {
 
 function depthCard() {
   const band = deepestHazard();
-  if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p>${inlandNote()}`;
+  if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p><details class="depth-more"><summary>内水（下水や水路）のこと</summary>${inlandNote()}</details>`;
   return `<div class="depth">
     <p class="depth-lead">${esc(leadWords(band))} <b>${esc(band.value)}</b></p>
     <p class="depth-words">${esc(storyWords(band))}</p>
     <div class="depth-art">${depthPicture(band)}</div>
     ${durationLine()}
-    ${scenarioTable()}
-    ${inlandNote()}
-    <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
+    <p class="depth-short">${esc(depthShort(band))}</p>
+    <details class="depth-more"><summary>ほかの想定・前提・内水を見る</summary>
+      ${scenarioTable()}
+      ${inlandNote()}
+      <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
+    </details>
   </div>`;
+}
+
+// 札の表面に残す前提の1行（本人の指摘：前提が見えないと誤解する）。くわしい文は折りたたみの中。
+function depthShort(band) {
+  const parts = [];
+  const planned = scenarioRows().find((row) => row.key === "flood_planned");
+  if (band.key === "flood" && planned && planned.cls !== "color") parts.push(`川の整備の目標の大雨では${planned.value === "この点に色なし" ? "色なし" : planned.value}`);
+  parts.push(S.place?.site?.basis === "representative" ? "町丁の代表点の値" : "建物の位置の値");
+  parts.push("深い方の端で描いた目安");
+  return parts.join("・");
 }
 
 // 札の一行目。どの想定の深さかを、頭に言う（例：想定しうる最大の大雨で川があふれると）。
@@ -620,7 +633,7 @@ function experienceQuestion() {
   return `<div class="own">
     <p class="own-head">この辺りで、大雨のときに道路や敷地が水につかったことはありますか？</p>
     <div class="options">${chips}</div>
-    <p class="hint">地図にない浸水の手がかりになります。判定の色は変えず、管理会社への依頼メモに載せます。</p>
+    <p class="hint">依頼メモに載せます（判定の色は変えません）。</p>
   </div>`;
 }
 
@@ -669,12 +682,12 @@ function factsBox() {
       <p class="hint">${esc(S.facts.message)}</p>
       <button type="button" class="option" data-act="use-facts">この値を使う</button></div>`;
   } else if (S.facts) result = `<p class="hint">${esc(S.facts.message)}</p>`;
-  return `<div class="facts">
+  return `<details class="facts"${S.facts || S.factsBusy ? " open" : ""}><summary>建物名から Web で階数を探す（Claude）</summary>
     <label class="facts-name">建物名<input id="facts-name" type="text" autocomplete="off" value="${esc(name)}" placeholder="〇〇マンション"></label>
     <button type="button" class="option" data-act="facts"${S.factsBusy ? " disabled" : ""}>Web で階数を探す（Claude）</button>
     <p class="hint">押すと、建物名と所在地を Anthropic の API に送り、Web を検索します。</p>
     ${result}
-  </div>`;
+  </details>`;
 }
 
 async function findFacts() {
@@ -745,7 +758,7 @@ function screenOne() {
         ${depthCard()}
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
-        ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置として選んだ点の値で読んでいます。違えば、もう一度地図を押してください。" : "地図で、あなたの建物の場所を押してください。その位置の値で読み直します（今は町丁の代表点の値です）。"}</p>`}
+        ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置の値で読んでいます（地図を押すと選び直せます）" : "地図で、建物の場所を押してください（今は町丁の代表点の値）"}</p>`}
         <p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>
         <ul class="place-chips">${rows}</ul>
         ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
@@ -1175,8 +1188,8 @@ function mapLegend() {
   const reading = S.place?.location?.reading || {};
   const chips = (reading.hazard_legend || []).map((item) => `<span class="lg"><i style="background:${esc(item.color)}"></i>${esc(item.label)}</span>`).join("");
   return `<div class="map-legend">
-    <p>数字＝海面からの高さ（標高）。<span class="up">茶</span>は建物より0.1m以上高い所、<span class="down">青</span>は低い所、灰はほぼ同じ高さ。矢印は高い方から。</p>
-    ${chips ? `<p class="lg-row">色の深さ：${chips}</p>` : ""}
+    <p>数字＝海面からの高さ。<span class="up">茶</span>＝高い・<span class="down">青</span>＝低い（0.1m以上の差）。矢印は高い方から。</p>
+    ${chips ? `<details><summary>色の深さ</summary><p class="lg-row">${chips}</p></details>` : ""}
   </div>`;
 }
 

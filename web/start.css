@@ -270,6 +270,11 @@ button { font: inherit; }
 .duration small { display: block; font-size: 11.5px; font-weight: 400; color: var(--muted); }
 .inland-note { margin: 2px 0 0; font-size: 12.5px; line-height: 1.6; color: #4a5361; background: #fff; border-radius: 8px; padding: 6px 8px; border: 1px dashed #b8bec8; }
 .inland-note a { color: var(--accent); font-weight: 700; }
+.depth-short { margin: 0; font-size: 12px; color: var(--muted); }
+.depth-more summary, .map-legend summary, .facts summary { font-size: 12.5px; color: var(--accent); cursor: pointer; font-weight: 700; }
+.depth-more[open] { display: flex; flex-direction: column; gap: 6px; }
+details.facts { display: block; }
+details.facts[open] { display: flex; }
 .depth-none { margin: 0; font-size: 13px; color: var(--muted); border-left: 4px solid #b8bec8; padding-left: 8px; }
 .c-under { fill: #fff; stroke: #6b717c; stroke-width: 1.2; stroke-dasharray: 4 3; }
 .d-water { fill: var(--water); opacity: .38; }

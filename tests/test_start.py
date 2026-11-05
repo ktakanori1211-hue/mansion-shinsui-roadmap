@@ -641,6 +641,29 @@ class SendTest(unittest.TestCase):
             self.assertNotIn("postJSON", body)
 
 
+class FoldTest(unittest.TestCase):
+    """画面1を畳んで減らす（2026-11-05、原則1）。表面は太字・絵・水が引くまで・前提の1行。詳しい文は折りたたみ。"""
+
+    def test_details_are_folded_but_one_line_stays(self):
+        js = read("start.js")
+        card = block(js, "function depthCard()", "\n}\n")
+        # 色があるときの札（後ろの方の折りたたみ）。前の方は色がないときの内水の折りたたみ。
+        at = card.rindex('<details class="depth-more">')
+        more = card[at:]
+        for part in ("${scenarioTable()}", "${inlandNote()}", "depthConditions(band)"):
+            self.assertIn(part, more)
+        self.assertIn("depthShort(band)", card[:at])
+        short = block(js, "function depthShort(band)", "\n}\n")
+        self.assertIn("町丁の代表点の値", short)
+        self.assertIn("深い方の端で描いた目安", short)
+
+    def test_web_search_is_folded_but_says_what_it_sends(self):
+        js = read("start.js")
+        box = block(js, "function factsBox()", "\n}\n")
+        self.assertIn('<details class="facts"', box)
+        self.assertIn("Anthropic の API に送り", box)
+
+
 class PlanFileTest(unittest.TestCase):
     """図面のファイル（2026-11-05）。何百MB・何GBの全部込みの竣工図は、ブラウザで読み込む前に止める。"""
 
