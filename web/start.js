@@ -1607,6 +1607,43 @@ function fileProblem(file) {
   return "";
 }
 
+// ---- 図面の写真を送る前に縮める（2026-11-05） ----
+// 長辺を 2000px 以下にし（それ以下なら等倍のまま）、JPEG（品質0.85）にする。部屋の名前の字が読める解像度は保つ。
+// 1MB を超えたら、品質だけを少しずつ下げる（0.75 → 0.65）。寸法は下げない。
+// API の画像の上限は1枚 10MB（base64）で、モデルの元の解像度は長辺 2,576px（Claude の Vision の資料、2026-11-05 に確認）。
+const SHRINK_EDGE = 2000;
+const SHRINK_QUALITIES = [0.85, 0.75, 0.65];
+const SHRINK_TARGET_BYTES = 1024 * 1024;
+
+async function shrinkImage(file) {
+  try {
+    // 写真の向き（EXIF）を反映して読む。
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, SHRINK_EDGE / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    // 透明な所は白にする（JPEG は透明を持てず、黒くなるのを防ぐ）。
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close?.();
+    let blob = null;
+    for (const quality of SHRINK_QUALITIES) {
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (!blob) return null;
+      if (blob.size <= SHRINK_TARGET_BYTES) break;
+    }
+    return blob;
+  } catch (error) {
+    // 縮められない画像（ブラウザが読めない形など）は、今まで通りそのまま送る。
+    return null;
+  }
+}
+
 async function readPlan(file) {
   const problem = file ? fileProblem(file) : "";
   if (problem) {
@@ -1620,13 +1657,17 @@ async function readPlan(file) {
   try {
     const body = { sample_id: S.sampleId };
     if (file) {
+      // 写真は、送る前にブラウザの中で縮めて JPEG にする（スマホの写真は1枚5〜10MB以上あり、API の画像の上限を超えるため）。
+      // 縮められなかったときと PDF は、今まで通りそのまま送る。
+      const shrunk = file.type.startsWith("image/") ? await shrinkImage(file) : null;
+      const source = shrunk || file;
       body.data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
         reader.onerror = () => reject(new Error("ファイルを読めませんでした。"));
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(source);
       });
-      body.media_type = file.type;
+      body.media_type = shrunk ? "image/jpeg" : file.type;
     }
     S.read = await postJSON("/api/plan", body);
   } catch (error) {

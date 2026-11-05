@@ -683,6 +683,28 @@ class PlanFileTest(unittest.TestCase):
         self.assertIn("FILE_TYPES.test(file.type)", problem)
 
 
+class ShrinkPhotoTest(unittest.TestCase):
+    """図面の写真を送る前に縮める（2026-11-05）。API は呼ばない。"""
+
+    def test_images_are_shrunk_and_pdf_is_sent_as_is(self):
+        js = read("start.js")
+        reading = block(js, "async function readPlan(file)", "\n}\n")
+        self.assertIn('file.type.startsWith("image/") ? await shrinkImage(file) : null', reading)
+        self.assertIn('body.media_type = shrunk ? "image/jpeg" : file.type;', reading)
+        # 縮める前に、種類と大きさの確かめ（fileProblem）を通す。
+        self.assertLess(reading.index("fileProblem(file)"), reading.index("shrinkImage(file)"))
+
+    def test_shrink_keeps_text_readable_and_falls_back(self):
+        js = read("start.js")
+        self.assertIn("const SHRINK_EDGE = 2000;", js)
+        self.assertIn("const SHRINK_QUALITIES = [0.85, 0.75, 0.65];", js)
+        shrink = block(js, "async function shrinkImage(file)", "\n}\n")
+        self.assertIn("Math.min(1, SHRINK_EDGE / Math.max(bitmap.width, bitmap.height))", shrink)
+        self.assertIn('imageOrientation: "from-image"', shrink)
+        self.assertIn('context.fillStyle = "#ffffff"', shrink)
+        self.assertIn("return null;", shrink[shrink.index("catch"):])
+
+
 class SheetTest(unittest.TestCase):
     def test_four_screens_one_button_each(self):
         js = read("start.js")
