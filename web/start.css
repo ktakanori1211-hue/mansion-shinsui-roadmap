@@ -254,6 +254,12 @@ button { font: inherit; }
 .scenarios tr.color td { font-weight: 800; color: #0d3f7a; }
 .scenarios tr.nocolor td, .scenarios tr.none td { color: var(--muted); }
 .own { display: flex; flex-direction: column; gap: 8px; background: #f6f7f9; border-radius: 10px; padding: 10px 12px; }
+.facts { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed #d0d4da; padding-top: 8px; }
+.facts-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
+.facts-name input { flex: 1; min-width: 0; height: 38px; border: 1.5px solid var(--line); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 15px; }
+.facts-found { background: #fff; border-radius: 8px; padding: 8px 10px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.facts-found p { margin: 0; }
+.facts-found a { color: var(--accent); }
 .own-head { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
 .own-row { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; flex-wrap: wrap; }
 .c-tag { fill: #fff; stroke: var(--unconfirmed-line); stroke-width: 1.2; opacity: .95; }
@@ -341,6 +347,9 @@ button { font: inherit; }
 .sheet-line { margin: 4px 0; font-size: 12.5px; }
 .sheet-line.strong { font-weight: 700; }
 
+.send { display: block; width: 100%; min-height: 46px; border: 1.5px solid var(--accent); border-radius: 12px; background: #fff; color: var(--accent); font-size: 15px; font-weight: 800; cursor: pointer; margin-top: -4px; }
+.send-text { width: 100%; font: inherit; font-size: 13px; line-height: 1.55; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px; }
+.heard ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
 .fixed-note { padding-top: 14px; padding-bottom: 76px; }
 .fixed-note p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
 

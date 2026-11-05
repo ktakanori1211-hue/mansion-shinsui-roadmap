@@ -366,7 +366,9 @@ class DepthOnBuildingTest(unittest.TestCase):
         js = read("start.js")
         self.assertIn('const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";', js)
         self.assertIn("lines.push(STORY_NOTE);", block(js, "function depthConditions(band)", "\n}\n"))
-        # 国の手引きの区分の言い方（床上浸水など）は、原文を確かめるまで使わない。
+        # 国の手引きの区分は、原文（第3章 3.4.1）の言い方に合わせる。「床上浸水」などの別の言い方は使わない。
+        self.assertIn("0.5m＝1階の床の高さ、3m＝2階の床の下、5m＝一般的な家屋の2階が水没", js)
+        self.assertIn("lines.push(STORY_SOURCE);", block(js, "function depthConditions(band)", "\n}\n"))
         for word in ("床上浸水", "床下浸水", "2階浸水"):
             self.assertNotIn(word, js)
 
@@ -486,7 +488,7 @@ class BuildingPinTest(unittest.TestCase):
         # 見本（架空の建物）は動かさない。
         self.assertIn("if (!S.sampleId) {\n    map.on(\"click\"", js)
 
-    def test_server_marks_the_pin_as_the_building(self):
+    def test_server_rejects_a_pin_outside_japan(self):
         base = OnePageTest.serve(self)
         query = urllib.parse.urlencode({"address": "見本", "longitude": "123", "latitude": "-5", "pin": "1"})
         try:
@@ -546,12 +548,97 @@ class DurationTest(unittest.TestCase):
         self.assertIsNone(location.nearest_legend(self.Image((255, 153, 0)), 12, 10))
         self.assertIn("4週間以上", location.DURATION_NOTE)
 
+    def test_duration_is_not_shown_under_another_scenario(self):
+        # 継続時間は洪水（想定最大規模）の値。札の先頭が高潮などのときは、大きく出さずに表の1行にする。
+        from app import location
+
+        self.assertIn("洪水", location.DURATION_LAYERS[0][1])
+        js = read("start.js")
+        self.assertIn('deepestHazard()?.key !== "flood"', block(js, "function durationLine()", "\n}\n"))
+        self.assertIn("durationRow", block(js, "function scenarioTable()", "\n}\n"))
+
+    def test_sent_text_lists_the_other_scenarios(self):
+        js = read("start.js")
+        text = block(js, "function summaryText()", "\n}\n")
+        self.assertIn("scenarioRows()", text)
+        self.assertIn("experienceLine()", text)
+
     def test_screen_shows_the_server_value_only(self):
         js = read("start.js")
         line = block(js, "function durationLine()", "\n}\n")
-        self.assertIn("reading.durations", line)
+        self.assertIn("reading.durations", block(js, "function durationItem()", "\n}\n"))
         self.assertIn("reading.duration_note", line)
         self.assertIsNone(re.search(r"\d+\s*(時間|日|週)", "".join(re.findall(r'"[^"\n]*"', line))))
+
+
+class BuildingFactsTest(unittest.TestCase):
+    """マンション名から階数と地下を探す（2026-11-05）。API は呼ばず、Claude の答えを差し替えて確かめる。"""
+
+    def answer(self, data):
+        import json
+        return {"stop_reason": "end_turn", "content": [{"type": "text", "text": "調べました。" + json.dumps(data, ensure_ascii=False)}]}
+
+    def run_with(self, data, available=True):
+        from unittest import mock
+        from app import claude, search
+
+        with mock.patch.object(claude, "available", return_value=available), mock.patch.object(claude, "create", return_value=self.answer(data)) as create:
+            return search.building_facts("みどりハイツ", "千葉県千葉市美浜区"), create
+
+    def test_only_matched_pages_with_a_source_are_used(self):
+        good = {"building": "みどりハイツ", "floors_above": 11, "floors_below": 1, "source_url": "https://example.com/a", "source_title": "物件の案内", "quote": "地上11階地下1階", "matched": True}
+        result, create = self.run_with(good)
+        self.assertEqual(result["found"]["floors_above"], 11)
+        self.assertEqual(result["found"]["floors_below"], 1)
+        self.assertEqual(create.call_count, 1)
+        for bad in ({**good, "matched": False}, {**good, "source_url": ""}, {**good, "floors_above": 300, "floors_below": None}):
+            result, _ = self.run_with(bad)
+            self.assertIsNone(result["found"], bad)
+
+    def test_no_key_means_no_search_and_no_guess(self):
+        result, create = self.run_with({}, available=False)
+        self.assertIsNone(result["found"])
+        self.assertEqual(create.call_count, 0)
+        self.assertIn("API キー", result["message"])
+
+    def test_screen_uses_the_value_only_when_pressed(self):
+        js = read("start.js")
+        self.assertIn('postJSON("/api/building-facts"', block(js, "async function findFacts()", "\n}\n"))
+        use = block(js, "function useFacts()", "\n}\n")
+        self.assertIn("S.own.floors = String(f.floors_above)", use)
+        # 地下が書かれていなければ（null）、地下の答えは変えない。
+        self.assertIn("f.floors_below !== null", use)
+        box = block(js, "function factsBox()", "\n}\n")
+        self.assertIn("Anthropic の API に送り", box)
+        self.assertIn("出典", box)
+        self.assertIn("townLabel(S.place?.site?.label", block(js, "async function findFacts()", "\n}\n"))
+
+
+class SendTest(unittest.TestCase):
+    """文で送る（2026-11-05）。リンクは手元のサーバーでしか開けないので、要点の文を共有の画面かコピーで渡す。"""
+
+    def test_summary_carries_the_fixed_text_and_town_address(self):
+        js = read("start.js")
+        text = block(js, "function summaryText()", "\n}\n")
+        self.assertIn("where()", text)
+        self.assertIn("disclaimer()", text)
+        self.assertIn("STORY_NOTE", text)
+        self.assertIn("COST_FIXED", text)
+        self.assertIn("見本の形を借りた説明です", text)
+        self.assertNotIn("site.label", text)
+
+    def test_nothing_is_sent_to_the_server(self):
+        js = read("start.js")
+        send = block(js, "async function sendSummary()", "\n}\n")
+        self.assertIn("navigator.share", send)
+        self.assertIn("copyText(text)", send)
+        self.assertIn("S.sendText = text", send)
+        copy = block(js, "async function copyText(text)", "\n}\n")
+        self.assertIn("navigator.clipboard.writeText", copy)
+        self.assertIn('document.execCommand("copy")', copy)
+        for body in (send, copy):
+            self.assertNotIn("fetch", body)
+            self.assertNotIn("postJSON", body)
 
 
 class PlanFileTest(unittest.TestCase):

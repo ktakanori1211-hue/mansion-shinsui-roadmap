@@ -39,6 +39,12 @@ const S = {
   obs: {},
   // 画面1：この辺りが水につかった経験（住民の話。判定は変えず、依頼メモに載せる）。
   exp: "",
+  // 建物名から Web で探した階数の候補（人が「この値を使う」を押すまで使わない）。
+  query: "",
+  facts: null,
+  factsBusy: false,
+  sendMsg: "",
+  sendText: "",
   map: null,
 };
 
@@ -430,6 +436,9 @@ function lifeChips(level = 0) {
 const STORY_M = 3;
 const HAZARD_WORDS = { flood: "川があふれると", inland: "下水や水路があふれると", surge: "高潮のとき" };
 const STORY_NOTE = "1階を約3mとした目安です。実際の階の高さは建物で違います。";
+// 深さと階の対応の出典。国交省「水害ハザードマップ作成の手引き」第3章 3.4.1 の本文（2026-11-05 に国交省のサイトの PDF で確認）。
+// 原文：「一般的な家屋の2階が水没する5m、2階床下に相当する3m、1階床高に相当する0.5m」。マンションの階の高さとは限らない。
+const STORY_SOURCE = "深さの区切りは、国交省「水害ハザードマップ作成の手引き」の区分（0.5m＝1階の床の高さ、3m＝2階の床の下、5m＝一般的な家屋の2階が水没）によります。";
 
 function parseBand(value) {
   const m = String(value || "").match(/^(\d+(?:\.\d+)?)?m?〜(\d+(?:\.\d+)?)?m?$/);
@@ -453,11 +462,13 @@ function deepestHazard() {
 }
 
 // 深さを階の言葉にする（1階を約3mとした割り算だけ）。
+// 深さを階の言葉にする。5m までは国の手引きの区分の言い方に合わせ、それより深い所は1階を約3mとした割り算。
 function storyWords(band) {
   if (band.high === null) return `${Math.ceil(band.low / STORY_M) + 1}階より上まで`;
-  if (band.high <= 0.5) return "1階の床の近くまで";
-  const floor = Math.ceil(band.high / STORY_M);
-  return floor <= 1 ? "1階が水につかる深さ" : `1階の天井を超え、${floor}階まで`;
+  if (band.high <= 0.5) return "1階の床の高さほどまで";
+  if (band.high <= 3) return "1階の床の上まで（2階の床の下）";
+  if (band.high <= 5) return "2階の床を超える深さ";
+  return `${Math.ceil(band.high / STORY_M)}階まで`;
 }
 
 // 小さな建物の横から見た絵に、想定の深さの水を重ねる。人の背丈を目盛りに添える。
@@ -523,21 +534,29 @@ function scenarioRows() {
 }
 
 // 水が引くまでの時間（浸水継続時間、想定最大規模）。サーバーが凡例の色で読んだ区分のまま。読めないときは出さない。
+// 継続時間は洪水（想定最大規模）の値なので、札の先頭が洪水のときだけ大きく出す。ほかのときは想定の表の1行（durationRow）に入れる。
+function durationItem() {
+  const reading = S.place?.location?.reading || {};
+  return (reading.durations || []).find((d) => d.legend || d.nearby_legend) || null;
+}
+
 function durationLine() {
   const reading = S.place?.location?.reading || {};
-  const item = (reading.durations || []).find((d) => d.legend || d.nearby_legend);
-  if (!item) return "";
+  const item = durationItem();
+  if (!item || deepestHazard()?.key !== "flood") return "";
   const value = item.legend || `${item.nearby_legend}（この点ではなく近くに色）`;
   const note = /2週間以上/.test(value) && reading.duration_note ? `<small>${esc(reading.duration_note)}</small>` : "";
-  return `<p class="duration">水が引くまで <b>${esc(value)}</b><small>${esc(item.label)}の想定</small>${note}</p>`;
+  return `<p class="duration">水が引くまで <b>${esc(value)}</b><small>${esc(item.label)}</small>${note}</p>`;
 }
 
 function scenarioTable() {
   const rows = scenarioRows();
   if (!rows.length) return "";
+  const duration = durationItem();
+  const durationRow = duration && deepestHazard()?.key !== "flood" ? `<tr class="color"><th>${esc(duration.label)}</th><td>${esc(duration.legend || `${duration.nearby_legend}（近くに色）`)}</td></tr>` : "";
   return `<table class="scenarios"><caption>同じ場所の、ほかの想定</caption>${rows
     .map((row) => `<tr class="${row.cls}"><th>${esc(row.name)}${row.words ? `<small>${esc(row.words)}</small>` : ""}</th><td>${esc(row.value)}</td></tr>`)
-    .join("")}</table>`;
+    .join("")}${durationRow}</table>`;
 }
 
 function depthConditions(band) {
@@ -548,6 +567,7 @@ function depthConditions(band) {
   if (band.high !== null && band.low > 0) lines.push(`${band.value}の深い方（${band.high}m）で描いています`);
   lines.push("深さは地面から。1階の床が地面より高い建物では、その分浅くなります");
   lines.push(STORY_NOTE);
+  lines.push(STORY_SOURCE);
   return lines;
 }
 
@@ -635,6 +655,58 @@ function terrainLine() {
   return { verdict: "unconfirmed", text: "土地の高さは読めませんでした" };
 }
 
+// ---- 建物名から Web で階数を探す（Claude、2026-11-05） ----
+// 押したときだけ、建物名と所在地を Anthropic の API に送り、Web を検索する。答えは出典つきの候補で、人が「この値を使う」を押すまで使わない。
+function factsBox() {
+  const name = S.query && !/[都道府県市区町村]\S*[0-9０-９一二三四五六七八九十]/.test(S.query) ? S.query : "";
+  let result = "";
+  if (S.factsBusy) result = `<p class="hint">Web で探しています…</p>`;
+  else if (S.facts?.found) {
+    const f = S.facts.found;
+    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below === null ? "地下は書かれていない" : f.floors_below ? `地下${f.floors_below}階` : "地下なし"].filter(Boolean).join("・");
+    result = `<div class="facts-found"><p><b>${esc(floors)}</b>${f.building ? `（${esc(f.building)}）` : ""}</p>
+      <p class="hint">出典：<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || f.source_url)}</a>${f.quote ? `「${esc(f.quote)}」` : ""}</p>
+      <p class="hint">${esc(S.facts.message)}</p>
+      <button type="button" class="option" data-act="use-facts">この値を使う</button></div>`;
+  } else if (S.facts) result = `<p class="hint">${esc(S.facts.message)}</p>`;
+  return `<div class="facts">
+    <label class="facts-name">建物名<input id="facts-name" type="text" autocomplete="off" value="${esc(name)}" placeholder="〇〇マンション"></label>
+    <button type="button" class="option" data-act="facts"${S.factsBusy ? " disabled" : ""}>Web で階数を探す（Claude）</button>
+    <p class="hint">押すと、建物名と所在地を Anthropic の API に送り、Web を検索します。</p>
+    ${result}
+  </div>`;
+}
+
+async function findFacts() {
+  const name = (document.getElementById("facts-name")?.value || "").trim();
+  if (!name) {
+    S.facts = { found: null, message: "建物名を入れてください。" };
+    render();
+    return;
+  }
+  S.factsBusy = true;
+  S.facts = null;
+  render();
+  try {
+    S.facts = await postJSON("/api/building-facts", { name, address: townLabel(S.place?.site?.label || "") });
+  } catch (error) {
+    S.facts = { found: null, message: error.message };
+  } finally {
+    S.factsBusy = false;
+    S.query = name;
+    render();
+  }
+}
+
+// 候補を使う：地上の階数を「何階建て」に、地下の階数を「地下は ある／ない」に入れる（地下が書かれていなければ変えない）。
+function useFacts() {
+  const f = S.facts?.found;
+  if (!f) return;
+  if (f.floors_above) S.own.floors = String(f.floors_above);
+  if (f.floors_below !== null && f.floors_below !== undefined) S.own.basement = f.floors_below > 0 ? "yes" : "no";
+  render();
+}
+
 // 自分の建物だけ、住民が外から答えられる2つを聞く（分からなくても進める）。
 function ownQuestions() {
   const chips = [["yes", "ある"], ["no", "ない"], ["unknown", "分からない"]]
@@ -644,6 +716,7 @@ function ownQuestions() {
     <p class="own-head">あなたの建物（分からなくても進めます）</p>
     <label class="floor">何階建て<input id="own-floors" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.own.floors)}" placeholder="11">階建て</label>
     <div class="own-row"><span>地下は</span><div class="options">${chips}</div></div>
+    ${factsBox()}
   </div>`;
 }
 
@@ -1217,7 +1290,8 @@ function screenFour() {
   if (S.tab === "memo") {
     body = `<h1 class="title">${list.length ? `残りの確認${list.length}つを、管理会社に頼む` : "大事な確認は、済んでいます"}</h1>
       <div class="plan">${plan({ pins: pinsOf(list) })}</div>
-      ${list.length ? `<ol class="asks">${asksList(list)}</ol>` : ""}`;
+      ${list.length ? `<ol class="asks">${asksList(list)}</ol>` : ""}
+      ${heardItems().length || experienceLine() ? `<div class="heard"><p class="hint"><b>住民の話・見たこと（依頼メモに載ります）</b></p><ul>${experienceLine() ? `<li>${esc(experienceLine())}</li>` : ""}${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul></div>` : ""}`;
   } else if (S.tab === "a4") {
     body = `<h1 class="title">理事会に出すA4表裏1枚</h1>
       <p class="hint">表は30秒で読める図と3行。裏は費用と補助。</p>
@@ -1235,7 +1309,89 @@ function screenFour() {
     <div class="tabs" role="tablist">${tabs}</div>
     ${body}
     <button type="button" class="primary" data-act="print">${print}</button>
+    <button type="button" class="send" data-act="send">文で送る（LINE・メールなど）</button>
+    ${S.sendMsg ? `<p class="hint" role="status">${esc(S.sendMsg)}</p>` : ""}
+    ${S.sendText ? `<textarea class="send-text" readonly rows="10">${esc(S.sendText)}</textarea>` : ""}
   </section>`;
+}
+
+// ---- 文で送る（2026-11-05） ----
+// 理事会の仲間に、要点を文で送る。スマホでは共有の画面（LINE・メールなど）を開き、パソコンでは文をコピーする。
+// 住所は町丁まで。固定の免責は言い換えずに付ける。サーバーには何も送らない。
+function summaryText() {
+  const b = S.building;
+  const lines = [`【マンション浸水ロードマップ】${where()}`, `・${titleLine()}`];
+  const band = deepestHazard();
+  if (band) lines.push(`・${leadWords(band)} ${band.value}（${storyWords(band)}。${STORY_NOTE}）`);
+  const duration = durationItem();
+  if (duration?.legend) lines.push(`・水が引くまで ${duration.legend}（${duration.label}）`);
+  // 一番深い想定だけにしない。同じ場所のほかの想定も1行ずつ。
+  const others = scenarioRows().filter((row) => row.cls !== "none");
+  if (others.length) lines.push(`・同じ場所の想定：${others.map((row) => `${row.name}${row.words ? `（${row.words}）` : ""} ${row.value}`).join("／")}`);
+  const exp = experienceLine();
+  if (exp) lines.push(`・この辺りの経験（住民の話）：${exp}`);
+  const list = steps();
+  if (list.length) {
+    lines.push(`・管理会社に頼む確認（${list.length}つ）`);
+    list.forEach((step, i) => lines.push(`  ${i + 1}. ${PLAIN_ASK[step.key] || step.what}`));
+  }
+  const cost = firstStepCost();
+  if (cost) lines.push(`・今すぐの手の費用の目安：${cost}（${COST_FIXED}）`);
+  // 文には図がないので、「図は」ではなく、建物の形を確かめていないことを言う。
+  if (b.sample.custom) lines.push("・建物の形（階数・機械の部屋の位置）はまだ確かめておらず、見本の形を借りた説明です");
+  lines.push(`※${disclaimer() || ""}`);
+  return lines.join("\n");
+}
+
+async function sendSummary() {
+  const text = summaryText();
+  S.sendText = "";
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "マンション浸水ロードマップ", text });
+      S.sendMsg = "共有の画面を開きました。";
+      render();
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        S.sendMsg = "";
+        render();
+        return;
+      }
+    }
+  }
+  if (await copyText(text)) {
+    S.sendMsg = "要点の文をコピーしました。LINE やメールに貼り付けて送ってください。";
+  } else {
+    // コピーできない環境では、文をそのまま見せて、手でコピーしてもらう。
+    S.sendText = text;
+    S.sendMsg = "自動でコピーできませんでした。下の文を長押し（パソコンは選んで右クリック）してコピーしてください。";
+  }
+  render();
+}
+
+// 文をコピーする。新しい方法がだめなら、古い方法でも試す。
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (error) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (fallbackError) {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
 }
 
 function today() {
@@ -1330,6 +1486,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.drawing = null;
     S.obs = {};
     S.exp = "";
+    S.facts = null;
     S.extra = {};
     S.read = null;
     S.reached = 1;
@@ -1494,6 +1651,7 @@ screen.addEventListener("submit", async (event) => {
   if (event.target.id !== "find") return;
   event.preventDefault();
   const q = document.getElementById("q").value.trim();
+  S.query = q;
   S.error = "";
   S.message = "";
   try {
@@ -1525,6 +1683,10 @@ screen.addEventListener("click", (event) => {
     render();
   } else if (target.dataset.obs) {
     setObservation(target.dataset.obs, target.dataset.value);
+  } else if (target.dataset.act === "facts") {
+    findFacts();
+  } else if (target.dataset.act === "use-facts") {
+    useFacts();
   } else if (target.dataset.exp) {
     S.exp = S.exp === target.dataset.exp ? "" : target.dataset.exp;
     document.querySelectorAll("[data-exp]").forEach((b) => {
@@ -1548,6 +1710,7 @@ screen.addEventListener("click", (event) => {
     if (act === "to4") go(4);
     if (act === "read-sample") readPlan(null);
     if (act === "print") printSheet();
+    if (act === "send") sendSummary();
   }
 });
 

@@ -43,7 +43,7 @@ HAZARD_LAYERS = [
 # 浸水継続時間（水が引くまでの時間）。重ねるハザードマップのオープンデータの「浸水継続時間（想定最大規模）」統合版。
 # https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html （2026-11-05 に確認）
 DURATION_LAYERS = [
-    ("duration_max", "浸水継続時間(想定最大規模)", "01_flood_l2_keizoku_data"),
+    ("duration_max", "洪水(想定最大規模)の浸水継続時間", "01_flood_l2_keizoku_data"),
 ]
 # 凡例画像（img/shinsui_legend_l2_keizoku.png）の色と区分。画像の色の箱をそのまま読んだ値で、完全に一致したときだけ返す。
 # 凡例の注記：「2週間以上〜」の色の場合、「4週間以上〜」となる場合もある。
