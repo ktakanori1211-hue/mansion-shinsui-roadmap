@@ -781,8 +781,16 @@ function readResult() {
     return `<p class="hint">Claude が部屋と階を読み、答えの候補を出します。入れるかは、あなたが決めます。${key}</p><p class="hint">入れるのは、機械のある階の平面図のページだけ（32MBまで）。</p>`;
   }
   const kinds = { pump: "①", elec: "②", panel_room: "②", tr: "③" };
+  // 同じ部屋の種類と階の候補は1つにまとめる（Claude が同じ部屋を2度挙げることがあるため。2026-11-05 の実機で確かめた）。
+  const seen = new Set();
   const proposals = (S.read.rooms || [])
     .filter((room) => kinds[room.kind])
+    .filter((room) => {
+      const key = `${room.kind}:${floorChoice(room.floor) || room.floor}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .map((room) => {
       const choice = floorChoice(room.floor);
       const button = choice ? `<button type="button" class="option small" data-kind="${room.kind}" data-choice="${choice}">${kinds[room.kind]}に「${OPTION_WORDS[choice]}」を入れる</button>` : `<span class="hint">階が読めません</span>`;
