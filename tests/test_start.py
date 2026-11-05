@@ -526,6 +526,40 @@ class WhyFirstTest(unittest.TestCase):
         self.assertIn("${measureChips()}", two)
         self.assertEqual(two.count("plan("), 1)
 
+    def test_play_holds_at_three_and_measures_compare_at_three(self):
+        # 再生が終わっても③のまま止める。開いた直後は判定の見た目（S.play = 0）のまま。
+        js = read("start.js")
+        self.assertIn("play: 0,", js)
+        start = block(js, "function startPlay()", "\n}\n")
+        self.assertNotIn("stopPlay()", start.split("S.play >= 3")[1])
+        self.assertIn('S.timer ? stopPlay() : startPlay()', js)
+        self.assertIn("if (!S.play) S.play = 3;", js)
+
+    def test_months_lead_comes_from_this_buildings_rows(self):
+        # 約2か月〜本復旧の太字は、この建物の受電の箱 → 給水の盤の行から選ぶ。ほかの建物の例には差し替えない。
+        # 読む行は止水板だけのときで決め、対策を変えても別の行の目安に入れ替えない（what-020：「何日早く戻る」と出さない）。
+        js = read("start.js")
+        guide = block(js, "function ownGuide(", "\n}\n")
+        self.assertIn('["hv", "water"]', guide)
+        self.assertIn('scenarios?.["3:plate"]', guide)
+        self.assertIn('if (phase.key === "months") lead = ownGuide(i)', js)
+        # 壁の穴を塞ぐと、見本Aの受電の箱の「1年以上」が消え、その理由の文（＊）が below に入る。
+        scenarios = payload({}, [])["scenarios"]
+        months = lambda measure: next(r for r in scenarios[f"3:{measure}"]["table"] if r["key"] == "hv")["cells"][4]
+        self.assertIn("1年以上", months("plate"))
+        self.assertTrue(months("hole").startswith("目安なし"))
+        self.assertTrue(any(line.startswith("＊") for line in scenarios["3:hole"]["below"]))
+        # 目安が消えた理由の文は、折りたたまずに出す。
+        self.assertIn("scenario(3)?.below", block(js, "function timeline()", "\n}\n"))
+
+    def test_stopped_is_not_coloured_as_risk(self):
+        # 「止まる想定」は判定ではないので、リスクあり（確定）の赤と色を分ける（what-028）。
+        css = read("start.css")
+        self.assertIn(".life li.stopped { border-color: var(--stopped); background: var(--stopped);", css)
+        self.assertNotIn("li.stopped { border-color: var(--risk", css)
+        self.assertNotIn(".life li.risk, .life li.stopped", css)
+        self.assertIn(".phase.day .phase-lead, .phase.morning .phase-lead { color: var(--stopped); }", css)
+
     def test_water_positions_follow_the_server_scenario(self):
         js = read("start.js")
         self.assertIn("S.building?.scenarios?.[`${level}:${S.measure}`]", js)

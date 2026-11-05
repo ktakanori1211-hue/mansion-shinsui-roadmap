@@ -862,7 +862,9 @@ function timeline() {
     if (phase.key === "before") lead = "建物の中は、まだ使える";
     if (phase.key === "day") lead = stopped.length ? `止まる想定：${stopped.join("・")}` : phase.line;
     if (phase.key === "morning") lead = n >= 2 ? `${n}階まで、水もごみも階段で運ぶ` : S.building?.sample?.archetype === "ground" ? "機械の部屋に水が残り、入れない" : "地下に水が残り、機械室に入れない";
-    if (phase.key === "week" || phase.key === "months") lead = facts.find((cell) => /ほかの建物の例/.test(cell) && !/本復旧/.test(cell)) || facts[0] || phase.line;
+    if (phase.key === "week") lead = facts.find((cell) => /ほかの建物の例/.test(cell) && !/本復旧/.test(cell)) || facts.find(hasGuide) || phase.line;
+    // 約2か月〜本復旧は、この建物の同じ設備の行の目安が出るか消えるか（「目安なし＊」）を表面で見せる（what-019、what-020）。
+    if (phase.key === "months") lead = ownGuide(i) || facts.find(hasGuide) || phase.line;
     const head = lead.replace(/（.*$/, "");
     const note = lead.slice(head.length);
     const rest = facts.filter((cell) => cell !== lead);
@@ -872,13 +874,32 @@ function timeline() {
       <details class="phase-more"><summary>くわしく</summary><p class="phase-line">${esc(shapeWords(phase.line))}</p>${rest.length ? `<ul class="facts">${rest.map(factLine).join("")}</ul>` : ""}</details>
     </li>`;
   }).join("");
-  return `<ol class="timeline">${items}</ol>${notes[0] ? `<p class="hint">${esc(notes[0])}</p>` : ""}`;
+  // 目安が消えたマス（＊）の理由の文は、折りたたまずに出す（what-028、how-035）。
+  const below = scenario(3)?.below || [];
+  return `<ol class="timeline">${items}</ol>${notes[0] ? `<p class="hint">${esc(notes[0])}</p>` : ""}${below.map((text) => `<p class="fixed-line">${esc(text)}</p>`).join("")}`;
+}
+
+// 目安の文があるマスか（「—」「止まる想定」「目安なし＊」は目安ではない）。
+function hasGuide(cell) {
+  return Boolean(cell) && cell !== "—" && cell !== "止まる想定" && !cell.startsWith("目安なし");
+}
+
+// 太字に読む行は、対策を変えても同じ行にする（what-020：変わるのは目安が出るか出ないかだけ。別の行の目安に入れ替えると「早く戻る」と読めるため）。
+// 行は、止水板だけのときに目安が出ている、この建物の設備の行（受電の箱、給水の盤の順）。ほかの建物の例は使わない。
+function ownGuide(index) {
+  const base = S.building?.scenarios?.["3:plate"]?.table || [];
+  const anchor = ["hv", "water"].find((key) => hasGuide(base.find((item) => item.key === key)?.cells?.[index]));
+  if (!anchor) return "";
+  const cell = (scenario(3)?.table || []).find((item) => item.key === anchor)?.cells?.[index];
+  return cell && cell !== "—" ? cell : "";
 }
 
 function screenTwo() {
   const b = S.building;
   const count = openCount();
-  const playing = S.play > 0;
+  // S.play は平面図に出している水の位置（0 は判定のまま）。再生中かは S.timer で見る。再生が終わっても③のまま止める（2026-11-05）。
+  const playing = Boolean(S.timer);
+  const shown = S.play > 0;
   const levels = b.water_levels || [];
   const now = levels.find((item) => item.key === S.play);
   return `<section class="s2">
@@ -888,10 +909,10 @@ function screenTwo() {
     <h2 class="part"><span>1</span>水が入る順と、止まるもの</h2>
     <div class="plan">${plan({ level: S.play })}</div>
     <div class="play-row">
-      <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : "▶ 水が入る順に見る"}</button>
-      <span class="caption">${playing ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : "道路 → 入り道 → 一番低い床 → 盤"}</span>
+      <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : shown ? "▶ もう一度見る" : "▶ 水が入る順に見る"}</button>
+      <span class="caption">${shown ? `<b>${esc(now ? `${now.label} ${now.text}` : CAPTIONS[S.play])}</b>` : "道路 → 入り道 → 一番低い床 → 盤"}</span>
     </div>
-    ${playing ? `<p class="hint">${PLAY_NOTE}</p>` : ""}
+    ${shown ? `<p class="hint">${PLAY_NOTE}</p>` : ""}
     ${measureChips()}
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
     ${lifeChips(S.play)}
@@ -1507,16 +1528,19 @@ function stopPlay(redraw = true) {
 function startPlay() {
   stopPlay(false);
   S.play = 1;
-  render();
+  // 先にタイマーを置いてから描く（ボタンを最初から「止める」にするため）。
   S.timer = setInterval(() => {
     if (S.play >= 3) {
+      // ③で止め、判定の見た目には戻さない。対策を押すと、その場で③の止まり方が変わる。
       clearInterval(S.timer);
-      S.timer = setTimeout(() => stopPlay(), 2600);
+      S.timer = 0;
+      render();
       return;
     }
     S.play += 1;
     render();
   }, 1800);
+  render();
 }
 
 screen.addEventListener("submit", async (event) => {
@@ -1551,7 +1575,9 @@ screen.addEventListener("click", (event) => {
   } else if (target.dataset.kind) {
     setRoom(target.dataset.kind, target.dataset.choice);
   } else if (target.dataset.measure) {
+    // 対策は水の位置の上で比べるもの。判定の見た目のまま押されたら、③に切り替えて違いを見せる。
     S.measure = target.dataset.measure;
+    if (!S.play) S.play = 3;
     render();
   } else if (target.dataset.drawing) {
     S.drawing = target.dataset.drawing;
@@ -1580,7 +1606,7 @@ screen.addEventListener("click", (event) => {
   } else {
     const act = target.dataset.act;
     if (act === "see") seeBuilding();
-    if (act === "play") (S.play ? stopPlay() : startPlay());
+    if (act === "play") (S.timer ? stopPlay() : startPlay());
     if (act === "to3") go(3);
     if (act === "to4") go(4);
     if (act === "read-sample") readPlan(null);
