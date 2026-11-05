@@ -63,8 +63,8 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format, *args):
-        # 共有の番号と検索の言葉を記録に残さない。
-        if args and re.search(r"/api/(share|search|reverse)", str(args[0])):
+        # 共有の番号・検索の言葉・住所と位置を記録に残さない（/api/location の問い合わせには住所が入る）。
+        if args and re.search(r"/api/(share|search|reverse|location)", str(args[0])):
             return
         super().log_message(format, *args)
 

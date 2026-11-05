@@ -10,6 +10,7 @@ import json
 import math
 import re
 import unicodedata
+from typing import Optional
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,6 +39,24 @@ HAZARD_LAYERS = [
     ("storm_surge", "高潮", "03_hightide_l2_shinsuishin_data"),
     ("tsunami", "津波", "04_tsunami_newlegend_data"),
 ]
+
+# 浸水継続時間（水が引くまでの時間）。重ねるハザードマップのオープンデータの「浸水継続時間（想定最大規模）」統合版。
+# https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html （2026-11-05 に確認）
+DURATION_LAYERS = [
+    ("duration_max", "浸水継続時間(想定最大規模)", "01_flood_l2_keizoku_data"),
+]
+# 凡例画像（img/shinsui_legend_l2_keizoku.png）の色と区分。画像の色の箱をそのまま読んだ値で、完全に一致したときだけ返す。
+# 凡例の注記：「2週間以上〜」の色の場合、「4週間以上〜」となる場合もある。
+DURATION_LEGEND = {
+    (160, 210, 255): "12時間未満",
+    (0, 65, 255): "12時間〜1日未満",
+    (250, 245, 0): "1日〜3日未満",
+    (255, 153, 0): "3日〜1週間未満",
+    (255, 40, 0): "1週間〜2週間未満",
+    (180, 0, 104): "2週間以上〜",
+    (96, 0, 96): "4週間以上〜",
+}
+DURATION_NOTE = "「2週間以上〜」の色の場合、「4週間以上〜」となる場合もあります（凡例の注記）"
 
 # 凡例画像の色と、そこに書かれた区分。完全に一致したときだけ区分を返す。
 HAZARD_LEGEND = {
@@ -216,8 +235,9 @@ def pixel_position(longitude: float, latitude: float, zoom: int) -> tuple:
     return (int(world_x // 256), int(world_y // 256), int(world_x) % 256, int(world_y) % 256)
 
 
-def nearest_legend(image: png.Image, px: int, py: int, radius: int = NEARBY_PIXELS):
+def nearest_legend(image: png.Image, px: int, py: int, radius: int = NEARBY_PIXELS, legend: Optional[dict] = None):
     """代表点のすぐ近くの色を探す。タイルの外までは見ない。"""
+    legend = HAZARD_LEGEND if legend is None else legend
     nearest = None
     for dy in range(-radius, radius + 1):
         for dx in range(-radius, radius + 1):
@@ -225,14 +245,15 @@ def nearest_legend(image: png.Image, px: int, py: int, radius: int = NEARBY_PIXE
             if not (0 <= x < image.width and 0 <= y < image.height):
                 continue
             r, g, b, a = image.rgba(x, y)
-            if a and (r, g, b) in HAZARD_LEGEND:
+            if a and (r, g, b) in legend:
                 distance = dx * dx + dy * dy
                 if nearest is None or distance < nearest[0]:
-                    nearest = (distance, HAZARD_LEGEND[(r, g, b)])
+                    nearest = (distance, legend[(r, g, b)])
     return nearest[1] if nearest else None
 
 
-def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: float) -> dict:
+def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: float, legend: Optional[dict] = None) -> dict:
+    legend = HAZARD_LEGEND if legend is None else legend
     tile_x, tile_y, px, py = pixel_position(longitude, latitude, HAZARD_ZOOM)
     url = HAZARD_URL.format(layer=layer, z=HAZARD_ZOOM, x=tile_x, y=tile_y)
     result = {"key": key, "label": label, "layer": layer, "legend": None, "nearby_legend": None}
@@ -247,10 +268,10 @@ def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: f
     r, g, b, a = image.rgba(px, py)
     if a == 0:
         result["status"] = "no_color"
-        result["nearby_legend"] = nearest_legend(image, px, py)
-    elif (r, g, b) in HAZARD_LEGEND:
+        result["nearby_legend"] = nearest_legend(image, px, py, legend=legend)
+    elif (r, g, b) in legend:
         result["status"] = "color"
-        result["legend"] = HAZARD_LEGEND[(r, g, b)]
+        result["legend"] = legend[(r, g, b)]
     else:
         result["status"] = "unknown_color"
     return result
@@ -368,6 +389,10 @@ def read_location(longitude: float, latitude: float, distance_m: float = 50) -> 
             pool.submit(_read_hazard, key, label, layer, longitude, latitude)
             for key, label, layer in HAZARD_LAYERS
         ]
+        durations = [
+            pool.submit(_read_hazard, key, label, layer, longitude, latitude, DURATION_LEGEND)
+            for key, label, layer in DURATION_LAYERS
+        ]
         landforms = [
             pool.submit(_read_landform, key, label, layer, longitude, latitude)
             for key, label, layer in LANDFORM_LAYERS
@@ -397,4 +422,6 @@ def read_location(longitude: float, latitude: float, distance_m: float = 50) -> 
                 {"color": "#%02x%02x%02x" % rgb, "label": label} for rgb, label in HAZARD_LEGEND.items()
             ],
             "landforms": [future.result() for future in landforms],
+            "durations": [future.result() for future in durations],
+            "duration_note": DURATION_NOTE,
         }

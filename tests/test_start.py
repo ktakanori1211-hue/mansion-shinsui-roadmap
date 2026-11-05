@@ -9,6 +9,8 @@
 import re
 import threading
 import unittest
+import urllib.error
+import urllib.parse
 import urllib.request
 from functools import partial
 from http.server import ThreadingHTTPServer
@@ -470,6 +472,86 @@ class NoDrawingTest(unittest.TestCase):
         legend = block(js, "function mapLegend()", "\n}\n")
         self.assertIn("海面からの高さ", legend)
         self.assertIn("reading.hazard_legend", legend)
+
+
+class BuildingPinTest(unittest.TestCase):
+    """建物の位置を地図で選ぶ（2026-11-05）。町丁の代表点ではなく、押した点の値で読み直す。"""
+
+    def test_pin_reads_again_as_the_building_point(self):
+        js = read("start.js")
+        move = block(js, "async function movePin(lat, lng)", "\n}\n")
+        self.assertIn('pin: "1"', move)
+        self.assertIn("S.place.site.label", move)
+        self.assertIn("if (S.busy || !S.place) return;", move)
+        # 見本（架空の建物）は動かさない。
+        self.assertIn("if (!S.sampleId) {\n    map.on(\"click\"", js)
+
+    def test_server_marks_the_pin_as_the_building(self):
+        base = OnePageTest.serve(self)
+        query = urllib.parse.urlencode({"address": "見本", "longitude": "123", "latitude": "-5", "pin": "1"})
+        try:
+            urllib.request.urlopen(f"{base}/api/location?{query}")
+            self.fail("国外の点を受けた")
+        except urllib.error.HTTPError as error:
+            self.assertEqual(error.code, 422)
+
+    def test_address_is_not_logged(self):
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("share|search|reverse|location", source)
+
+    def test_risky_headline_names_the_item(self):
+        js = read("start.js")
+        self.assertIn("${PLACE_SHORT[item.key] || item.label}：", block(js, "function placeHeadline()", "\n}\n"))
+
+
+class InlandTest(unittest.TestCase):
+    """内水の案内と、この辺りの浸水の経験（2026-11-05）。国の地図にない内水の手がかりを、判定を変えずに依頼メモへ。"""
+
+    def test_inland_gap_points_to_the_city_maps(self):
+        js = read("start.js")
+        note = block(js, "function inlandNote()", "\n}\n")
+        self.assertIn("item.key === \"inland\"", note)
+        self.assertIn("${WAGAMACHI}", note)
+        self.assertIn('const WAGAMACHI = "https://disaportal.gsi.go.jp/hazardmap/";', js)
+        self.assertIn("${inlandNote()}", block(js, "function depthCard()", "\n}\n"))
+
+    def test_experience_goes_to_the_city_not_the_drawing(self):
+        js = read("start.js")
+        line = block(js, "function experienceLine()", "\n}\n")
+        self.assertIn("市区町村（下水道の担当）", line)
+        self.assertNotIn("竣工図", line)
+        # 経験は判定にも、確かめた印にも、サーバーの聞き取りにも入れない。
+        self.assertNotIn("expStatements", js)
+        self.assertIn("${S.sampleId ? \"\" : experienceQuestion()}", js)
+
+
+class DurationTest(unittest.TestCase):
+    """水が引くまでの時間（浸水継続時間、2026-11-05）。凡例画像の色をそのまま読み、完全に一致したときだけ区分を返す。"""
+
+    class Image:
+        def __init__(self, rgb):
+            self.width = self.height = 256
+            self.rgb = rgb
+
+        def rgba(self, x, y):
+            return (*self.rgb, 255) if (x, y) == (10, 10) else (0, 0, 0, 0)
+
+    def test_legend_is_read_exactly(self):
+        from app import location
+
+        self.assertEqual(location.DURATION_LAYERS[0][2], "01_flood_l2_keizoku_data")
+        self.assertEqual(location.DURATION_LEGEND[(250, 245, 0)], "1日〜3日未満")
+        self.assertEqual(location.nearest_legend(self.Image((255, 153, 0)), 12, 10, legend=location.DURATION_LEGEND), "3日〜1週間未満")
+        # 洪水の深さの凡例と取り違えない。
+        self.assertIsNone(location.nearest_legend(self.Image((255, 153, 0)), 12, 10))
+        self.assertIn("4週間以上", location.DURATION_NOTE)
+
+    def test_screen_shows_the_server_value_only(self):
+        js = read("start.js")
+        line = block(js, "function durationLine()", "\n}\n")
+        self.assertIn("reading.durations", line)
+        self.assertIn("reading.duration_note", line)
+        self.assertIsNone(re.search(r"\d+\s*(時間|日|週)", "".join(re.findall(r'"[^"\n]*"', line))))
 
 
 class PlanFileTest(unittest.TestCase):

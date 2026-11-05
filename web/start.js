@@ -37,6 +37,8 @@ const S = {
   // 画面3：図面が手元にあるか（null は未回答）と、図面がない人が見て答えたこと。
   drawing: null,
   obs: {},
+  // 画面1：この辺りが水につかった経験（住民の話。判定は変えず、依頼メモに載せる）。
+  exp: "",
   map: null,
 };
 
@@ -520,6 +522,16 @@ function scenarioRows() {
   });
 }
 
+// 水が引くまでの時間（浸水継続時間、想定最大規模）。サーバーが凡例の色で読んだ区分のまま。読めないときは出さない。
+function durationLine() {
+  const reading = S.place?.location?.reading || {};
+  const item = (reading.durations || []).find((d) => d.legend || d.nearby_legend);
+  if (!item) return "";
+  const value = item.legend || `${item.nearby_legend}（この点ではなく近くに色）`;
+  const note = /2週間以上/.test(value) && reading.duration_note ? `<small>${esc(reading.duration_note)}</small>` : "";
+  return `<p class="duration">水が引くまで <b>${esc(value)}</b><small>${esc(item.label)}の想定</small>${note}</p>`;
+}
+
 function scenarioTable() {
   const rows = scenarioRows();
   if (!rows.length) return "";
@@ -541,12 +553,14 @@ function depthConditions(band) {
 
 function depthCard() {
   const band = deepestHazard();
-  if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p>`;
+  if (!band) return `<p class="depth-none">ハザードマップの深さの色は、この点にありません（データがない所もあり、浸水しないという意味ではありません）。</p>${inlandNote()}`;
   return `<div class="depth">
     <p class="depth-lead">${esc(leadWords(band))} <b>${esc(band.value)}</b></p>
     <p class="depth-words">${esc(storyWords(band))}</p>
     <div class="depth-art">${depthPicture(band)}</div>
+    ${durationLine()}
     ${scenarioTable()}
+    ${inlandNote()}
     <ul class="depth-conds">${depthConditions(band).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
   </div>`;
 }
@@ -558,6 +572,46 @@ function leadWords(band) {
   return words ? `${words}で${HAZARD_WORDS[band.key]}` : HAZARD_WORDS[band.key];
 }
 
+// ---- 内水と、この辺りの経験（2026-11-05） ----
+// 内水（下水や水路があふれる）は、国の重ねるハザードマップにデータがない所が多い。市区町村が別に出していることがあるので案内する。
+const WAGAMACHI = "https://disaportal.gsi.go.jp/hazardmap/";
+
+function inlandNote() {
+  const inland = (S.place?.location?.reading?.hazards || []).find((item) => item.key === "inland");
+  if (inland && (inland.legend || inland.nearby_legend)) return "";
+  return `<p class="inland-note">下水や水路があふれる浸水（内水）は、この地図にデータがありません。大雨のときの道路の冠水は、こちらによることがあります。市区町村が別に地図を出していることがあるので、<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ（国土地理院）</a>で市区町村を選んで確かめてください。</p>`;
+}
+
+// 住民が知っている、この辺りの経験。地図にない内水の手がかりになる。判定は変えず、依頼メモに「聞き取り」として載せる。
+const EXPERIENCE = [
+  ["none", "ない"],
+  ["shallow", "くるぶし〜すねくらい"],
+  ["deep", "ひざより上"],
+  ["unknown", "分からない"],
+];
+const EXPERIENCE_SAYS = {
+  none: "この辺りで、道路や敷地が水につかったのを見たことはない",
+  shallow: "この辺りで、道路や敷地がくるぶし〜すねくらいまで水につかったことがある",
+  deep: "この辺りで、道路や敷地がひざより上まで水につかったことがある",
+};
+
+function experienceQuestion() {
+  const chips = EXPERIENCE.map(([key, word]) => `<button type="button" class="option${S.exp === key ? " chosen" : ""}" data-exp="${key}" aria-pressed="${S.exp === key}">${word}</button>`).join("");
+  return `<div class="own">
+    <p class="own-head">この辺りで、大雨のときに道路や敷地が水につかったことはありますか？</p>
+    <div class="options">${chips}</div>
+    <p class="hint">地図にない浸水の手がかりになります。判定の色は変えず、管理会社への依頼メモに載せます。</p>
+  </div>`;
+}
+
+// 依頼メモの一行。建物の図面ではなく、市区町村（下水道の担当）に内水の記録と想定を確かめてもらう。
+function experienceLine() {
+  const says = EXPERIENCE_SAYS[S.exp];
+  // 見出し「住民の話・見たこと」の下に並べるので、文の頭に「住民の話」は付けない。
+  if (!says || S.exp === "none") return says ? `${says}。` : "";
+  return `${says}。地図にない内水の手がかりなので、管理会社から市区町村（下水道の担当）に、この辺りの浸水の記録と内水の想定を確かめてください。`;
+}
+
 // ---- 1 場所 ----
 
 // 地図の下の太字1行。凹みを一番に、次に確かめた立地のリスク（浸水の記録など）、なければ土地の高さ。
@@ -565,7 +619,8 @@ function placeHeadline() {
   const terrain = terrainLine();
   if (terrain.verdict === "risk") return { ...terrain, sub: "" };
   const risky = (S.place?.location?.rows || []).filter((item) => item.verdict === "risk");
-  if (risky.length) return { verdict: "risk", text: risky.map((item) => item.conclusion || item.label).join("・"), sub: terrain.text };
+  // どの項目の話かが分かるよう、項目の短い名前を頭に付ける（例：高潮：想定に色あり）。
+  if (risky.length) return { verdict: "risk", text: risky.map((item) => `${PLACE_SHORT[item.key] || item.label}：${item.conclusion || item.value || ""}`).join("／"), sub: terrain.text };
   return { ...terrain, sub: "" };
 }
 
@@ -617,10 +672,12 @@ function screenOne() {
         ${depthCard()}
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
+        ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置として選んだ点の値で読んでいます。違えば、もう一度地図を押してください。" : "地図で、あなたの建物の場所を押してください。その位置の値で読み直します（今は町丁の代表点の値です）。"}</p>`}
         <p class="terrain ${terrain.verdict}">${esc(terrain.text)}${terrain.sub ? `<small>${esc(terrain.sub)}</small>` : ""}</p>
         <ul class="place-chips">${rows}</ul>
         ${representative ? `<p class="hint">高さは町丁の代表点の値です。</p>` : ""}
         ${S.sampleId ? "" : ownQuestions()}
+        ${S.sampleId ? "" : experienceQuestion()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
         <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>この建物で見る</button>
       </div>`;
@@ -703,6 +760,34 @@ function drawMap() {
       return div;
     };
     legend.addTo(map);
+  }
+  // 自分の建物は、地図を押すと、その点を建物の位置として読み直す（見本は架空の建物なので動かさない）。
+  if (!S.sampleId) {
+    map.on("click", (event) => movePin(event.latlng.lat, event.latlng.lng));
+    box.classList.add("pickable");
+  }
+}
+
+// 地図で押した点を、建物の位置として読み直す（サーバーの pin=1。値の説明は「建物の位置として選んだ点」になる）。
+// 住所の名前・建物の答え（階数・地下）はそのまま。読み直すまで、ほかの操作は待たせる。
+async function movePin(lat, lng) {
+  if (S.busy || !S.place) return;
+  S.busy = true;
+  S.error = "";
+  render();
+  try {
+    const params = { address: S.place.site.label, longitude: lng.toFixed(6), latitude: lat.toFixed(6), pin: "1" };
+    S.place = await getJSON(`/api/location?${new URLSearchParams(params)}`);
+    S.building = null;
+    S.choices = {};
+    S.extra = {};
+    S.read = null;
+    S.reached = 1;
+  } catch (error) {
+    S.error = error.message;
+  } finally {
+    S.busy = false;
+    render();
   }
 }
 
@@ -1174,7 +1259,7 @@ function printSheet() {
       <div class="sheet-plan">${plan({ pins: pinsOf(list) })}</div>
       <p>図の番号の所を、竣工図と点検の記録で確かめてください。住民・理事・管理員は、電気やポンプの部屋に入りません。</p>
       <ol class="print-asks">${asks}</ol>
-      ${heardItems().length ? `<p><b>住民が見たこと</b></p><ul>${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul>` : ""}
+      ${heardItems().length || experienceLine() ? `<p><b>住民の話・見たこと</b></p><ul>${experienceLine() ? `<li>${esc(experienceLine())}</li>` : ""}${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul>` : ""}
       <p>答えが分かったら、マンション浸水ロードマップの「3 確かめる」に入れると、図の色が変わります。</p>
       ${fixed}
     </div>`;
@@ -1244,6 +1329,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.own = { floors: "", basement: "unknown" };
     S.drawing = null;
     S.obs = {};
+    S.exp = "";
     S.extra = {};
     S.read = null;
     S.reached = 1;
@@ -1439,6 +1525,12 @@ screen.addEventListener("click", (event) => {
     render();
   } else if (target.dataset.obs) {
     setObservation(target.dataset.obs, target.dataset.value);
+  } else if (target.dataset.exp) {
+    S.exp = S.exp === target.dataset.exp ? "" : target.dataset.exp;
+    document.querySelectorAll("[data-exp]").forEach((b) => {
+      b.classList.toggle("chosen", b.dataset.exp === S.exp);
+      b.setAttribute("aria-pressed", String(b.dataset.exp === S.exp));
+    });
   } else if (target.dataset.own) {
     S.own.basement = target.dataset.own;
     document.querySelectorAll("[data-own]").forEach((b) => {
