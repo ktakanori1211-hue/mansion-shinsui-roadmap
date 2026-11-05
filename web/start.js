@@ -778,7 +778,7 @@ function readResult() {
   if (S.busy && !S.read) return `<p class="hint">読んでいます…</p>`;
   if (!S.read) {
     const key = S.claude && !S.claude.claude ? "（APIキーがないときは、見本の答えを出します）" : "";
-    return `<p class="hint">Claude が部屋と階を読み、答えの候補を出します。入れるかは、あなたが決めます。${key}</p>`;
+    return `<p class="hint">Claude が部屋と階を読み、答えの候補を出します。入れるかは、あなたが決めます。${key}</p><p class="hint">入れるのは、機械のある階の平面図のページだけ（32MBまで）。</p>`;
   }
   const kinds = { pump: "①", elec: "②", panel_room: "②", tr: "③" };
   const proposals = (S.read.rooms || [])
@@ -1063,7 +1063,29 @@ async function setEngineer(answer) {
   render();
 }
 
+// 送れる図面の大きさ。サーバーの上限（app/server.py の MAX_BODY_BYTES は、32MB の PDF を base64 にした大きさ）と同じ。
+// 何百MB・何GBの全部込みの竣工図は、ブラウザで読み込む前に止める（読み込むとタブが固まるため）。
+const MAX_FILE_BYTES = 32 * 1024 * 1024;
+const FILE_TYPES = /^(image\/(png|jpeg|gif|webp)|application\/pdf)$/;
+
+// 選んだファイルを読む前に確かめる。だめなら、その理由と、どうすればよいかの文を返す。
+function fileProblem(file) {
+  if (!FILE_TYPES.test(file.type)) return "読めるのは、写真（PNG・JPEG など）と PDF です。";
+  if (file.size > MAX_FILE_BYTES) {
+    const gb = file.size >= 1024 ** 3;
+    const amount = gb ? `${(file.size / 1024 ** 3).toFixed(1)}GB` : `${(file.size / 1024 ** 2).toFixed(1)}MB`;
+    return `このファイルは ${amount} あります。送れるのは 32MB までです。全部込みの竣工図は送らず、機械のある階の平面図のページだけを切り出すか、そのページを写真に撮って入れてください。`;
+  }
+  return "";
+}
+
 async function readPlan(file) {
+  const problem = file ? fileProblem(file) : "";
+  if (problem) {
+    S.read = { message: problem, rooms: [] };
+    render();
+    return;
+  }
   S.busy = true;
   S.read = null;
   render();

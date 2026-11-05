@@ -349,6 +349,25 @@ class StoryTest(unittest.TestCase):
         self.assertEqual(len(others["cells"]), 5)
 
 
+class PlanFileTest(unittest.TestCase):
+    """図面のファイル（2026-11-05）。何百MB・何GBの全部込みの竣工図は、ブラウザで読み込む前に止める。"""
+
+    def test_size_matches_the_server(self):
+        js = read("start.js")
+        self.assertIn("const MAX_FILE_BYTES = 32 * 1024 * 1024;", js)
+        # サーバーの上限は、32MB を base64 にした大きさ（4/3倍）を受けられる。
+        self.assertGreaterEqual(server.MAX_BODY_BYTES, 32 * 1024 * 1024 * 4 // 3)
+
+    def test_checked_before_reading(self):
+        js = read("start.js")
+        reading = block(js, "async function readPlan(file)", "\n}\n")
+        self.assertLess(reading.index("fileProblem(file)"), reading.index("new FileReader()"))
+        problem = block(js, "function fileProblem(file)", "\n}\n")
+        self.assertIn("file.size > MAX_FILE_BYTES", problem)
+        self.assertIn("機械のある階の平面図のページだけ", problem)
+        self.assertIn("FILE_TYPES.test(file.type)", problem)
+
+
 class SheetTest(unittest.TestCase):
     def test_four_screens_one_button_each(self):
         js = read("start.js")
