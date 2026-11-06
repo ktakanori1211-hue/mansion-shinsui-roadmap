@@ -37,16 +37,18 @@ def row(rows, key):
 
 
 class RepresentativePointTest(unittest.TestCase):
-    def test_color_at_representative_point_stays_unconfirmed(self):
+    # 2026-11-06 本人の決定：代表点でも、地図に色があれば「止まるおそれ」、色がなければ「問題なし（色なし）」。
+    def test_color_at_representative_point_is_risk(self):
         rows = judge.judge_location(
             reading({"storm_surge": hazard("storm_surge", "color", "0.5m〜3m")}), state.REPRESENTATIVE, None
         )
-        self.assertEqual(row(rows, "surge").verdict, state.UNCONFIRMED)
+        self.assertEqual(row(rows, "surge").verdict, state.RISK)
         self.assertIn("0.5m〜3m", row(rows, "surge").headline)
+        self.assertTrue(any("代表点" in line for line in row(rows, "surge").details))
 
-    def test_clean_values_at_representative_point_are_not_clear(self):
+    def test_clean_values_at_representative_point_are_clear(self):
         rows = judge.judge_location(reading(), state.REPRESENTATIVE, NO_RECORD)
-        self.assertTrue(all(item.verdict == state.UNCONFIRMED for item in rows))
+        self.assertTrue(all(item.verdict == state.CLEAR for item in rows))
 
     def test_nearby_color_is_reported(self):
         rows = judge.judge_location(
@@ -74,30 +76,50 @@ class BuildingPositionTest(unittest.TestCase):
         self.assertTrue(all(item.verdict == state.CLEAR for item in rows))
         self.assertTrue(all(item.confirm_by is None for item in rows))
 
-    def test_one_clean_layer_alone_is_not_clear(self):
+    def test_each_layer_is_judged_on_its_own(self):
+        # 色なしの層は問題なし、データが取れない層は未確認（2026-11-06）。
         rows = judge.judge_location(reading({"storm_surge": hazard("storm_surge", "no_tile")}), state.BUILDING, NO_RECORD)
-        self.assertEqual(row(rows, "flood").verdict, state.UNCONFIRMED)
+        self.assertEqual(row(rows, "flood").verdict, state.CLEAR)
+        self.assertEqual(row(rows, "surge").verdict, state.UNCONFIRMED)
 
-    def test_town_without_records_is_not_clear(self):
+    def test_town_without_records_has_no_record_row(self):
+        # 記録の行は手元に記録がある町丁だけ。代わりに地形分類の行が出る（2026-11-06 本人の指示）。
         rows = judge.judge_location(reading(), state.BUILDING, None)
-        self.assertEqual(row(rows, "record").verdict, state.UNCONFIRMED)
-        self.assertEqual(row(rows, "flood").verdict, state.UNCONFIRMED)
+        self.assertEqual([item.key for item in rows], ["flood", "inland", "surge", "ground", "landform"])
+        self.assertEqual(row(rows, "flood").verdict, state.CLEAR)
 
-    def test_water_landform_is_not_clear(self):
+    def test_water_landform_is_a_caution_on_its_own_row(self):
         rows = judge.judge_location(reading(codes=("11005",)), state.BUILDING, NO_RECORD)
-        self.assertEqual(row(rows, "ground").verdict, state.UNCONFIRMED)
+        rows[0].verdict  # noqa
+        data = reading(codes=("11005",))
+        data["landforms"][0]["names"] = ["盛土地・埋立地"]
+        rows = judge.judge_location(data, state.BUILDING, NO_RECORD)
+        self.assertEqual(row(rows, "landform").verdict, state.UNCONFIRMED)
+        self.assertIn("盛土地・埋立地", row(rows, "landform").conclusion)
+        self.assertEqual(row(rows, "ground").verdict, state.CLEAR)
 
-    def test_missing_landform_data_is_not_clear(self):
+    def test_missing_landform_data_is_unconfirmed(self):
         rows = judge.judge_location(reading(codes=()), state.BUILDING, NO_RECORD)
-        self.assertEqual(row(rows, "ground").verdict, state.UNCONFIRMED)
+        self.assertEqual(row(rows, "landform").verdict, state.UNCONFIRMED)
+        self.assertIn("データなし", row(rows, "landform").conclusion)
+
+    def test_terrace_landform_is_clear(self):
+        data = reading()
+        data["landforms"][0]["names"] = ["台地・段丘"]
+        rows = judge.judge_location(data, state.BUILDING, None)
+        self.assertEqual(row(rows, "landform").verdict, state.CLEAR)
 
 
 class GroundTest(unittest.TestCase):
-    def test_depression_stays_unconfirmed(self):
+    def test_depression_is_risk_with_the_elevation_in_the_conclusion(self):
+        # 2026-11-06 本人の決定：凹みは「止まるおそれ」。理由に標高の数値を出す。
         rows = judge.judge_location(reading(center=10.0, around=(10.5, 10.4, 10.3, 10.6)), state.BUILDING, None)
         ground = row(rows, "ground")
-        self.assertEqual(ground.verdict, state.UNCONFIRMED)
+        self.assertEqual(ground.verdict, state.RISK)
+        self.assertEqual(ground.conclusion, "標高10.0m・周りより低い凹み")
         self.assertIn("くぼ地の仮の目安に当たります", ground.headline)
+        higher = row(judge.judge_location(reading(center=20.5), state.BUILDING, None), "ground")
+        self.assertEqual((higher.verdict, higher.conclusion), (state.CLEAR, "標高20.5m・周りより高い"))
         self.assertTrue(any("排水口" in line for line in ground.details))
 
     def test_flat_low_ground(self):
@@ -160,7 +182,7 @@ class StateTest(unittest.TestCase):
         data = state.new_state(site, {}, rows)
         self.assertEqual(set(data), {"schema_version", "site", "location", "equipment", "pins"})
         self.assertEqual(len(data["location"]["rows"]), 5)
-        self.assertEqual(data["location"]["rows"][0]["verdict_label"], "未確認（調査が必要）")
+        self.assertEqual(data["location"]["rows"][0]["verdict_label"], "問題なし")
 
 
 class PinTest(unittest.TestCase):
@@ -199,13 +221,13 @@ class CardFaceTest(unittest.TestCase):
     def rows(self, data, basis=state.REPRESENTATIVE):
         return {row.key: row for row in judge.judge_location(data, basis, None)}
 
-    def test_color_at_a_representative_point_is_accented_but_stays_unconfirmed(self):
+    def test_color_at_a_representative_point_is_accented_and_risk(self):
         data = reading({"flood_max": hazard("flood_max", "color", "3m〜5m")})
         row = self.rows(data)["flood"]
-        self.assertEqual(row.verdict, state.UNCONFIRMED)
+        self.assertEqual(row.verdict, state.RISK)
         self.assertEqual(row.value, "3m〜5m")
         # 大きな値がどちらの規模か（地図の別の規模の値と食い違って見えないように）。
-        self.assertEqual(row.accent["badges"], ["ハザード着色あり", "想定最大の値", "建物の位置は未確認"])
+        self.assertEqual(row.accent["badges"], ["ハザード着色あり", "想定最大の値"])
         self.assertEqual(row.accent["level"], "high")
 
     def test_deepest_color_is_the_big_value(self):
@@ -218,11 +240,12 @@ class CardFaceTest(unittest.TestCase):
         data = reading({"storm_surge": hazard("storm_surge", "color", "0.5m〜1m")})
         self.assertEqual(self.rows(data)["surge"].accent["level"], "mid")
 
-    def test_no_color_has_no_accent_and_does_not_say_safe_only(self):
+    def test_no_color_has_no_accent_and_is_clear(self):
         row = self.rows(reading())["flood"]
         self.assertIsNone(row.accent)
         self.assertEqual(row.value, "色なし")
-        self.assertIn("安全という意味ではありません", row.conclusion)
+        self.assertEqual(row.conclusion, "色なし")
+        self.assertEqual(row.verdict, state.CLEAR)
 
     def test_no_data_is_not_called_no_color(self):
         row = self.rows(reading({"inland": hazard("inland", "no_tile")}))["inland"]
@@ -239,7 +262,7 @@ class CardFaceTest(unittest.TestCase):
         data["landforms"][0]["codes"] = ["10904"]
         row = self.rows(data)["ground"]
         self.assertIn("地形分類：旧水部", row.accent["badges"])
-        self.assertEqual(row.verdict, state.UNCONFIRMED)
+        self.assertEqual(self.rows(data)["landform"].verdict, state.UNCONFIRMED)
 
     def test_basin_is_named_on_the_ground_card(self):
         data = reading(center=3.6, around=(3.7, 3.7, 3.6, 3.8))
@@ -248,7 +271,8 @@ class CardFaceTest(unittest.TestCase):
         row = self.rows(data)["ground"]
         self.assertIn("周囲より低い凹み（目安）", row.accent["badges"])
         self.assertIn("周囲（北・東・西）より低い形", row.summary)
-        self.assertEqual(row.verdict, state.UNCONFIRMED)
+        self.assertEqual(row.verdict, state.RISK)
+        self.assertEqual(row.conclusion, "標高3.6m・周りより低い凹み（北・東・西が高い）")
 
 
 class BasinTest(unittest.TestCase):

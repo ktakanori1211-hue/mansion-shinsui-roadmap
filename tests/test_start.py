@@ -397,7 +397,8 @@ class BuildingPinTest(unittest.TestCase):
         js = read("start.js")
         terrain = block(js, "function terrainLine", "\n}\n")
         self.assertNotIn("verdict", terrain)
-        self.assertIn("地図の標高による仮の目安", block(js, "function groundPlain(", "\n}\n"))
+        # 理由の欄はサーバーの conclusion（標高の数値つき）のまま。
+        self.assertIn("item.conclusion", block(js, "function placeLines()", "\n}\n"))
 
     def test_engineer_question_says_what_and_why(self):
         # 「名前がある」だけでは分からない（本人の指摘）。どの紙の、だれが持つ紙か、なぜ聞くかを添える。
@@ -427,11 +428,12 @@ class InlandTest(unittest.TestCase):
 
     def test_inland_gap_points_to_the_city_maps(self):
         js = read("start.js")
-        note = block(js, "function inlandNote()", "\n}\n")
-        self.assertIn("item.key === \"inland\"", note)
+        # 内水のデータがないときは、表の「下水・水路」の理由の欄に、わがまちハザードマップの案内を短く入れる（2026-11-06）。
+        note = block(js, "function hazardPlain(", "\n}\n")
+        self.assertIn('item.key === "inland"', note)
         self.assertIn("${WAGAMACHI}", note)
         self.assertIn('const WAGAMACHI = "https://disaportal.gsi.go.jp/hazardmap/";', js)
-        self.assertIn("${inlandNote()}", block(js, "function screenOne()", "\n}\n"))
+        self.assertNotIn("数値と出典を見る", block(js, "function screenOne()", "\n}\n"))
 
     def test_experience_goes_to_the_city_not_the_drawing(self):
         js = read("start.js")
@@ -552,7 +554,6 @@ class WhyFirstTest(unittest.TestCase):
         self.assertIn("EVAC_LINE", block(js, "function summaryText()", "\n}\n"))
         self.assertIn('<table class="place">', one)
         self.assertNotIn("ownQuestions()", one)
-        self.assertIn("landLine()", one)
 
     def test_screen_two_leads_with_the_server_top_line(self):
         js = read("start.js")
@@ -849,7 +850,7 @@ class SurfaceLengthTest(unittest.TestCase):
     """
 
     LIMITS = {
-        "1 場所": 330,
+        "1 場所": 450,  # 2026-11-06：土地の成り立ちの行と、理由の数値を足したぶん
         "2 確かめる": 430,
         "3 止まるもの": 720,
         "3 止まるもの（③）": 740,

@@ -1,7 +1,8 @@
 """読み取った立地の値を、三分類の行にする。
 
 分からないことを危険とは言わない。未確認には、誰が確かめれば確定するかを添える。
-地図の値を確定にできるのは建物の位置で読めたときだけで、町丁の代表点では未確認のままにする。
+2026-11-06 本人の決定：検索したら国のデータから一発で判定を出す。地図に色があれば「止まるおそれ」、色がなければ「問題なし（色なし）」。
+土地の高さは標高と凹みで判定し、数値を出す。浸水の記録の行は、手元に記録がある町丁だけ。代わりに国の地形分類（土地の成り立ち）の行を出す。
 """
 
 from __future__ import annotations
@@ -174,17 +175,19 @@ def _hazard_row(
     else:
         headline = f"{place}では、{what}の地図のデータが取れておらず、色があるかどうかも分かりません。"
 
-    verdict = RISK if colored and basis == BUILDING else UNCONFIRMED
+    no_color = all(h["status"] == "no_color" for h in hazards) and not nearby
+    verdict = RISK if colored else CLEAR if no_color else UNCONFIRMED
     details = [f"{h['label']}：{_status_text(h)}" for h in hazards]
+    if colored and basis == REPRESENTATIVE:
+        details.append("この色は町丁の代表点の値です。地図を押すと、建物の位置で読み直します。")
     if colored and _legend_band(_deepest([h["legend"] for h in colored])) == "shallow":
         details.append(BAND_SHALLOW_NOTE)
     details.extend(extra)
     details.append(HAZARD_SOURCE)
     open_item = verdict != RISK
     value, conclusion, accent = _hazard_face(hazards)
-    # 地図に色があるのに札が「未確認」なのは、ピンが町の代表点で建物の位置ではないから。その理由を札で一言添える。
-    if accent and colored and verdict == UNCONFIRMED:
-        accent["badges"].append("建物の位置は未確認")
+    if verdict == CLEAR:
+        conclusion = "色なし"
     return Row(
         key,
         label,
@@ -232,7 +235,8 @@ def _ground_row(reading: dict, basis: str) -> Row:
     details = []
     summary = "標高のデータが一部取れず"
     value = "データなし"
-    conclusion = "標高のデータが一部取れていません"
+    conclusion = "標高のデータなし"
+    verdict = UNCONFIRMED
     badges = []
     if center is None or None in around:
         headline = f"{place}と周囲の標高のデータが、一部取れていません。"
@@ -240,26 +244,41 @@ def _ground_row(reading: dict, basis: str) -> Row:
     else:
         shape = _ground_shape(center, around)
         value = f"標高{center}m"
+        mean = sum(around) / len(around)
         if shape == "depression":
             headline = f"{place}の標高は{center}mで、周囲より低く、水がたまるくぼ地の仮の目安に当たります。"
             summary = f"標高{center}m。くぼ地の仮の目安に当たる"
-            conclusion = "くぼ地の仮の目安に当たる"
+            conclusion = f"標高{center}m・周りより低い凹み"
+            verdict = RISK
             badges.append("くぼ地の目安")
             details.append("くぼ地では、地表から入る水だけでなく、建物の排水口や雨水ますから水が上がってくる経路もありえます。起きるかどうかは判定していません。")
         elif shape == "flat_low":
             headline = f"{place}の標高は{center}mで、低く平らな土地の仮の目安に当たります。"
             summary = f"標高{center}m。低く平らな土地の仮の目安に当たる"
-            conclusion = "低く平らな土地の仮の目安に当たる"
+            conclusion = f"標高{center}m・低く平らな土地"
+            verdict = UNCONFIRMED
             badges.append("低く平らな土地の目安")
             details.append("水の逃げ場がなく、放流先の海や川の水位が高いと排水できなくなることがあります。")
+        elif center >= mean + 0.1:
+            headline = f"{place}の標高は{center}mで、周囲より高く、くぼ地や低く平らな土地の仮の目安には当たりません。"
+            summary = f"標高{center}m。周りより高い"
+            conclusion = f"標高{center}m・周りより高い"
+            verdict = CLEAR
+        elif center >= mean - 0.1:
+            headline = f"{place}の標高は{center}mで、周囲とほぼ同じ高さです。くぼ地や低く平らな土地の仮の目安には当たりません。"
+            summary = f"標高{center}m。周りとほぼ同じ"
+            conclusion = f"標高{center}m・周りとほぼ同じ"
+            verdict = CLEAR
         else:
-            headline = f"{place}の標高は{center}mで、くぼ地や低く平らな土地の仮の目安には当たりません。"
-            summary = f"標高{center}m。くぼ地の仮の目安に当たらず"
-            conclusion = "くぼ地の仮の目安に当たらず"
+            headline = f"{place}の標高は{center}mで、周囲より少し低い土地です。くぼ地の仮の目安には当たりません。"
+            summary = f"標高{center}m。周りより少し低い"
+            conclusion = f"標高{center}m・周りより少し低い"
+            verdict = UNCONFIRMED
         if reading.get("basin"):
             high = "・".join(reading.get("high_directions") or [])
             summary = f"{summary}。周囲（{high}）より低い形"
-            conclusion = f"周囲（{high}）より低い形"
+            conclusion = f"標高{center}m・周りより低い凹み（{high}が高い）"
+            verdict = RISK
             badges.insert(0, "周囲より低い凹み（目安）")
             details.append(f"50m先の点では、周囲（{high}）の方がピンより高く、低い向きの点がありません。地図の標高データの目安で、雨や浸水の深さの予測ではありません。")
         points = "、".join(f"{p['label']} {p['elevation_m']}m" for p in elevation["points"][1:])
@@ -278,11 +297,44 @@ def _ground_row(reading: dict, basis: str) -> Row:
     details.append(ELEVATION_SOURCE)
     details.extend(ELEVATION_SOURCE_MORE)
     return Row(
-        "ground", "敷地の高低差", UNCONFIRMED, headline, details, _GROUND_CONFIRM,
-        summary=summary, confirm_short="管理会社が履歴と管理員の記録で",
+        "ground", "敷地の高低差", verdict, headline, details, _GROUND_CONFIRM if verdict == UNCONFIRMED else None,
+        summary=summary, confirm_short="管理会社が履歴と管理員の記録で" if verdict == UNCONFIRMED else None,
         value=value, conclusion=conclusion,
         accent={"kind": "terrain", "level": "mid", "badges": badges} if badges else None,
     )
+
+
+# 土地の成り立ち（国の地形分類）。低地・埋立地・旧河道などは注意（未確認）、台地・段丘などは問題なし（2026-11-06 本人の決定）。
+_LANDFORM_CAUTION = re.compile(r"低地|平野|三角州|旧河道|湿地|干拓|埋立|盛土|凹地|旧水部|谷|扇状地|砂州|砂丘|自然堤防|氾濫|後背|河川敷|浜|水部")
+_LANDFORM_SAFE = re.compile(r"台地|段丘|山地|丘陵|火山|切土")
+LANDFORM_CONFIRM = "地形分類は国土地理院の一般的な分類です。敷地のまわりの冠水歴は、管理会社が自治体の浸水履歴と管理員の記録で確かめます。"
+
+
+def _landform_row(reading: dict) -> Row:
+    landforms = reading.get("landforms") or []
+    names = _landform_names(landforms)
+    missing = [lf for lf in landforms if lf.get("status") in _LANDFORM_MISSING]
+    details = ["国土地理院の地形分類（提供実験）。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません。", ELEVATION_SOURCE, *ELEVATION_SOURCE_MORE]
+    if not names:
+        why = "地図のデータが取れていない" if missing else "この地点の分類なし"
+        return Row("landform", "土地の成り立ち（地形分類）", UNCONFIRMED, f"国の地形分類のデータが、この地点では取れていません。", details, LANDFORM_CONFIRM,
+                   summary=why, confirm_short="管理会社が履歴と管理員の記録で", value="データなし", conclusion=f"データなし（{why}）")
+    joined = "・".join(names)
+    if any(_LANDFORM_CAUTION.search(name) for name in names):
+        verdict = UNCONFIRMED
+        headline = f"国の地形分類で『{joined}』にあたる地域です。水がたまりやすい、または地盤が低い土地の分類です。"
+        conclusion = f"{joined}（水がたまりやすい土地の分類）"
+    elif all(_LANDFORM_SAFE.search(name) for name in names):
+        verdict = CLEAR
+        headline = f"国の地形分類で『{joined}』にあたる地域です。周りより高い土地の分類です。"
+        conclusion = f"{joined}（高い土地の分類）"
+    else:
+        verdict = UNCONFIRMED
+        headline = f"国の地形分類で『{joined}』にあたる地域です。"
+        conclusion = joined
+    return Row("landform", "土地の成り立ち（地形分類）", verdict, headline, details, LANDFORM_CONFIRM if verdict == UNCONFIRMED else None,
+               summary=joined, confirm_short="管理会社が履歴と管理員の記録で" if verdict == UNCONFIRMED else None,
+               value=joined, conclusion=conclusion)
 
 
 def _ground_clean(reading: dict) -> bool:
@@ -377,14 +429,14 @@ def _record_row(record: Optional[dict]) -> Row:
 
 
 def _all_clear(reading: dict, record: Optional[dict], basis: str) -> bool:
-    """一つの層だけでは問題なしにしない。五つの項目がそろったときだけ問題なしにする。"""
+    """一つの層だけでは問題なしにしない。項目がそろったときだけ、全部を問題なしにする（記録の行は、あるときだけ見る）。"""
     return (
-        basis == BUILDING
-        and all(hazard["status"] == "no_color" and not hazard.get("nearby_legend") for hazard in reading["hazards"])
+        all(hazard["status"] == "no_color" and not hazard.get("nearby_legend") for hazard in reading["hazards"])
         and _ground_clean(reading)
-        and record is not None
-        and not record["rows"]
-        and not any(neighbor.get("rows") is None or neighbor["rows"] for neighbor in record.get("neighbors") or [])
+        and (
+            record is None
+            or (not record["rows"] and not any(neighbor.get("rows") is None or neighbor["rows"] for neighbor in record.get("neighbors") or []))
+        )
     )
 
 
@@ -425,8 +477,11 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             "管理会社が県・市の高潮の図で",
         ),
         _ground_row(reading, basis),
-        _record_row(record),
+        _landform_row(reading),
     ]
+    # 浸水の記録の行は、手元に記録がある町丁（見本）だけ。ない住所に「未収録」と出しても参考にならない（2026-11-06 本人の指示）。
+    if record is not None:
+        rows.append(_record_row(record))
     if _all_clear(reading, record, basis):
         for row in rows:
             row.verdict = CLEAR

@@ -95,7 +95,7 @@ const QUESTIONS = [
 ];
 const OPTION_WORDS = { basement: "地下", ground: "1階", upper: "2階以上", absent: "図面にない", none: "まだ" };
 // 立地の行の短い名前。
-const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", ground: "土地の高さ", record: "浸水の記録" };
+const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", ground: "土地の高さ", landform: "土地の成り立ち", record: "浸水の記録" };
 // 対策の短い名前（サーバーの measures の key ごと。くわしい文は折りたたみに入れる）。
 const MEASURE_SHORT = {
   hole: "壁の穴をふさぐ",
@@ -493,11 +493,6 @@ function hazardLayer(band) {
 // 内水（下水や水路があふれる）は、国の重ねるハザードマップにデータがない所が多い。市区町村が別に出していることがあるので案内する。
 const WAGAMACHI = "https://disaportal.gsi.go.jp/hazardmap/";
 
-function inlandNote() {
-  const inland = (S.place?.location?.reading?.hazards || []).find((item) => item.key === "inland");
-  if (inland && (inland.legend || inland.nearby_legend)) return "";
-  return `<p class="inland-note">下水や水路があふれる浸水（内水）は、この地図にデータがありません。道路の冠水はこちらのことがあります。市区町村の地図は<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ（国土地理院）</a>で。</p>`;
-}
 
 // 住民が知っている、この辺りの経験。地図にない内水の手がかりになる。判定は変えず、依頼メモに「聞き取り」として載せる。
 const EXPERIENCE = [
@@ -529,59 +524,13 @@ function experienceLine() {
   return `${says}。地図にない内水の手がかりなので、管理会社から市区町村（下水道の担当）に、この辺りの浸水の記録と内水の想定を確かめてください。`;
 }
 
-// ---- 土地を横から見た図（2026-11-05） ----
-// サーバーが読んだ「建物の点と、北南（東西）50m・100m の高さ」を横から見た線にし、建物・海面・想定の水面を重ねる。
-// 高さの差が大きい向き（北南か東西）を選ぶ。水面は「建物の点の高さ＋想定の深さ」で、深さの帯の両端を引く。説明用の目安。
-function profileAxis() {
-  const profile = S.place?.location?.reading?.profile || {};
-  const range = (list) => {
-    const values = (list || []).map(([, h]) => h).filter((h) => typeof h === "number");
-    return values.length >= 3 ? Math.max(...values) - Math.min(...values) : -1;
-  };
-  const ns = range(profile.ns);
-  const ew = range(profile.ew);
-  if (ns < 0 && ew < 0) return null;
-  // 北南は北を左に、東西は西を左に置く。
-  if (ns >= ew) return { left: "北", right: "南", points: [...profile.ns].sort((a, b) => b[0] - a[0]).filter(([, h]) => typeof h === "number") };
-  return { left: "西", right: "東", points: [...profile.ew].sort((a, b) => a[0] - b[0]).filter(([, h]) => typeof h === "number") };
-}
 
-// 図の下の一行。データから言えることだけ（海面より低いか・まわりより低いか高いか）。
-function profileWords(axis) {
-  const center = axis.points.find(([d]) => d === 0)?.[1];
-  if (typeof center !== "number") return "";
-  const others = axis.points.filter(([d]) => d !== 0).map(([, h]) => h);
-  const mean = others.reduce((sum, h) => sum + h, 0) / (others.length || 1);
-  const parts = [];
-  if (center < 0) parts.push(`海面より低い土地（${center.toFixed(1)}m）`);
-  const reading = S.place?.location?.reading || {};
-  // 片側が高く、反対側が低いときは「坂の途中」と言う。標高の細かな差を坂と言わないよう、1m 以上の差のときだけ（仮の目安）。
-  const ci = axis.points.findIndex(([d]) => d === 0);
-  const lefts = axis.points.slice(0, ci).map(([, h]) => h);
-  const rights = axis.points.slice(ci + 1).map(([, h]) => h);
-  const slopeDown = lefts.length && rights.length && Math.max(...lefts) >= center + 1 && Math.min(...rights) <= center - 1;
-  const slopeUp = lefts.length && rights.length && Math.min(...lefts) <= center - 1 && Math.max(...rights) >= center + 1;
-  if (reading.basin) parts.push("まわりより低い凹み");
-  else if (slopeDown) parts.push(`${axis.left}が高く${axis.right}が低い坂の途中`);
-  else if (slopeUp) parts.push(`${axis.right}が高く${axis.left}が低い坂の途中`);
-  else if (center < mean - 0.1) parts.push("まわりより低い所");
-  else if (center > mean + 0.1) parts.push("まわりより少し高い所");
-  else parts.push("まわりとほぼ同じ高さ");
-  let line = `この建物は、${parts.join("で、")}にあります。`;
-  if (deepestHazard() && (center < 0 || reading.basin || center < mean - 0.1)) line += "川があふれると、低い所に水が集まります。";
-  return line;
-}
 
 
 // ---- WHY に沿った画面1・2の部品（2026-11-05 作り直し） ----
 // 画面1の一行：命を守る避難の判断と、機械を守る足元の対策を混ぜない。
 const EVAC_LINE = "避難するかどうかは、自治体のハザードマップと警戒レベルで決めます。この道具は、地図に色がなくても浅い水で止まる、建物の電気と水の足元の対策を整理します。";
 
-// 画面1の土地の一行（横から見た図はやめ、言葉だけ）。
-function landLine() {
-  const axis = profileAxis();
-  return axis ? profileWords(axis) : "";
-}
 
 // 対策の切り替え（what-019）。名前はサーバーの model_measures のまま。選んだ対策の固定の文（what-026）を言い換えずに添える。
 const MEASURE_GAIN = { plate: "玄関からの浸水を防げる（壁の穴からは入る）", hole: "電気室への浸水を防げる", raise: "ポンプ盤の浸水を防げる" };
@@ -624,36 +573,28 @@ const PLACE_PLAIN = {
   surge: "高潮のとき、水につかる想定の場所です",
 };
 
-// 5項目の表の「短い理由」（2026-11-06 本人の指示：長い文のリストではなく「項目｜判定｜短い理由」の表1つ）。
+// 5項目の表の「短い理由」（2026-11-06 本人の指示：判定は国のデータから一発で出し、数値も表に出す）。html は表に入れる形。
 function hazardPlain(item) {
-  const atBuilding = S.place?.site?.basis === "building";
-  if (/数m先/.test(item.conclusion || "")) return "数m先に色あり";
-  if (parseBand(item.value)) return `${item.value}の想定${item.verdict === "risk" || atBuilding ? "" : "（代表点）"}`;
-  if (item.value === "色なし") return "色なし（安全の意味ではない）";
-  return "データなし";
+  if (/数m先/.test(item.conclusion || "")) return esc("数m先に色あり");
+  if (parseBand(item.value)) return esc(`${item.value}の想定`);
+  if (item.value === "色なし") return esc("色なし");
+  // 内水は国の地図にない市区町村が多い。市区町村の地図の案内を短く添える。
+  if (item.key === "inland") return `データなし（<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ</a>で確認）`;
+  return esc("データなし");
 }
 
 function recordPlain(item) {
-  if (item.verdict === "risk") return "同じ丁目に記録あり";
-  if (item.value === "未収録") return "手元の表に未収録";
-  return "記録なし（浸水なしの意味ではない）";
-}
-
-// 土地の高さ。凹みでも判定が未確認（代表点・仮の目安）なら、そう添える（判定表1-3・1-4）。
-function groundPlain(item) {
-  const text = terrainLine().text;
-  if (item.verdict === "risk") return text;
-  return S.place?.location?.reading?.basin ? `${text}（地図の標高による仮の目安）` : text;
+  if (item.verdict === "risk") return esc("同じ丁目に記録あり");
+  return esc("記録なし（浸水なしの意味ではない）");
 }
 
 function placeLines() {
   const rows = S.place?.location?.rows || [];
-  const basin = S.place?.location?.reading?.basin;
-  const rank = (item) => (item.key === "ground" && basin ? 0 : { risk: 1, unconfirmed: 2, clear: 3 }[item.verdict] ?? 2);
+  const rank = (item) => ({ risk: 0, unconfirmed: 1, clear: 2 }[item.verdict] ?? 1);
   return [...rows].sort((a, b) => rank(a) - rank(b)).map((item) => ({
     verdict: item.verdict,
     name: PLACE_SHORT[item.key] || item.label,
-    text: item.key === "ground" ? groundPlain(item) : item.key === "record" ? recordPlain(item) : PLACE_PLAIN[item.key] ? hazardPlain(item) : item.conclusion || item.value || "",
+    html: item.key === "record" ? recordPlain(item) : PLACE_PLAIN[item.key] ? hazardPlain(item) : esc(item.conclusion || item.value || ""),
   }));
 }
 
@@ -748,24 +689,15 @@ function screenOne() {
   let picked = "";
   if (S.place) {
     const lines = placeLines();
-    const rows = (S.place.location.rows || [])
-      .map((item) => `<li class="${item.verdict}"><b>${esc(PLACE_SHORT[item.key] || item.label)}</b><span>${esc(item.value || "")}</span></li>`)
-      .join("");
     const representative = S.place.site.basis === "representative";
     picked = `<div class="picked">
         <p class="place"><b>${esc(S.place.site.label)}</b></p>
         <h2 class="question">この土地で水が来る道</h2>
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
-        ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置の値で読んでいます（地図を押すと選び直せます）" : "地図で、建物の場所を押してください（今は町丁の代表点の値）"}</p>`}
-        <table class="place"><thead><tr><th>項目</th><th>判定</th><th>理由</th></tr></thead><tbody>${lines.map((line) => `<tr class="${line.verdict}"><td>${esc(line.name)}</td><td><i>${LOOK[line.verdict]?.word || "未確認"}</i></td><td>${esc(line.text)}</td></tr>`).join("")}</tbody></table>
-        <details class="place-more more"><summary>数値と出典を見る</summary>
-          <ul class="place-chips">${rows}</ul>
-          ${landLine() ? `<p class="land-line">${esc(landLine())}</p>` : ""}
-          ${recordNote()}
-          ${representative ? `<p class="hint">高さと色は町丁の代表点の値です。</p>` : ""}
-          ${inlandNote()}
-        </details>
+        ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "この住所の位置で読んでいます。ずれていれば地図を押して直せます" : "町丁の代表点の値です。地図を押すと建物の位置で読み直します"}</p>`}
+        <table class="place"><thead><tr><th>項目</th><th>判定</th><th>理由</th></tr></thead><tbody>${lines.map((line) => `<tr class="${line.verdict}"><td>${esc(line.name)}</td><td><i>${LOOK[line.verdict]?.word || "未確認"}</i></td><td>${line.html}</td></tr>`).join("")}</tbody></table>
+        <p class="hint">出典：ハザードマップポータルサイト、国土地理院（標高API・地形分類）を加工。${representative ? "町丁の代表点の値です。" : ""}高さと色は地図のデータの値で、敷地を測ったものではありません。</p>
         ${placeAid()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
         <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>この建物で見る</button>
@@ -1137,12 +1069,6 @@ function mapLegend() {
   </div>`;
 }
 
-// 浸水の記録がリスクありでないときの添え書き（判定表1-1：記録なし＝浸水なし、とは読まない）。
-function recordNote() {
-  const record = (S.place?.location?.rows || []).find((item) => item.key === "record");
-  if (!record || record.verdict === "risk") return "";
-  return `<p class="hint">浸水の記録：記録がないことは、浸水がなかったことを示しません。</p>`;
-}
 
 function floorChoice(floor) {
   const text = String(floor || "");
@@ -1743,6 +1669,12 @@ screen.addEventListener("submit", async (event) => {
     const body = await getJSON(`/api/search?${new URLSearchParams({ q })}`);
     S.candidates = body.candidates || [];
     S.message = body.message || (S.candidates.length ? "" : "場所が見つかりませんでした。");
+    // 候補が1件なら、押させずに選ぶ（2026-11-06 本人の指示：ワンクッションをなくす）。
+    if (S.candidates.length === 1) {
+      const c = S.candidates[0];
+      await choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null);
+      return;
+    }
   } catch (error) {
     S.candidates = [];
     S.error = error.message;
@@ -1758,7 +1690,8 @@ screen.addEventListener("click", (event) => {
     if (point) choosePlace({ demo: point.id }, point.sample, point.id);
   } else if (target.dataset.cand) {
     const c = S.candidates[Number(target.dataset.cand)];
-    if (c) choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude }, null, null);
+    // 選んだ時点で建物の位置として読む（地図をもう一度押させない）。地図は位置を直したいときだけ押す。
+    if (c) choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null);
   } else if (target.dataset.cnt) {
     const cnt = counts();
     cnt[target.dataset.cnt] = Math.max(0, Number(cnt[target.dataset.cnt] || 0) + Number(target.dataset.d));

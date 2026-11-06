@@ -156,7 +156,9 @@ class GroundRowTest(unittest.TestCase):
         details = " ".join(self.ground(data).details)
         self.assertIn("地形分類（人工地形）：地図のデータが取れていない（接続できず）", details)
         self.assertIn("地形分類（自然地形）：地図のデータが取れていない（この地域のデータなし）", details)
-        self.assertEqual(self.ground(data).verdict, state.UNCONFIRMED)
+        # 2026-11-06：地形分類は「土地の成り立ち」の行になった。データが取れないときは、その行が未確認。
+        landform = next(r for r in judge.judge_location(data, state.BUILDING, NO_RECORD) if r.key == "landform")
+        self.assertEqual(landform.verdict, state.UNCONFIRMED)
 
 
 class NeighborRecordTest(unittest.TestCase):
