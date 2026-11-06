@@ -808,16 +808,20 @@ class SecondReviewTest(unittest.TestCase):
         js = read("start.js")
         first = block(js, "function ownDrawingFirst()", "\n}\n")
         self.assertIn("よくある形の例", first)
-        self.assertIn("${READ_NOTICE}", first)
+        # 図面を入れる欄は画面3の1か所だけ（画面2は案内のボタン）。送る前の明示は読み取りの札に置く。
+        self.assertIn('data-act="to3"', first)
+        self.assertNotIn('id="plan-file"', first)
+        self.assertEqual(js.count('id="plan-file"'), 1)
+        self.assertIn("${READ_NOTICE}", block(js, "function readCard()", "\n}\n"))
         self.assertIn("${b.sample.custom ? ownDrawingFirst() : \"\"}", block(js, "function screenTwo()", "\n}\n"))
         self.assertIn("Anthropic の API に送って読みます", block(js, "const READ_NOTICE", ";"))
 
     def test_costs_compute_only_from_an_entered_estimate(self):
         # 出典のない円は足さない。見積り額を入れたときだけ計算する（what-064）。補助の率と上限は確かめた制度の文のまま。
         js = read("start.js")
-        calc = block(js, "const AID_CALC = {", "};")
-        self.assertIn("rate: 2 / 3, cap: 8330000, unit: 1000", calc)
-        self.assertIn("rate: 1 / 2, cap: 750000, unit: 100", calc)
+        self.assertEqual(samples.SUBSIDIES["tokyo"]["calc"], {"rate": 2 / 3, "cap": 8330000, "unit": 1000})
+        self.assertEqual(samples.SUBSIDIES["chiba"]["calc"], {"rate": 1 / 2, "cap": 750000, "unit": 100})
+        self.assertIn("aidCalc(m, aid)", block(js, "function estimateLine(", "\n}\n"))
         line = block(js, "function estimateLine(", "\n}\n")
         self.assertIn("if (!(amount > 0)) return \"\";", line)
         rows = block(js, "function costRows(", "\n}\n")
@@ -836,3 +840,41 @@ class SecondReviewTest(unittest.TestCase):
         self.assertNotIn("password}", save.replace("savePassword()", ""))
         self.assertIn("期限が過ぎています", block(js, "async function openSaved()", "\n}\n"))
         self.assertNotIn("データが外に出ない", block(js, "function saveBox()", "\n}\n"))
+
+    def test_subsidy_follows_the_municipality(self):
+        # 2026-11-06：区市の制度を、住所の市区町村から選ぶ。同じ名前の区がほかの市にもあるので、都県もそろったときだけ。
+        self.assertEqual(samples.region_of("東京都中野区中央1丁目"), "nakano")
+        self.assertEqual(samples.region_of("東京都港区芝"), "minato")
+        self.assertEqual(samples.region_of("愛知県名古屋市港区"), "none")
+        self.assertEqual(samples.region_of("大阪府大阪市北区"), "none")
+        self.assertEqual(samples.region_of("ブリリアタワー東京, 蔵前橋通り, 太平四丁目, 太平, 墨田区, 東京, 130-0012, 日本"), "tokyo")
+        self.assertEqual(samples.region_of("千葉市 幸町2丁目"), "chiba")
+        # 調べていない地域は「ない」と言わない。どの区市にも出典の URL と確かめた日がある。
+        self.assertIn("補助がないという意味ではありません", samples.SUBSIDIES["none"]["rate_label"])
+        for _pref, _city, key, item in samples.MUNICIPAL_SUBSIDIES:
+            self.assertTrue(item["url"].startswith("https://"), key)
+            self.assertEqual(item["checked"], "2026-11-06", key)
+        # 簡易型を対象外とする宇都宮市は、置くだけの止水板に計算例を出さない。
+        self.assertNotIn("plate", samples.SUBSIDIES["utsunomiya"]["covers"])
+        js = read("start.js")
+        self.assertIn("${placeAid()}", block(js, "function screenOne()", "\n}\n"))
+        self.assertIn('result["subsidy"]', (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
+
+    def test_contractors_are_not_named(self):
+        # what-044：特定の業者を勧めない・紹介料を取らない。確かめ方だけを出す。
+        js = read("start.js")
+        box = block(js, "function contractorBox()", "\n}\n")
+        self.assertIn("特定の業者を勧めず、紹介料も受け取りません", box)
+        self.assertIn("https://etsuran2.mlit.go.jp/TAKKEN/", block(js, "const CONTRACTOR_CHECKS = [", "];"))
+        self.assertIn("${contractorBox()}", block(js, "function screenFour()", "\n}\n"))
+
+    def test_costs_say_where_the_numbers_come_from(self):
+        # 2026-11-06：止水板は東京都の事例集の値。ほかは作者の実務の桁の目安だと書く。
+        plate = next(m for m in samples.MEASURES if m["key"] == "plate")
+        self.assertIn("止水板設置事例集", plate["cost_basis"])
+        hole = next(m for m in samples.MEASURES if m["key"] == "hole")
+        self.assertIn("作者の実務の桁の目安", hole["cost_basis"])
+        self.assertNotIn("move", {m["key"] for m in samples.MEASURES})
+        js = read("start.js")
+        self.assertIn("この建物の金額ではありません", block(js, "function modelCosts()", "\n}\n"))
+

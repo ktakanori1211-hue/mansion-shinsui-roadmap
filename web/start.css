@@ -96,7 +96,7 @@ button { font: inherit; }
 .place-lines li { display: flex; gap: 8px; align-items: flex-start; border-radius: 10px; padding: 8px 10px; background: #fbf6e8; border-left: 5px solid var(--unconfirmed-line); }
 .place-lines li.risk { background: #fdeeec; border-left-color: var(--risk-line); }
 .place-lines li.clear { background: #eef8f1; border-left-color: var(--clear-line); }
-.place-lines i { font-style: normal; font-weight: 900; width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--unconfirmed-line); font-size: 13px; }
+.place-lines i { font-style: normal; font-weight: 800; flex: none; border-radius: 4px; padding: 2px 6px; color: #fff; background: var(--unconfirmed-line); font-size: 11.5px; white-space: nowrap; margin-top: 2px; }
 .place-lines li.risk i { background: var(--risk-line); }
 .place-lines li.clear i { background: var(--clear-line); }
 .place-lines p { margin: 0; font-size: 14.5px; line-height: 1.5; font-weight: 700; }
@@ -408,4 +408,26 @@ details.facts[open] { display: flex; }
 .save-pass input { flex: 1 1 12em; font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-family: ui-monospace, Menlo, monospace; }
 .save-link { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .save-link input { flex: 1 1 14em; font-size: 12.5px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; }
+.link-like { align-self: flex-start; background: none; border: 0; padding: 4px 0; color: var(--accent); font-size: 13px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+/* 浸水の見せ方（2026-11-06）：部屋に「止まる：…」を直接書き、水の位置を短い見出しで大きく出す */
+.p-stops { fill: #fff; font-weight: 900; text-anchor: middle; paint-order: stroke; stroke: #1f5f99; stroke-width: 3px; }
+.caption .level-head { display: block; font-size: 18px; font-weight: 900; color: var(--navy); }
+.caption small { display: block; font-size: 12px; color: var(--muted); }.wet-list { list-style: none; margin: -4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wet-list li { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; background: #e8f1fb; border-left: 5px solid var(--water); border-radius: 6px; padding: 6px 10px; font-size: 14.5px; }
+.wet-list b { color: #1f5f99; }
+.wet-list span { font-weight: 800; color: var(--stopped); }
+.place-aid { background: #f2f7ee; border-left: 5px solid var(--clear-line); border-radius: 8px; padding: 8px 10px; }
+.place-aid p { margin: 0; font-size: 14.5px; font-weight: 800; }
+.place-aid b { display: block; font-size: 12px; color: var(--muted); }
+.place-aid small { display: block; font-size: 12.5px; color: #33404f; margin-top: 2px; }
+.model-costs { margin-top: 12px; background: #f6f7f9; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.model-costs ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.model-costs li b { display: block; font-size: 13.5px; }
+.model-costs li span { display: block; font-size: 13px; color: #33404f; }
+.m-what a, .aid-box a, .model-costs a { color: var(--accent); }
+.contractor-box { margin-top: 12px; border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.contractor-box ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.contractor-box li b { display: block; font-size: 14px; }
+.contractor-box li span { display: block; font-size: 13px; color: #33404f; line-height: 1.55; }
+.contractor-box a { color: var(--accent); }
 

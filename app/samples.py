@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import List, Optional
 
 # 図面の用紙。部屋の x, y, w, h は、図の外周を 0〜1 とした割合で、3D の模型とピンも同じ値を使う。
@@ -71,16 +72,16 @@ ROOM_NAMES = {
 # 11/8 までの費用は判定表の桁だけを使う。band は 4=数万 5=数十万 6=数百万 7=数千万 8=1億円超。
 MEASURES = [
     {"key": "hole", "tier": "今すぐ", "label": "ケーブルを通す壁の穴をふさぐ（マンション側の部屋の穴。施工は電気工事の業者が、主任技術者と停電の要否・離隔を決めてから。理事や管理員は部屋に入らない。東京電力の変圧器の部屋の穴には、だれも栓や止水材を入れない）", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "数万〜十数万円", "low": 4, "high": 5, "sample_yen": 100000, "tokyo": "with_plate", "chiba": "no"},
-    {"key": "plate", "tier": "今すぐ", "label": "置くだけの止水板と吸水土のうを備える", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "数万〜数十万円", "low": 4, "high": 5, "sample_yen": 300000, "tokyo": "yes", "chiba": "yes"},
+    {"key": "plate", "tier": "今すぐ", "label": "置くだけの止水板と吸水土のうを備える", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "約30万〜50万円（1か所）", "low": 5, "high": 5, "sample_yen": 300000, "tokyo": "yes", "chiba": "yes"},
     {"key": "procedure", "tier": "今すぐ", "label": "大雨の前とさなかの手順を決めておく", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "—", "range": "—（契約による）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "tepco", "tier": "今すぐ", "label": "東京電力の変圧器の部屋の扉と穴の浸水対策を、東京電力パワーグリッドに照会し、申し入れて話し合う", "decision": "理事会で申し入れる。工事になるときの決め方は内容が分かってから", "account": "話し合いの結果による", "range": "—（確認が要る）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "panel", "tier": "工事が要る", "label": "ポンプのスイッチ盤を高い位置に付け替える（盤の下の端が低いと分かった場合）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜150万円", "low": 5, "high": 6, "sample_yen": 1000000, "tokyo": "unknown", "chiba": "no"},
-    {"key": "pillar", "tier": "工事が要る", "label": "支柱式の止水板（アンカーで固定）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜200万円", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "yes", "chiba": "no"},
+    {"key": "pillar", "tier": "工事が要る", "label": "支柱式の止水板（アンカーで固定）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "約30万〜300万円（1か所）", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "yes", "chiba": "no"},
     {"key": "door", "tier": "工事が要る", "label": "マンション側の電気室の扉を防水扉にする（今の枠を使う場合。東京電力の変圧器の部屋の扉は含めない）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "100〜300万円", "low": 6, "high": 6, "sample_yen": 2000000, "tokyo": "yes", "chiba": "no"},
     {"key": "vent", "tier": "工事が要る", "label": "足元の換気口を高くする", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜数百万円", "low": 5, "high": 6, "sample_yen": 1000000, "tokyo": "with_plate", "chiba": "no"},
     {"key": "power", "tier": "工事が要る", "label": "停電したとき外から電源車をつなげる受け口を 1 階につくる", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜数百万円", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "unknown", "chiba": "no"},
     {"key": "door_rebuild", "tier": "更新と一緒", "label": "壁を壊して枠ごと防水扉にする", "decision": "総会（特別決議）", "account": "修繕積立金", "range": "300万円〜", "low": None, "high": None, "open_ended": True, "sample_yen": 4000000, "tokyo": "yes", "chiba": "no"},
-    {"key": "move", "tier": "更新と一緒", "label": "共用部の受電の箱を屋上に移す（設備の更新に合わせて）", "decision": "総会（特別決議）＋最上階の住戸の承諾", "account": "修繕積立金", "range": "数千万〜1億円超", "low": 7, "high": 8, "sample_yen": 60000000, "tokyo": "unknown", "chiba": "no"},
+    # 「受電の箱を屋上へ移す」は、現実的でないため外した（2026-11-06 本人決定）。
     # ここから下は、ノートの「実現したい機能」から足した行。新しい金額は持たず、桁は見積りで確かめる。
     {"key": "pump_check", "tier": "今すぐ", "label": "排水ポンプ（地下の床、機械式駐車場の掘り込み、汚水の汲み上げ）が動くかを、保守会社の点検で確かめる", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費（保守の契約に入っているかを確かめる）", "range": "—（契約による）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "backflow", "tier": "工事が要る", "label": "逆止弁を付ける", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "—（見積りで確かめる）", "low": None, "high": None, "sample_yen": 0, "tokyo": "with_plate", "chiba": "no"},
@@ -100,7 +101,19 @@ HOLE_OWNER_NO_ENGINEER = "管理会社→電気工事の業者"
 
 # 壁の穴の行の折りたたみに出す、塞ぎ方の使い分け。施工時間や停電の要否は根拠が確かめられていないので書かない。
 HOLE_NOTE = "使っていない予備の管の口は栓で塞ぎ、ケーブルが通った穴は固まらない（非硬化の）止水材で埋めます（ケーブルの通った穴に栓は使えません）。"
+# 費用の目安の出どころ（2026-11-06 本人の指摘「金額を現実的に」）。止水板は東京都の事例集の集合住宅の事例（材料費と施工費込み・税込）。
+# ほかは公的な資料で金額を確かめられていないので、作者の実務の桁の目安のまま、そうと書く。
+COST_BASIS = {
+    "plate": "東京都都市整備局「止水板設置事例集」（2026年7月版）の集合住宅の事例：直接貼付け型（幅約0.9m・高さ0.4〜0.5m）で約30万〜50万円。材料費と施工費込み・税込。間口に合わせて作るので、同じ大きさでも価格は前後します。",
+    "pillar": "東京都都市整備局「止水板設置事例集」（2026年7月版）の集合住宅の事例：支柱差込み型で、幅1.2〜2m・高さ0.5mが約30万円、幅1.8m・高さ1mが約60万円、エントランス幅3.4m・高さ約0.7m（Ws-6相当）が約300万円。材料費と施工費込み・税込。",
+}
+COST_BASIS_URL = "https://www.toshiseibi.metro.tokyo.lg.jp/documents/d/toshiseibi/2026-08-04-142041-430"
+COST_BASIS_NONE = "公的な資料で金額を確かめられていない、作者の実務の桁の目安です。見積りで確かめます。"
 for _measure in MEASURES:
+    if not _measure["range"].startswith("—"):
+        _measure["cost_basis"] = COST_BASIS.get(_measure["key"], COST_BASIS_NONE)
+        if _measure["key"] in COST_BASIS:
+            _measure["cost_url"] = COST_BASIS_URL
     if _measure["key"] in MEASURE_OWNERS:
         _measure["owner"] = MEASURE_OWNERS[_measure["key"]]
     if _measure["key"] == "hole":
@@ -115,8 +128,11 @@ SUBSIDIES = {
             "受付は2026年6月5日から2027年1月15日までで、予算がなくなり次第終了です。調査・企画と改修は別々に申請します。",
             "壁の穴の止水、排気口のかさ上げ、逆流防止弁は、止水板などと併せる場合に限ります。壁の穴だけなら、それだけでは対象外になりえます。",
             "登録済みのマンション、浸水想定区域等にあること、非常用電源の条件があります。給水とエレベーターに必要な設備を守るもので、エントランスだけを守るものは対象外です。",
-            "申請者は管理組合で、先に支払って事後に精算する形と読めます。都内の区ごとの制度は、まだ確かめていません。",
+            "申請者は管理組合で、先に支払って事後に精算する形と読めます。区市の制度は、東京都の一覧（令和8年11月現在）にある区市のうち、原文を読めたものだけを載せています。",
         ],
+        "url": "https://www.metro.tokyo.lg.jp/documents/d/tosei/20260605_08_07",
+        "checked": "2026-11-06",
+        "calc": {"rate": 2 / 3, "cap": 8330000, "unit": 1000},
     },
     "chiba": {
         "label": "千葉市（1/2・上限75万円）",
@@ -126,6 +142,9 @@ SUBSIDIES = {
             "「過去に浸水被害が発生した地域」が条件です。この町丁が当たるかは原文から読み取れないので、今年度の受付期間とあわせて市の下水道営業課に確かめます。",
             "共用部は理事長が申請者で、規約と理事会議事録の写しを付けると市の資料にあります。常設のものも対象になるかは、市に確かめます。",
         ],
+        "url": "https://www.city.chiba.jp/kensetsu/gesuidokikaku/eigyo/youkou-youryou.html",
+        "checked": "2026-11-06",
+        "calc": {"rate": 1 / 2, "cap": 750000, "unit": 100},
     },
     "yokohama": {
         "label": "横浜市（工事の補助は見つかっていない）",
@@ -133,11 +152,82 @@ SUBSIDIES = {
         "cautions": ["認定を目指す管理組合等へのアドバイザー派遣（費用は市の負担）があります。"],
     },
     "none": {
-        "label": "それ以外（まだ調べていない）",
-        "rate_label": "この地域の制度はまだ調べていないので、市区町村の窓口に問い合わせます。",
+        "label": "この市区町村の制度は、まだ調べていません",
+        "rate_label": "調べていないことは、補助がないという意味ではありません。市区町村の窓口（防災・下水道・住宅の担当）に確かめます。",
         "cautions": [],
     },
 }
+
+# 東京電力の区域の区市の止水板の助成（2026-11-06 調べ。自治体の公式ページ・要綱の原文で確かめたものだけ。率・上限は原文のまま）。
+# covers は、計算例を出す対策ごとの率・上限（plate＝置くだけの止水板、pillar＝支柱式の止水板の工事）。
+# 原文が簡易型の購入を含まない制度は pillar だけ。申請者の区分や受付が分からない制度は、計算しない（covers なし）。
+# 東京都の区市は、都の補助と一緒に使えるかを区市に確かめる（ほかの公的補助と重ねて使えないと書く区がある）。
+_TOKYO_TOO = "東京都の「東京とどまるマンション」（2/3・上限833万円。登録などの条件あり）もあります。区市の助成と一緒に使えるかは、区市に確かめます。"
+MUNICIPAL_SUBSIDIES = [
+    ("東京都", "中野区", "nakano", {
+        "label": "中野区（止水板：1/2・工事は上限100万円）",
+        "rate_label": "助成対象経費の1/2。工事は1棟100万円、簡易型止水板の購入は15万円まで。区内マンションの管理組合も申請できる",
+        "cautions": ["着手・購入の前に申請します。管理組合は集会の決議の書類が要ります。", "ほかの公的補助を受けられる場合は対象外と要綱にあります。", "2026年7月6日施行。受付期間は要綱に書かれていないので区に確かめます。", _TOKYO_TOO],
+        "url": "https://www.city.tokyo-nakano.lg.jp/bosai/suigai-sonae/shisuiban.files/youkou.pdf", "checked": "2026-11-06",
+        "covers": {"plate": {"rate": 1 / 2, "cap": 150000, "unit": 1}, "pillar": {"rate": 1 / 2, "cap": 1000000, "unit": 1}}}),
+    ("東京都", "練馬区", "nerima", {
+        "label": "練馬区（止水板：1/2・上限100万円）",
+        "rate_label": "工事・購入費用の1/2、上限100万円（100円未満切り捨て）。区内のマンション管理組合が対象",
+        "cautions": ["集会の決議を示す議事録などが要ります。", "ほかの国・都・区の助成と重ねて使えません。", "令和8年7月に始まった制度です。", _TOKYO_TOO],
+        "url": "https://www.city.nerima.tokyo.jp/kurashi/sumai/chisui/shisuiban.html", "checked": "2026-11-06",
+        "covers": {"plate": {"rate": 1 / 2, "cap": 1000000, "unit": 100}, "pillar": {"rate": 1 / 2, "cap": 1000000, "unit": 100}}}),
+    ("東京都", "北区", "kita", {
+        "label": "北区（止水板：1/2・上限50万円）",
+        "rate_label": "止水板設置工事（税込）の1/2、1建物50万円まで（千円未満切り捨て）、1建物1回。分譲マンションは管理組合の理事長が申請できる",
+        "cautions": ["事前の相談が要ります。", "ほかの公的補助を受ける場合は対象外です。", _TOKYO_TOO],
+        "url": "https://www.city.kita.lg.jp/safety/disaster/1018237/1018238/1002607.html", "checked": "2026-11-06",
+        "covers": {"pillar": {"rate": 1 / 2, "cap": 500000, "unit": 1000}}}),
+    ("東京都", "港区", "minato", {
+        "label": "港区（止水板：工事費の4/5まで・上限150万円）",
+        "rate_label": "上限150万円（助成率は工事費の4/5が限度）。マンションの管理組合も対象。令和8年4月1日〜令和11年3月31日",
+        "cautions": ["工事の前に電話で相談し、交付の承認の前に着工しません。", _TOKYO_TOO],
+        "url": "https://www.city.minato.tokyo.jp/dobokukeikaku/shisuiban/shisuiban.html", "checked": "2026-11-06",
+        "covers": {"pillar": {"rate": 4 / 5, "cap": 1500000, "unit": 1}}}),
+    ("東京都", "大田区", "ota", {
+        "label": "大田区（止水板：法人3/5・上限150万円など）",
+        "rate_label": "工事は個人4/5・法人3/5、上限は区内個人100万円・その他個人50万円・法人150万円。区内マンションの管理組合も申請できる",
+        "cautions": ["管理組合が個人と法人のどちらの区分に当たるかは要綱に書かれていないので、区に確かめます（そのため計算例は出しません）。", "対象区域は区のハザードマップの浸水想定区域等です。令和9年3月31日まで。", _TOKYO_TOO],
+        "url": "https://www.city.ota.tokyo.jp/seikatsu/sumaimachinami/sumai/j_josei/shisui-ban_josei.files/20251208_sisuibannyoukou.pdf", "checked": "2026-11-06"}),
+    ("東京都", "世田谷区", "setagaya", {
+        "label": "世田谷区（止水板：法人3/5・上限100万円など）",
+        "rate_label": "個人4/5・法人3/5、工事は上限100万円、簡易型は16万円",
+        "cautions": ["管理組合が申請できるかは要綱に書かれていないので、区に確かめます（そのため計算例は出しません）。", "ほかの国・都・区の補助を受ける場合は対象外です。", _TOKYO_TOO],
+        "url": "https://www.city.setagaya.lg.jp/03666/31783.html", "checked": "2026-11-06"}),
+    ("東京都", "品川区", "shinagawa", {
+        "label": "品川区（止水板：法人3/5・上限150万円など）",
+        "rate_label": "個人4/5・法人3/5。上限は住民登録のある個人100万円、1年以上区内登記の法人150万円など。令和8年度末までの時限措置",
+        "cautions": ["管理組合が申請できるかは資料に書かれていないので、区に確かめます（そのため計算例は出しません）。", _TOKYO_TOO],
+        "url": "https://gikai.city.shinagawa.tokyo.jp/wp-content/themes/shinagawakugikai/pdf/2025.11.05ken03.pdf", "checked": "2026-11-06"}),
+    ("東京都", "目黒区", "meguro", {
+        "label": "目黒区（止水板の工事：令和8年度の受付は終了）",
+        "rate_label": "個人9/10・法人3/4（上限は個人100万円・法人150万円など）。令和8年度は受付終了、令和9年度は事前相談のみ",
+        "cautions": ["管理組合の区分は書かれていないので、区に確かめます。", _TOKYO_TOO],
+        "url": "https://www.city.meguro.tokyo.jp/douro/kurashi/sumai/sisuiban.html", "checked": "2026-11-06"}),
+    ("東京都", "杉並区", "suginami", {
+        "label": "杉並区（防水板：3/4・上限100万円。個人向けと読める）",
+        "rate_label": "工事費の3/4、1棟100万円。区内で工事をする個人が対象と読め、分譲マンションの管理組合が使えるかは分からない",
+        "cautions": ["JIS の止水性能 Ws-3 相当以上の書類が要ります。", _TOKYO_TOO],
+        "url": "https://www.city.suginami.tokyo.jp/guide/machi/chisui/1005070.html", "checked": "2026-11-06"}),
+    ("神奈川県", "川崎市", "kawasaki", {
+        "label": "川崎市（簡易型止水板の購入：1/2・上限10万円）",
+        "rate_label": "簡易型止水板（工事が要らず取り外せるもの）の購入費の1/2、上限10万円。共同住宅の管理組合も申請できる。設置工事費は対象外",
+        "cautions": ["交付決定の通知の前に買ったものは対象外です。令和8年5月25日〜令和9年1月29日、予算に達したら終了。"],
+        "url": "https://www.city.kawasaki.jp/templates/prs/cmsfiles/contents/0000186/186598/houdouhappyousiryou.pdf", "checked": "2026-11-06",
+        "covers": {"plate": {"rate": 1 / 2, "cap": 100000, "unit": 1}}}),
+    ("栃木県", "宇都宮市", "utsunomiya", {
+        "label": "宇都宮市（止水板：1/2・上限50万円）",
+        "rate_label": "止水板等の設置工事の費用の1/2（千円未満切り捨て）、1申請50万円まで。対象の施設に「マンション」が明記されている。簡易型止水板は対象外",
+        "cautions": ["申請できるのは施設を所有・賃借・管理する者です。管理組合がこれに当たるかは市に確かめます。", "対象地域は浸水想定区域、過去の浸水被害地域などです。"],
+        "url": "https://www.city.utsunomiya.lg.jp/_res/projects/default_project/_page_/001/045/688/youkou.pdf", "checked": "2026-11-06",
+        "covers": {"pillar": {"rate": 1 / 2, "cap": 500000, "unit": 1000}}}),
+]
+for _pref, _city, _key, _item in MUNICIPAL_SUBSIDIES:
+    SUBSIDIES[_key] = _item
 
 _COMMON_DOC_NOTE = "架空の見本です。実在の建物の記録ではありません。"
 
@@ -401,10 +491,23 @@ def base_for_answers(answers: dict, fallback: Optional[str] = None) -> str:
     return fallback if fallback in ("a", "c") else "a"
 
 
+def _in_prefecture(label: str, pref: str) -> bool:
+    """「東京都」の書き方と、公開地図の「…, 東京, …」の書き方の両方を見る。"""
+    short = pref[:-1] if pref.endswith(("都", "県")) else pref
+    return pref in label or bool(re.search(rf"(^|[,、\s]){short}([,、\s]|$)", label))
+
+
 def region_of(label: str) -> str:
-    for word, region in (("東京都", "tokyo"), ("千葉市", "chiba"), ("横浜市", "yokohama")):
-        if word in label:
-            return region
+    """住所の市区町村から、補助の欄を選ぶ。同じ名前の区がほかの市にもあるので、都県もそろったときだけ区市を選ぶ。"""
+    for pref, city, key, _item in MUNICIPAL_SUBSIDIES:
+        if city in label and _in_prefecture(label, pref):
+            return key
+    if "千葉市" in label:
+        return "chiba"
+    if "横浜市" in label:
+        return "yokohama"
+    if _in_prefecture(label, "東京都"):
+        return "tokyo"
     return "none"
 
 

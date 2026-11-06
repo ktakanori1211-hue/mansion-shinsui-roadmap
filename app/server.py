@@ -54,7 +54,11 @@ def build_state(label: str, longitude: float, latitude: float, basis: str, is_de
     reading = location.read_location(longitude, latitude)
     rows = judge.judge_location(reading, basis, records.find(label))
     site = state.Site(label, longitude, latitude, basis, is_demo)
-    return state.new_state(site, reading, rows, basis_note=judge.basis_note(basis))
+    result = state.new_state(site, reading, rows, basis_note=judge.basis_note(basis))
+    # 場所を選んだらすぐ出す、この市区町村の補助（2026-11-06）。調べていない地域は「まだ調べていない」と言う。
+    region = samples.region_of(label)
+    result["subsidy"] = {"region": region, **samples.SUBSIDIES[region]}
+    return result
 
 
 class Handler(SimpleHTTPRequestHandler):

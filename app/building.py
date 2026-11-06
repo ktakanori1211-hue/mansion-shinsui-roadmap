@@ -788,7 +788,6 @@ def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
     tr_risk = any(item["key"] == "tr" and item["verdict"] == RISK for item in equipment)
     keys = {
         "door": sample["archetype"] != "ground",
-        "move": sample["has_chief_engineer"],
         "door_rebuild": sample["archetype"] != "ground",
         "tepco": tr_risk,
         # 共用の主開閉器盤の付け替えは、主任技術者のいない建物（借室のみ型・全低圧受電型）だけ。
