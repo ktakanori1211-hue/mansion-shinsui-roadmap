@@ -348,7 +348,7 @@ class NoDrawingTest(unittest.TestCase):
         js = read("start.js")
         three = block(js, "function screenThree()", "\n}\n")
         self.assertIn("${drawingQuestion()}", three)
-        self.assertIn("hasDrawing() ? cards + readCard() : observeCards()", three)
+        self.assertIn("hasDrawing() ? readCard() + cards : observeCards()", three)
         # 見て答えたことは、確かめた印（confirmed）にせず、聞き取り（statements）として送る。
         observe = block(js, "async function setObservation(", "\n}\n")
         self.assertNotIn("S.choices", observe)
@@ -547,7 +547,11 @@ class WhyFirstTest(unittest.TestCase):
             self.assertNotIn(text, js)
         self.assertEqual(js.count("<svg class="), 1)  # 平面図だけ（地図は Leaflet）
         one = block(js, "function screenOne()", "\n}\n")
-        self.assertIn("${EVAC_LINE}", one)
+        # 避難の一行は画面1から外した（2026-11-06 本人の指示）。文で送る要点には残す。
+        self.assertNotIn("${EVAC_LINE}", one)
+        self.assertIn("EVAC_LINE", block(js, "function summaryText()", "\n}\n"))
+        self.assertIn('<table class="place">', one)
+        self.assertNotIn("ownQuestions()", one)
         self.assertIn("landLine()", one)
 
     def test_screen_two_leads_with_the_server_top_line(self):
@@ -575,14 +579,13 @@ class WhyFirstTest(unittest.TestCase):
         self.assertIn('["hv", "water"]', guide)
         self.assertIn('scenarios?.["3:plate"]', guide)
         self.assertIn('if (phase.key === "months") lead = ownGuide(i)', js)
-        # 壁の穴を塞ぐと、見本Aの受電の箱の「1年以上」が消え、その理由の文（＊）が below に入る。
+        # 壁の穴を塞ぐと、見本Aの受電の箱の「1年以上」が消える。「目安なし＊」と理由の文は画面に出さない（2026-11-06 本人の決定で廃止）。
         scenarios = payload({}, [])["scenarios"]
         months = lambda measure: next(r for r in scenarios[f"3:{measure}"]["table"] if r["key"] == "hv")["cells"][4]
         self.assertIn("1年以上", months("plate"))
-        self.assertTrue(months("hole").startswith("目安なし"))
-        self.assertTrue(any(line.startswith("＊") for line in scenarios["3:hole"]["below"]))
-        # 目安が消えた理由の文は、折りたたまずに出す。
-        self.assertIn("scenario(3)?.below", block(js, "function timeline()", "\n}\n"))
+        self.assertIn("return hasGuide(cell) ? cell : \"\";", guide)
+        self.assertNotIn("below", block(js, "function timeline()", "\n}\n"))
+        self.assertNotIn("目安なし＊", js)
 
     def test_stopped_is_not_coloured_as_risk(self):
         # 「止まる想定」は判定ではないので、リスクあり（確定）の赤と色を分ける（what-028）。
@@ -604,9 +607,12 @@ class WhyFirstTest(unittest.TestCase):
         js = read("start.js")
         chips = block(js, "function measureChips()", "\n}\n")
         self.assertIn("b.model_measures", chips)
-        for key in ("b.fixed.hole", "b.fixed.raise", "b.fixed.tr_box"):
-            self.assertIn(key, chips)
+        # 固定の言い訳文は出さず、何が助かるかを1行で（2026-11-06）。対策ごとに1行ある。
+        self.assertNotIn("b.fixed.", chips)
+        self.assertIn("MEASURE_GAIN[S.measure]", chips)
+        gains = dict(re.findall(r'(\w+): "([^"]*)"', block(js, "const MEASURE_GAIN = {", "};")))
         body = payload({}, [])
+        self.assertEqual(set(gains), {m["key"] for m in body["model_measures"]})
         for measure in body["model_measures"]:
             for level in (1, 2, 3):
                 self.assertIn(f"{level}:{measure['key']}", body["scenarios"])
@@ -791,6 +797,8 @@ class SecondReviewTest(unittest.TestCase):
         self.assertEqual(samples.region_of("神奈川県平塚市"), "hiratsuka")
         # 市川市は「10万円×戸数」の上限がある（要綱第6条）。管理組合可と原文にない市は計算例を出さない。
         self.assertEqual(samples.SUBSIDIES["ichikawa"]["covers"]["plate"]["per_unit"], 100000)
+        self.assertEqual(samples.region_of("東京都豊島区"), "toshima")
+        self.assertEqual(samples.SUBSIDIES["toshima"]["covers"]["pillar"]["cap"], 1000000)
         for key in ("kashiwa", "atsugi", "niiza", "katsushika", "hachioji", "mitaka", "chofu", "abiko", "hiratsuka"):
             self.assertNotIn("covers", samples.SUBSIDIES[key], key)
         self.assertIn("calc.per_unit", read("start.js"))
@@ -841,13 +849,13 @@ class SurfaceLengthTest(unittest.TestCase):
     """
 
     LIMITS = {
-        "1 場所": 620,
-        "2 確かめる": 480,
-        "3 止まるもの": 780,
-        "3 止まるもの（③）": 850,
-        "4 渡す：memo": 540,
-        "4 渡す：a4": 1950,
-        "4 渡す：cost": 1150,
+        "1 場所": 330,
+        "2 確かめる": 430,
+        "3 止まるもの": 720,
+        "3 止まるもの（③）": 740,
+        "4 渡す：memo": 230,
+        "4 渡す：a4": 1420,
+        "4 渡す：cost": 620,
     }
 
     def test_each_screen_stays_under_the_limit(self):
@@ -858,4 +866,19 @@ class SurfaceLengthTest(unittest.TestCase):
         self.assertEqual(set(counts), set(self.LIMITS))
         over = {name: f"{count}字（上限 {self.LIMITS[name]}字）" for name, count in counts.items() if count > self.LIMITS[name]}
         self.assertEqual(over, {}, "表面の文字が上限を超えました。足すなら、同じだけ削るか折りたたみへ移してください。")
+
+    def test_screens_after_the_2026_11_06_cut(self):
+        # 画面2：写真の読み取りは質問より上。画面3：「止まらない（稼働）」、凡例なし。画面4：補助は出典の1行、保存は折りたたみ。依頼メモは「2 確かめる」。
+        js = read("start.js")
+        three = block(js, "function screenThree()", "\n}\n")
+        self.assertIn("readCard() + cards", three)
+        self.assertIn("ownQuestions()", three)
+        self.assertIn('"止まらない（稼働）"', block(js, "function lifeChips(", "\n}\n"))
+        self.assertNotIn("function legend()", js)
+        self.assertNotIn("subsidyBox(", js)
+        four = block(js, "function screenFour()", "\n}\n")
+        self.assertIn("${aidSource()}", four)
+        self.assertIn('<details class="more save-fold"><summary>入力した内容を保存・共有する</summary>${saveBox()}</details>', four)
+        self.assertIn("「2 確かめる」に入れると", js)
+        self.assertNotIn("「3 確かめる」", js)
 

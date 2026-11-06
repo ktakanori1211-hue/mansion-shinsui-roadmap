@@ -1,7 +1,7 @@
 "use strict";
 
 // マンション浸水ロードマップ（2026-11-05 一本化）。
-// 4つの画面を順に進む：1 場所 → 2 止まるもの → 3 確かめる → 4 渡す。
+// 4つの画面を順に進む：1 場所 → 2 確かめる → 3 止まるもの → 4 渡す。
 // 絵は構内平面図だけ。部屋の位置は /api/building の sample.views から描き、部屋の色はサーバーの判定（equipment の verdict）のまま塗る。
 // この画面では新しい判定を作らない。色は 赤＝確かめて止まるおそれ／橙＝未確認（危険という意味ではない）／緑＝問題なし。
 // 青い矢印は水の入り道（入りうる所）で、判定ではない。
@@ -418,19 +418,10 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   </svg>`;
 }
 
-function legend() {
-  return `<ul class="legend">
-    <li class="risk"><i></i>止まるおそれ</li>
-    <li class="unconfirmed"><i></i>未確認（危険という意味ではありません）</li>
-    <li class="clear"><i></i>問題なし</li>
-    <li class="water"><i></i>水の入り道</li>
-    ${S.building?.sample?.views?.some((v) => v.rooms.some((room) => room.key === "tr")) ? "<li>借室＝東京電力の変圧器の部屋</li>" : ""}
-  </ul>`;
-}
 
 // 暮らしの札（2026-11-05 本人の指摘「これだとわかりにくい」）。
 // 水の位置を出しているときは、札の上に「水が③まで来たら」と書き、どの状態の札かを言う。
-// 「？」は言葉で「分からない」と言い、なぜ分からないかを添える。止まる想定に入らない札は「使える」と言わない（what-029）。
+// 「？」は言葉で「分からない」と言う。止まらない札は「止まらない（稼働）」（2026-11-06 本人の指示）。
 const LEVEL_MARK = { 1: "①", 2: "②", 3: "③" };
 
 function lifeChips(level = 0) {
@@ -442,8 +433,8 @@ function lifeChips(level = 0) {
     if (level) {
       const raw = serviceState(level, SERVICE_OF_TILE[tile.key]);
       state = { stopped: "stopped", unknown: "unconfirmed" }[raw] || "running";
-      mark = { stopped: "止まる想定", unknown: "分からない" }[raw] || "止まる想定に入らない";
-      small = { stopped: tile.small(n), unknown: "東京電力の設備しだいで、建物側からは分からない" }[raw] || "遮断や点検で止まることはあります";
+      mark = { stopped: "止まる想定", unknown: "分からない" }[raw] || "止まらない（稼働）";
+      small = { stopped: tile.small(n), unknown: "東京電力の設備しだい" }[raw] || "";
     }
     return `<li class="${state}"><b>${esc(tile.label)}</b><em>${esc(mark)}</em><small>${esc(small)}</small></li>`;
   }).join("");
@@ -593,22 +584,19 @@ function landLine() {
 }
 
 // 対策の切り替え（what-019）。名前はサーバーの model_measures のまま。選んだ対策の固定の文（what-026）を言い換えずに添える。
+const MEASURE_GAIN = { plate: "玄関からの浸水を防げる（壁の穴からは入る）", hole: "電気室への浸水を防げる", raise: "ポンプ盤の浸水を防げる" };
+
 function measureChips() {
   const b = S.building;
   const list = b.model_measures || [];
   if (!list.length) return "";
   const chips = list.map((m) => `<button type="button" class="option${S.measure === m.key ? " chosen" : ""}" data-measure="${esc(m.key)}" aria-pressed="${S.measure === m.key}">${esc(m.short)}</button>`).join("");
-  const chosen = list.find((m) => m.key === S.measure);
-  const fixed = [];
-  if (S.measure === "hole") fixed.push(b.fixed.hole);
-  if (S.measure === "raise") fixed.push(b.fixed.raise);
-  fixed.push(b.fixed.tr_box ? `借室：${b.fixed.tr_box}` : "");
+  // 対策で何が助かるかを1行で（2026-11-06 本人の指示：言い訳の固定文は出さない）。
   return `<div class="measures-switch">
     <p class="own-head">対策を選ぶと、止まり方が変わります</p>
     <div class="options">${chips}</div>
-    ${chosen ? `<p class="hint">${esc(chosen.label)}</p>` : ""}
+    <p class="gain">${esc(MEASURE_GAIN[S.measure] || "")}</p>
     ${decideLine()}
-    ${fixed.filter(Boolean).map((text) => `<p class="fixed-line">${esc(text)}</p>`).join("")}
   </div>`;
 }
 
@@ -636,26 +624,26 @@ const PLACE_PLAIN = {
   surge: "高潮のとき、水につかる想定の場所です",
 };
 
-// ハザードの行（洪水・内水・高潮）の言葉。値の形（深さの帯・色なし・データなし）と、読んだ点（建物の位置か代表点か）で言い分ける。
+// 5項目の表の「短い理由」（2026-11-06 本人の指示：長い文のリストではなく「項目｜判定｜短い理由」の表1つ）。
 function hazardPlain(item) {
   const atBuilding = S.place?.site?.basis === "building";
-  if (/数m先/.test(item.conclusion || "")) return "すぐ近く（数m先）に、水につかる想定の色があります";
-  if (parseBand(item.value)) return item.verdict === "risk" || atBuilding ? PLACE_PLAIN[item.key] : `${PLACE_PLAIN[item.key].replace("場所です", "場所")}（町丁の代表点の色。建物の位置ではまだ確かめていません）`;
-  if (item.value === "色なし") return "地図に色はありません。色がないことは、安全という意味ではありません";
-  return "国の地図にデータがなく、色があるかどうかも分かりません";
+  if (/数m先/.test(item.conclusion || "")) return "数m先に色あり";
+  if (parseBand(item.value)) return `${item.value}の想定${item.verdict === "risk" || atBuilding ? "" : "（代表点）"}`;
+  if (item.value === "色なし") return "色なし（安全の意味ではない）";
+  return "データなし";
 }
 
 function recordPlain(item) {
-  if (item.verdict === "risk") return item.conclusion;
-  if (item.value === "未収録") return "この町丁の記録は、まだ手元の表に入っていません";
-  return "記録がないことは、浸水がなかったことを示しません";
+  if (item.verdict === "risk") return "同じ丁目に記録あり";
+  if (item.value === "未収録") return "手元の表に未収録";
+  return "記録なし（浸水なしの意味ではない）";
 }
 
-// 土地の高さの言葉。凹みでも、サーバーの判定が未確認（代表点・仮の目安）なら、そう添える（判定表1-3・1-4）。
+// 土地の高さ。凹みでも判定が未確認（代表点・仮の目安）なら、そう添える（判定表1-3・1-4）。
 function groundPlain(item) {
   const text = terrainLine().text;
   if (item.verdict === "risk") return text;
-  return S.place?.location?.reading?.basin ? `${text}（地図の標高による仮の目安。建物の位置で確かめます）` : text;
+  return S.place?.location?.reading?.basin ? `${text}（地図の標高による仮の目安）` : text;
 }
 
 function placeLines() {
@@ -666,19 +654,18 @@ function placeLines() {
     verdict: item.verdict,
     name: PLACE_SHORT[item.key] || item.label,
     text: item.key === "ground" ? groundPlain(item) : item.key === "record" ? recordPlain(item) : PLACE_PLAIN[item.key] ? hazardPlain(item) : item.conclusion || item.value || "",
-    who: item.verdict === "unconfirmed" ? item.confirm_short || "" : "",
   }));
 }
 
 // 土地の高さの文（判定は付けない。色は ground の行の verdict から取る）。
 function terrainLine() {
   const reading = S.place?.location?.reading || {};
-  if (reading.basin) return { text: "周りより低い凹み。周りの水が集まります" };
+  if (reading.basin) return { text: "周りより低い凹み" };
   const high = reading.high_directions || [];
-  if (high.length) return { text: `${high.join("・")}が高く、水が流れてきます` };
+  if (high.length) return { text: `${high.join("・")}が高い` };
   const points = reading.elevation?.points || [];
-  if (points.length >= 5) return { text: "周りより少し高い土地（凹みではない）" };
-  return { text: "土地の高さは読めませんでした" };
+  if (points.length >= 5) return { text: "周りより少し高い" };
+  return { text: "読めず" };
 }
 
 // ---- 建物名から Web で階数を探す（Claude、2026-11-05） ----
@@ -771,7 +758,7 @@ function screenOne() {
         <div class="map-box"><div id="site-map" class="site-map" aria-label="地図：ハザードマップと土地の高さ"></div></div>
         ${mapLegend()}
         ${S.sampleId ? "" : `<p class="pin-hint ${S.place.site.basis === "building" ? "done" : ""}">${S.place.site.basis === "building" ? "建物の位置の値で読んでいます（地図を押すと選び直せます）" : "地図で、建物の場所を押してください（今は町丁の代表点の値）"}</p>`}
-        <ul class="place-lines">${lines.map((line) => `<li class="${line.verdict}"><i>${LOOK[line.verdict]?.word || "未確認"}</i><p><b>${esc(line.name)}</b>${esc(line.text)}${line.who ? `<small>確かめる：${esc(line.who)}</small>` : ""}</p></li>`).join("")}</ul>
+        <table class="place"><thead><tr><th>項目</th><th>判定</th><th>理由</th></tr></thead><tbody>${lines.map((line) => `<tr class="${line.verdict}"><td>${esc(line.name)}</td><td><i>${LOOK[line.verdict]?.word || "未確認"}</i></td><td>${esc(line.text)}</td></tr>`).join("")}</tbody></table>
         <details class="place-more more"><summary>数値と出典を見る</summary>
           <ul class="place-chips">${rows}</ul>
           ${landLine() ? `<p class="land-line">${esc(landLine())}</p>` : ""}
@@ -780,9 +767,6 @@ function screenOne() {
           ${inlandNote()}
         </details>
         ${placeAid()}
-        <p class="evac">${EVAC_LINE}</p>
-        ${S.sampleId ? "" : ownQuestions()}
-        ${S.sampleId ? "" : experienceQuestion()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
         <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>この建物で見る</button>
       </div>`;
@@ -923,7 +907,7 @@ function timeline() {
     if (phase.key === "day") lead = stopped.length ? `止まる想定：${stopped.join("・")}` : phase.line;
     if (phase.key === "morning") lead = n >= 2 ? `${n}階まで、水もごみも階段で運ぶ` : S.building?.sample?.archetype === "ground" ? "機械の部屋に水が残り、入れない" : "地下に水が残り、機械室に入れない";
     if (phase.key === "week") lead = facts.find((cell) => /ほかの建物の例/.test(cell) && !/本復旧/.test(cell)) || facts.find(hasGuide) || phase.line;
-    // 約2か月〜本復旧は、この建物の同じ設備の行の目安が出るか消えるか（「目安なし＊」）を表面で見せる（what-019、what-020）。
+    // 約2か月〜本復旧は、この建物の同じ設備の行の目安が出るか消えるか（目安なしのとき）を表面で見せる（what-019、what-020）。
     if (phase.key === "months") lead = ownGuide(i) || facts.find(hasGuide) || phase.line;
     const head = lead.replace(/（.*$/, "");
     const note = lead.slice(head.length);
@@ -934,12 +918,10 @@ function timeline() {
       <details class="phase-more"><summary>くわしく</summary><p class="phase-line">${esc(shapeWords(phase.line))}</p>${rest.length ? `<ul class="facts">${rest.map(factLine).join("")}</ul>` : ""}</details>
     </li>`;
   }).join("");
-  // 目安が消えたマス（＊）の理由の文は、折りたたまずに出す（what-028、how-035）。
-  const below = scenario(3)?.below || [];
-  return `<ol class="timeline">${items}</ol>${notes[0] ? `<p class="hint">${esc(notes[0])}</p>` : ""}${below.map((text) => `<p class="fixed-line">${esc(text)}</p>`).join("")}`;
+  return `<ol class="timeline">${items}</ol>${notes[0] ? `<p class="hint">${esc(notes[0])}</p>` : ""}`;
 }
 
-// 目安の文があるマスか（「—」「止まる想定」「目安なし＊」は目安ではない）。
+// 目安の文があるマスか（「—」「止まる想定」「目安なし」は目安ではない）。
 function hasGuide(cell) {
   return Boolean(cell) && cell !== "—" && cell !== "止まる想定" && !cell.startsWith("目安なし");
 }
@@ -951,7 +933,8 @@ function ownGuide(index) {
   const anchor = ["hv", "water"].find((key) => hasGuide(base.find((item) => item.key === key)?.cells?.[index]));
   if (!anchor) return "";
   const cell = (scenario(3)?.table || []).find((item) => item.key === anchor)?.cells?.[index];
-  return cell && cell !== "—" ? cell : "";
+  // 対策で目安が消えたら、この行の太字は出さない（目安なしの印は出さない。2026-11-06 本人の指示）。
+  return hasGuide(cell) ? cell : "";
 }
 
 function screenTwo() {
@@ -976,7 +959,6 @@ function screenTwo() {
     ${measureChips()}
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
     ${lifeChips(S.play)}
-    ${legend()}
     <h2 class="part"><span>2</span>暮らしが止まるまで</h2>
     ${timeline()}
     <button type="button" class="primary" data-act="to4">管理会社と理事会に渡す</button>
@@ -991,6 +973,12 @@ function pinsOf(list) {
     pins[step.key] = i + 1;
   });
   return pins;
+}
+
+// 判定の行の説明を1行に詰める（最初の文だけ、（ ）の中は落とす）。
+function shortSummary(text) {
+  const head = String(text || "").split("。")[0].replace(/（[^）]*）/g, "");
+  return head.length > 26 ? `${head.slice(0, 25)}…` : head;
 }
 
 function screenThree() {
@@ -1011,17 +999,18 @@ function screenThree() {
     return `${before}<div class="qcard ${v}">
       <p class="qtitle"><span class="no">${q.no}</span>${esc(q.title)}</p>
       ${engineer}${options}
-      <p class="qresult ${v}"><b>${LOOK[v].mark} ${LOOK[v].word}</b>${item ? `<small>${esc(item.summary)}</small>` : ""}</p>
+      <p class="qresult ${v}"><b>${LOOK[v].word}</b>${item ? `<small>${esc(shortSummary(item.summary))}</small>` : ""}</p>
     </div>`;
   }).join("");
   return `<section class="s3">
     <div class="sticky">
-      <div class="count-bar"><span class="count" id="count"><span>未確認</span><b>${count}</b><span>／3</span></span><span class="kicker">管理会社に竣工図で見てもらった答えを入れると、図の色が変わります</span></div>
+      <div class="count-bar"><span class="count" id="count"><span>未確認</span><b>${count}</b><span>／3</span></span><span class="kicker">未確認（危険という意味ではありません）は、管理会社が竣工図で確かめた答えを入れると色が変わります</span></div>
       <div class="plan">${plan({ pins: pinsOf(steps()), small: true })}</div>
     </div>
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
     ${drawingQuestion()}
-    ${hasDrawing() ? cards + readCard() : observeCards()}
+    ${hasDrawing() ? readCard() + cards : observeCards()}
+    ${S.sampleId ? "" : `<details class="more"><summary>建物のこと（階数・地下・この辺りの経験）</summary>${ownQuestions()}${S.sampleId ? "" : experienceQuestion()}</details>`}
     <button type="button" class="primary" data-act="to3">水が入る順と、止まるものを見る</button>
   </section>`;
 }
@@ -1132,7 +1121,7 @@ function bandWord(label) {
 function mapLegend() {
   const reading = S.place?.location?.reading || {};
   const shown = shownLayer();
-  if (!shown) return `<p class="map-caption">この地図には、水につかる想定の色を重ねていません（この地点では、川・高潮・下水の想定の色が読めなかったため）。色がないことは、安全という意味ではありません。</p>`;
+  if (!shown) return `<p class="map-caption">この地点では想定の色を読めなかったので、色を重ねていません（安全の意味ではありません）。</p>`;
   const plain = LAYER_PLAIN[shown.key] || { family: "", long: shown.label };
   // 地図に重ねていない層にも色があるときは、そう言う（見出しと地図が食い違って見えないように）。
   // 「下水・水路」の中黒と区別するため、読点でつなぐ。
@@ -1144,8 +1133,7 @@ function mapLegend() {
   const where = S.place?.site?.basis === "building" ? "建物の場所" : "町丁の代表点";
   const point = shown.status === "color" ? `${where}の色` : `${where}のすぐ近く（数m先）の色`;
   return `<div class="map-legend">
-    <p class="map-point">${color ? `<i style="background:${esc(color)}"></i>` : ""}<b>${point}：${esc(bandWord(label) || label)}の深さの想定</b><small>（地図の凡例では ${esc(label)}）</small></p>
-    <p class="map-caption">地図の色は、${esc(plain.long)}です。色が濃いほど深い想定です。${others.length ? `${esc(others.join("、"))}の色は、この地図には重ねていません。` : ""}</p>
+    <p class="map-point">${color ? `<i style="background:${esc(color)}"></i>` : ""}<b>${point}：${esc(bandWord(label) || label)}の深さの想定</b><small>（${esc(plain.short)}の色。${others.length ? `${esc(others.join("、"))}は重ねていない` : `凡例では ${esc(label)}`}）</small></p>
   </div>`;
 }
 
@@ -1273,11 +1261,11 @@ function costTable(print = false) {
   <p class="hint">単価と復旧費は作者（電気主任技術者）の実務の目安で、見積りに置き換えます。${aid.known ? "補助は制度の率と上限で計算した例で、交付を約束するものではありません。" : "この市区町村の補助は未調査のため、0円で計算しています。"}</p>`;
 }
 
-function subsidyBox(all = false) {
+// 補助の出典の1行（表の中に補助の額が入っているので、説明の箱は出さない。2026-11-06 本人の指示）。
+function aidSource() {
   const aid = subsidy();
-  const cautions = (aid.cautions || []).slice(0, all ? 4 : 2).map((text) => `<li>${esc(text)}</li>`).join("");
-  const source = aid.url ? `<p class="hint">出典：<a href="${esc(aid.url)}" target="_blank" rel="noopener">${esc(aid.label.replace(/（.*$/, ""))}の公式の案内</a>（${esc(aid.checked || "")} 確認）。申請を勧めるものではありません。</p>` : "";
-  return `<div class="aid-box"><b>${esc(aid.label || "")}</b><p>${esc(aid.rate_label || "")}</p>${cautions ? `<ul>${cautions}</ul>` : ""}${source}</div>`;
+  if (!aid.url) return `<p class="hint">${esc(aid.label || "")}。${esc(aid.rate_label || "")}</p>`;
+  return `<p class="hint">補助の出典：<a href="${esc(aid.url)}" target="_blank" rel="noopener">${esc(aid.label.replace(/（.*$/, ""))}の公式の案内</a>（${esc(aid.checked || "")} 確認）。申請を勧めるものではありません。</p>`;
 }
 
 // 画面1：場所を選んだらすぐ、この市区町村の補助を出す（2026-11-06 本人の指摘「マンション名から即座に」）。
@@ -1320,8 +1308,7 @@ function a4Back() {
     <p class="sheet-tag">理事会資料（裏）</p>
     <h2>対策の費用の目安</h2>
     ${costTable(true)}
-    <h2>補助</h2>
-    ${subsidyBox()}
+    ${aidSource()}
     <div class="print-fixed">${[disclaimer() || "", ...SHEET_FIXED, ...SCOPE_LINES].map((line) => `<p>${esc(line)}</p>`).join("")}</div>
   </div>`;
 }
@@ -1343,7 +1330,7 @@ function screenFour() {
   } else {
     body = `<h1 class="title">対策の費用と補助の目安</h1>
       ${costTable()}
-      ${subsidyBox()}
+      ${aidSource()}
       <h2 class="part"><span>✓</span>理事会で決めること（今日0円で決められる3つ）</h2>
       ${boardDecisions()}`;
   }
@@ -1355,7 +1342,7 @@ function screenFour() {
     <button type="button" class="send" data-act="send">文で送る（LINE・メールなど）</button>
     ${S.sendMsg ? `<p class="hint" role="status">${esc(S.sendMsg)}</p>` : ""}
     ${S.sendText ? `<textarea class="send-text" readonly rows="10">${esc(S.sendText)}</textarea>` : ""}
-    ${saveBox()}
+    <details class="more save-fold"><summary>入力した内容を保存・共有する</summary>${saveBox()}</details>
   </section>`;
 }
 
@@ -1457,13 +1444,13 @@ function printSheet() {
       <p>図の番号の所を、竣工図と点検の記録で確かめてください。住民・理事・管理員は、電気やポンプの部屋に入りません。</p>
       <ol class="print-asks">${asks}</ol>
       ${heardItems().length || experienceLine() ? `<p><b>住民の話・見たこと</b></p><ul>${experienceLine() ? `<li>${esc(experienceLine())}</li>` : ""}${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul>` : ""}
-      <p>答えが分かったら、マンション浸水ロードマップの「3 確かめる」に入れると、図の色が変わります。</p>
+      <p>答えが分かったら、マンション浸水ロードマップの「2 確かめる」に入れると、図の色が変わります。</p>
       ${fixed}
     </div>`;
   } else if (S.tab === "a4") {
     html = a4Front(date) + a4Back();
   } else {
-    html = `<div class="sheet"><h1>対策の費用・補助の目安</h1><p>${esc(where())}　${date}</p>${costTable(true)}${subsidyBox(true)}<p class="sheet-line">${COST_FIXED}</p>${boardDecisions(true)}${fixed}</div>`;
+    html = `<div class="sheet"><h1>対策の費用・補助の目安</h1><p>${esc(where())}　${date}</p>${costTable(true)}${aidSource()}<p class="sheet-line">${COST_FIXED}</p>${boardDecisions(true)}${fixed}</div>`;
   }
   const box = document.getElementById("print-memo");
   box.innerHTML = html;
@@ -1809,6 +1796,7 @@ screen.addEventListener("click", (event) => {
       b.classList.toggle("chosen", b === target);
       b.setAttribute("aria-pressed", String(b === target));
     });
+    if (S.building) loadBuilding().then(render);
   } else if (target.dataset.tab) {
     S.tab = target.dataset.tab;
     render();
@@ -1847,6 +1835,7 @@ screen.addEventListener("input", (event) => {
 
 screen.addEventListener("change", (event) => {
   if (event.target.id === "plan-file" && event.target.files[0]) readPlan(event.target.files[0]);
+  if (event.target.id === "own-floors" && S.building) loadBuilding().then(render);
   if (event.target.id === "open-file" && event.target.files[0]) {
     S.openFile = event.target.files[0];
     S.openMsg = "";
@@ -1952,8 +1941,7 @@ function saveBox() {
   const days = S.saveDays || 30;
   const chips = SAVE_DAYS.map(([d, word]) => `<button type="button" class="option${days === d ? " chosen" : ""}" data-save-days="${d}" aria-pressed="${days === d}">${word}</button>`).join("");
   return `<div class="save-box">
-    <p class="qtitle">入力した内容を保存する（パスワードつき）</p>
-    <p class="qsub">次に開くとき、場所と答えを入れ直さずに続きから見られます。入れるのは、場所・答え・住んでいる階・選んだ対策・見たこと・費用の個数です。図面・チャット・APIキーは入れません。</p>
+    <p class="qsub">パスワードつきで保存します。次に開くとき、場所と答えを入れ直さずに続きから見られます。入れるのは、場所・答え・住んでいる階・選んだ対策・見たこと・費用の個数です。図面・チャット・APIキーは入れません。</p>
     <div class="own-row"><span>期限</span><div class="options">${chips}</div></div>
     <label class="save-pass">パスワード<input id="save-pass" type="text" autocomplete="off" spellcheck="false" value="${esc(S.savePass || "")}" placeholder="8文字以上"></label>
     <div class="options"><button type="button" class="option" data-act="pass-random">ランダムに作る</button><button type="button" class="option" data-act="pass-copy">パスワードをコピー</button></div>

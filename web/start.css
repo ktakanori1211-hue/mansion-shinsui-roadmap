@@ -94,18 +94,6 @@ button { font: inherit; }
 .terrain { margin: 0; font-size: 16px; font-weight: 800; padding-left: 10px; border-left: 5px solid var(--unconfirmed-line); }
 .terrain.risk { color: var(--risk); border-left-color: var(--risk-line); }
 .terrain small { display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
-.place-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.place-lines li { display: flex; gap: 8px; align-items: flex-start; padding: 8px 6px; background: #fff; border-bottom: 1px solid var(--rule); }
-.place-lines li:first-child { border-top: 1px solid var(--rule); }
-.place-lines li.risk { background: #fff; }
-.place-lines li.clear { background: #fff; }
-.place-lines i { font-style: normal; font-weight: 800; flex: none; border-radius: 0; padding: 2px 6px; color: #fff; background: var(--unconfirmed-line); font-size: 11.5px; white-space: nowrap; margin-top: 2px; min-width: 5.5em; text-align: center; }
-.place-lines li.risk i { background: var(--risk-line); }
-.place-lines li.clear i { background: var(--clear-line); }
-.place-lines p { margin: 0; font-size: 14.5px; line-height: 1.5; font-weight: 700; }
-.place-lines li.risk p { color: var(--risk); }
-.place-lines b { display: block; font-size: 12px; color: var(--muted); font-weight: 800; }
-.place-lines small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 2px; }
 .map-point { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 14.5px; }
 .map-point i { width: 26px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,.2); display: inline-block; }
 .map-point small { font-size: 12px; color: var(--muted); }
@@ -196,7 +184,6 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .qsub { margin: 4px 0 0; font-size: 14.5px; line-height: 1.55; }
 .lead-why { margin: -6px 0 0; font-size: 16px; font-weight: 800; color: var(--risk); }
 .land-line { margin: 0; font-size: 15px; font-weight: 800; color: var(--navy); }
-.evac { margin: 0; font-size: 12.5px; color: var(--muted); border-left: 3px solid #b8bec8; padding-left: 8px; }
 .p-hole { fill: #fff; stroke: var(--water); stroke-width: 4; }
 .p-entry { font-size: 20px; font-weight: 800; fill: #1d5fa8; paint-order: stroke; stroke: #f7f8fa; stroke-width: 5px; }
 .p-pin circle { fill: var(--navy); stroke: #fff; stroke-width: 3; }
@@ -206,12 +193,6 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .play { flex: none; border: 1.5px solid var(--accent); background: #fff; color: var(--accent); border-radius: 2px; padding: 8px 14px; font-weight: 800; cursor: pointer; }
 .caption { font-size: 14px; color: var(--ink); }
 
-.legend { list-style: none; margin: -6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
-.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 0; margin-right: 5px; vertical-align: -1px; }
-.legend .risk i { background: var(--risk-line); }
-.legend .unconfirmed i { background: var(--unconfirmed-line); }
-.legend .clear i { background: var(--clear-line); }
-.legend .water i { background: var(--water); }
 
 .life { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .life li { border-radius: 0; padding: 8px 6px; text-align: center; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--rule); background: #fff; }
@@ -432,4 +413,14 @@ details.facts[open] { display: flex; }
 .decide li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 4px; border-bottom: 1px solid var(--rule); font-size: 14.5px; font-weight: 700; }
 .decide input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; accent-color: var(--rule); }
 .sheet .decide li { font-size: 12.5px; padding: 4px 2px; }
+/* 画面1の5項目の表（2026-11-06）：項目｜判定｜短い理由 */
+.place { width: 100%; border-collapse: collapse; font-size: 13px; border-top: 2px solid var(--rule); }
+.place th, .place td { border-bottom: 1px solid var(--rule); padding: 5px 4px; text-align: left; vertical-align: top; }
+.place thead th { background: var(--paper); font-size: 12px; }
+.place td:first-child { white-space: nowrap; font-weight: 700; }
+.place i { font-style: normal; font-weight: 800; font-size: 11.5px; color: #fff; background: var(--unconfirmed-line); padding: 1px 5px; white-space: nowrap; }
+.place tr.risk i { background: var(--risk-line); }
+.place tr.clear i { background: var(--clear-line); }
+.gain { margin: 0; font-size: 14.5px; font-weight: 800; color: var(--rule); }
+.save-fold { margin-top: 14px; }
 
