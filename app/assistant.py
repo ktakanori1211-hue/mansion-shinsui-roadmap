@@ -369,7 +369,7 @@ def read_plan(body: dict) -> dict:
                         "source": "text" if exact else "claude",
                     }
                 )
-            return {"mode": "claude", "rooms": _with_names(rooms), "pins": _pins_for(rooms, sample), "unreadable": parsed["unreadable"], "message": "Claude が図面を読み取りました。ずれていればピンを動かし、合っていれば「確かめる」を押してください。"}
+            return {"mode": "claude", "rooms": _with_names(rooms), "pins": _pins_for(rooms, sample), "unreadable": parsed["unreadable"], "message": "図面から読めた部屋と階です。合っていれば、ボタンで答えに入れます。"}
         except (claude.ClaudeUnavailable, ValueError, KeyError) as error:
             notice = f"Claude で読めなかったので（{error}）、別の方法で読みました。"
     else:

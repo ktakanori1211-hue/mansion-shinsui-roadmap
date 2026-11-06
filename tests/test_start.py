@@ -786,6 +786,14 @@ class SecondReviewTest(unittest.TestCase):
         self.assertEqual(samples.region_of("大阪府大阪市北区"), "none")
         self.assertEqual(samples.region_of("ブリリアタワー東京, 蔵前橋通り, 太平四丁目, 太平, 墨田区, 東京, 130-0012, 日本"), "tokyo")
         self.assertEqual(samples.region_of("千葉市 幸町2丁目"), "chiba")
+        self.assertEqual(samples.region_of("千葉県市川市東国分二丁目"), "ichikawa")
+        self.assertEqual(samples.region_of("千葉県船橋市本町"), "searched")
+        self.assertEqual(samples.region_of("神奈川県平塚市"), "hiratsuka")
+        # 市川市は「10万円×戸数」の上限がある（要綱第6条）。管理組合可と原文にない市は計算例を出さない。
+        self.assertEqual(samples.SUBSIDIES["ichikawa"]["covers"]["plate"]["per_unit"], 100000)
+        for key in ("kashiwa", "atsugi", "niiza", "katsushika", "hachioji", "mitaka", "chofu", "abiko", "hiratsuka"):
+            self.assertNotIn("covers", samples.SUBSIDIES[key], key)
+        self.assertIn("calc.per_unit", read("start.js"))
         # 調べていない地域は「ない」と言わない。どの区市にも出典の URL と確かめた日がある。
         self.assertIn("補助がないという意味ではありません", samples.SUBSIDIES["none"]["rate_label"])
         for _pref, _city, key, item in samples.MUNICIPAL_SUBSIDIES:

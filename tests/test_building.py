@@ -232,7 +232,7 @@ class TopLineTest(unittest.TestCase):
     def test_ground_floor_building(self):
         # 「まだ分からない」で終わらせず、何が分かれば答えが出るかと、誰に頼むかを出す（2026-11-04）。
         top = self.payload("b", RISK_ROW)
-        self.assertEqual(top["lead"], "確認待ち 3件（図面で階を確かめる）。")
+        self.assertEqual(top["lead"], "確認待ち 3件。")
         self.assertNotIn("まだ分からない", top["lead"])
         self.assertEqual([step["key"] for step in top["steps"]], ["water", "power", "tr"])
         for step in top["steps"]:

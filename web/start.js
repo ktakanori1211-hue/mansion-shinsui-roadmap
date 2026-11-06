@@ -299,17 +299,17 @@ function pinAnchors(shape, X, Y) {
   return anchors;
 }
 
-// 平面図の横の高さの目盛り（2026-11-06 本人の指示。数字は作者の実務の目安で、建物ごとに竣工図か実測で確かめる）。
-// 水の位置①②③に合わせて、今の高さの行に印を付ける。
-const HEIGHT_SCALE = [
-  [3, "50cm", "止水板・受電の箱"],
-  [2, "20〜30cm", "床置きのポンプの盤が浸かって断水"],
-  [1, "0cm", "壁の穴・EVピット"],
+// 水位の段（2026-11-06 本人の指摘「浸水の状況をどう見たらいいか分からない」）：平面図の下に3段の表。今の段に「いま」。
+// 床からの高さは作者（電気主任技術者）の実務の目安で、建物ごとに竣工図か実測で確かめる。
+const GAUGE = [
+  [3, "③ 機械の部屋に水", "床から50cm", "盤・受電の箱・借室の下端まで → 水も電気も止まる"],
+  [2, "② 一番低い床に水", "床から20〜30cm", "床置きのポンプの盤・EVピット → 断水、EV停止"],
+  [1, "① 道路が冠水", "0cm", "道路・壁の穴から水が入り始める"],
 ];
 
-function heightScale(level) {
-  const rows = HEIGHT_SCALE.map(([n, cm, what]) => `<li class="${level >= n ? "on" : ""}${level === n ? " now" : ""}"><b>${cm}</b><span>${what}</span></li>`).join("");
-  return `<div class="height-scale"><p>床からの高さ（目安）</p><ol>${rows}</ol><small>作者の実務の目安。建物ごとに竣工図か実測で確かめます。</small></div>`;
+function gauge(level) {
+  const rows = GAUGE.map(([n, name, cm, what]) => `<tr class="${level === n ? "now" : level > n ? "under" : ""}"><th>${level === n ? "いま" : ""}</th><td><b>${name}</b><small>${cm}</small></td><td>${what}</td></tr>`).join("");
+  return `<table class="gauge"><caption>水位の段（高さは作者の実務の目安）</caption><tbody>${rows}</tbody></table>`;
 }
 
 // 水の位置①②③の見出し。サーバーの water_levels の文は、その下に小さく添える。
@@ -379,7 +379,12 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
       if (size) parts.push(`<text x="${cx}" y="${nameY}" class="p-name ${v}" style="font-size:${size}px">${esc(name)}</text>`);
       if (badge > 9) {
         const by = nameY + badge + 8;
-        parts.push(`<g class="p-badge ${v}"><circle cx="${cx}" cy="${by}" r="${badge}"/><text x="${cx}" y="${by + badge * 0.36}" style="font-size:${badge * 1.1}px">${LOOK[v].mark}</text></g>`);
+        const word = LOOK[v].word;
+        const fs = Math.min(badge * 0.9, fitText(word, w - 6, 12, 8) || 0);
+        if (fs) {
+          const bw = word.length * fs * 1.05 + 8;
+          parts.push(`<g class="p-badge ${v}"><rect x="${cx - bw / 2}" y="${by - fs * 0.8}" width="${bw}" height="${fs * 1.6}"/><text x="${cx}" y="${by + fs * 0.38}" style="font-size:${fs}px">${word}</text></g>`);
+        }
       }
     } else if (!room.hatch) {
       const label = room.label.split("\n")[0].replace(/（.*$/, "");
@@ -415,10 +420,10 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
 
 function legend() {
   return `<ul class="legend">
-    <li class="risk"><i>！</i>止まるおそれ</li>
-    <li class="unconfirmed"><i>？</i>未確認（危険という意味ではありません）</li>
-    <li class="clear"><i>✓</i>問題なし</li>
-    <li class="water"><i>↓</i>水の入り道</li>
+    <li class="risk"><i></i>止まるおそれ</li>
+    <li class="unconfirmed"><i></i>未確認（危険という意味ではありません）</li>
+    <li class="clear"><i></i>問題なし</li>
+    <li class="water"><i></i>水の入り道</li>
     ${S.building?.sample?.views?.some((v) => v.rooms.some((room) => room.key === "tr")) ? "<li>借室＝東京電力の変圧器の部屋</li>" : ""}
   </ul>`;
 }
@@ -432,8 +437,8 @@ function lifeChips(level = 0) {
   const n = Number(S.floor);
   const tiles = TILES.map((tile) => {
     let state = worst(tile.from);
-    let mark = LOOK[state].mark;
-    let small = state === "clear" ? "問題なし" : `止まると、${tile.small(n)}`;
+    let mark = LOOK[state].word;
+    let small = state === "clear" ? "" : `止まると、${tile.small(n)}`;
     if (level) {
       const raw = serviceState(level, SERVICE_OF_TILE[tile.key]);
       state = { stopped: "stopped", unknown: "unconfirmed" }[raw] || "running";
@@ -615,7 +620,7 @@ function decideLine() {
   const m = measures().find((item) => item.key === MODEL_MEASURE[S.measure]);
   if (!m) return "";
   const cost = m.range ? `${m.range}${m.account ? `（${m.account}）` : ""}` : "";
-  return `<p class="decide-line"><span><b>だれが決める</b>${esc(m.decision || "")}</span>${cost ? `<span><b>費用の桁</b>${esc(cost)}</span>` : ""}</p>
+  return `<p class="decide-line"><span><b>だれが決める</b>${esc(m.decision || "")}</span>${cost ? `<span><b>費用の目安</b>${esc(cost)}</span>` : ""}</p>
     ${cost ? `<p class="hint">${COST_FIXED}</p>` : ""}`;
 }
 
@@ -961,10 +966,11 @@ function screenTwo() {
     <h1 class="title">${esc(b.top_line.lead)}</h1>
     <p class="lead-why">${esc(titleLine())}</p>
     <h2 class="part"><span>1</span>水が入る順と、止まるもの</h2>
-    <div class="plan-row"><div class="plan">${plan({ level: S.play })}</div>${heightScale(S.play)}</div>
+    <div class="plan">${plan({ level: S.play })}</div>
+    ${gauge(S.play)}
     <div class="play-row">
       <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : shown ? "▶ もう一度見る" : "▶ 水が入る順に見る"}</button>
-      <span class="caption">${shown ? `<b class="level-head">${LEVEL_HEAD[S.play] || ""}</b><small>${esc(now ? now.text : CAPTIONS[S.play])}</small>` : "道路 → 入り道 → 一番低い床 → 盤"}</span>
+      <span class="caption">${shown ? "" : "道路 → 入り道 → 一番低い床 → 盤"}</span>
     </div>
     ${shown ? `<p class="hint">${PLAY_NOTE}</p>` : ""}
     ${measureChips()}
@@ -999,7 +1005,7 @@ function screenThree() {
     const options = `<div class="options">${[...q.options, "none"]
           .map((o) => `<button type="button" class="option${chosen === o ? " chosen" : ""}" data-kind="${kind}" data-choice="${o}" aria-pressed="${chosen === o}">${OPTION_WORDS[o]}</button>`)
           .join("")}</div>`;
-    const engineer = q.row === "power" && S.extra.hv === "yes" ? `<p class="hint">電気主任技術者：点検報告書に名前あり　<button type="button" class="option small" data-hv="none">取り消す</button></p>` : "";
+    const engineer = q.row === "power" && S.extra.hv === "yes" ? `<p class="hint">高圧（保安会社の契約）：あり　<button type="button" class="option small" data-hv="none">取り消す</button></p>` : "";
     // 判定の結果は折りたたまずに出す（状況が分かる情報は表面に）。
     const before = q.row === "power" && b.sample.engineer_unsure ? `<div class="qcard engineer">${engineerQuestion()}</div>` : "";
     return `${before}<div class="qcard ${v}">
@@ -1236,7 +1242,10 @@ function subsidyGrant(totals) {
     base = aid.region === "tokyo" ? (totals.plates > 0 ? totals.withPlates : 0) : totals.plates;
   }
   if (!calc || base <= 0) return { grant: 0, label: aid.label || "", known: Boolean(calc) };
-  const grant = Math.floor(Math.min(base * calc.rate, calc.cap) / calc.unit) * calc.unit;
+  // 市川市のように「10万円×戸数」の上限がある制度は、戸数を入れたときだけその上限も見る。
+  const units = Number(S.units);
+  const cap = calc.per_unit && units >= 1 ? Math.min(calc.cap, calc.per_unit * units) : calc.cap;
+  const grant = Math.floor(Math.min(base * calc.rate, cap) / calc.unit) * calc.unit;
   return { grant, label: aid.label, known: true };
 }
 

@@ -175,10 +175,11 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .p-name.risk { fill: var(--risk); }
 .p-name.unconfirmed { fill: #6b4700; }
 .p-name.clear { fill: var(--clear); }
-.p-badge text { fill: #fff; font-weight: 900; text-anchor: middle; }
-.p-badge.risk circle { fill: var(--risk-line); }
-.p-badge.unconfirmed circle { fill: var(--unconfirmed-line); }
-.p-badge.clear circle { fill: var(--clear-line); }
+.p-badge text { fill: #fff; font-weight: 800; text-anchor: middle; }
+.p-badge rect { rx: 0; }
+.p-badge.risk rect { fill: var(--risk-line); }
+.p-badge.unconfirmed rect { fill: var(--unconfirmed-line); }
+.p-badge.clear rect { fill: var(--clear-line); }
 .p-water { fill: var(--water); opacity: .5; }
 .p-arrow { fill: none; stroke: var(--water); stroke-width: 5; stroke-dasharray: 10 6; }
 .p-arrow.on { stroke-width: 8; stroke-dasharray: none; }
@@ -206,11 +207,11 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .caption { font-size: 14px; color: var(--ink); }
 
 .legend { list-style: none; margin: -6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
-.legend i { display: inline-block; width: 16px; height: 16px; border-radius: 50%; margin-right: 4px; vertical-align: -3px; color: #fff; font-style: normal; font-weight: 900; font-size: 11px; text-align: center; line-height: 16px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 0; margin-right: 5px; vertical-align: -1px; }
 .legend .risk i { background: var(--risk-line); }
 .legend .unconfirmed i { background: var(--unconfirmed-line); }
 .legend .clear i { background: var(--clear-line); }
-.legend .water i { background: var(--water); border-radius: 3px; }
+.legend .water i { background: var(--water); }
 
 .life { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .life li { border-radius: 0; padding: 8px 6px; text-align: center; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--rule); background: #fff; }
@@ -230,10 +231,10 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 
 /* 2 止まるもの：3段の見出し、断面の切り絵、時間の段 */
 .part { display: flex; align-items: center; gap: 8px; margin: 10px 0 -4px; font-size: 17px; font-weight: 800; }
-.part span { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 13px; text-align: center; line-height: 24px; }
+.part span { flex: none; width: 24px; height: 24px; border-radius: 0; background: var(--navy); color: #fff; font-size: 13px; text-align: center; line-height: 24px; }
 .timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 3px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
 .phase { position: relative; }
-.phase::before { content: ""; position: absolute; left: -21px; top: 4px; width: 11px; height: 11px; border-radius: 50%; background: var(--unconfirmed-line); }
+.phase::before { content: ""; position: absolute; left: -21px; top: 5px; width: 10px; height: 10px; border-radius: 0; background: var(--unconfirmed-line); }
 .phase.before::before { background: #8f96a1; }
 .phase.day::before, .phase.morning::before { background: var(--stopped); }
 .phase-name { margin: 0; font-size: 15px; font-weight: 800; }
@@ -247,7 +248,7 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .facts small { display: block; font-size: 11.5px; color: var(--muted); }
 
 .own { display: flex; flex-direction: column; gap: 8px; background: var(--paper); border: 1px solid var(--rule); border-radius: 0; padding: 10px 12px; }
-.facts { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed #d0d4da; padding-top: 8px; }
+.facts { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .facts-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
 .facts-name input { flex: 1; min-width: 0; height: 38px; border: 1.5px solid var(--line); border-radius: 2px; padding: 0 10px; font: inherit; font-size: 15px; }
 .facts-found { background: #fff; border-radius: 2px; padding: 8px 10px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
@@ -402,16 +403,16 @@ details.facts[open] { display: flex; }
 .contractor-box li b { display: block; font-size: 14px; }
 .contractor-box li span { display: block; font-size: 13px; color: #33404f; line-height: 1.55; }
 .contractor-box a { color: var(--accent); }
-/* 平面図の横の高さの目盛り（2026-11-06） */
-.plan-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 6px; align-items: stretch; }
-.height-scale { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
-.height-scale p { margin: 0; font-weight: 800; color: var(--ink); font-size: 11.5px; }
-.height-scale ol { list-style: none; margin: 0; padding: 0 0 0 6px; border-left: 3px solid #c9d1dc; display: flex; flex-direction: column; justify-content: space-between; flex: 1; gap: 6px; }
-.height-scale li b { display: block; font-size: 13px; color: var(--ink); }
-.height-scale li span { display: block; line-height: 1.35; }
-.height-scale li.on b { color: #1f5f99; }
-.height-scale li.now { background: #e8f1fb; border-radius: 4px; margin-left: -6px; padding: 2px 4px 2px 6px; border-left: 3px solid var(--water); }
-.height-scale small { font-size: 10px; line-height: 1.35; }
+/* 水位の段（2026-11-06）：平面図の下の3段の表 */
+.gauge { width: 100%; border-collapse: collapse; font-size: 13px; border-top: 2px solid var(--rule); margin-top: -4px; }
+.gauge caption { caption-side: bottom; text-align: left; font-size: 11px; color: var(--muted); padding: 4px 0 0; }
+.gauge th, .gauge td { border-bottom: 1px solid var(--rule); padding: 6px 6px; vertical-align: top; text-align: left; }
+.gauge th { width: 3.2em; color: #fff; font-size: 12px; white-space: nowrap; text-align: center; }
+.gauge tr.now th { background: var(--water); }
+.gauge tr.now td { background: #e8f1fb; }
+.gauge tr.under td { color: var(--muted); }
+.gauge td b { display: block; font-size: 14px; }
+.gauge td small { display: block; font-size: 11.5px; color: var(--muted); }
 /* 費用の表と、理事会で決めること（2026-11-06）：白地にネイビーの罫線 */
 .cost { width: 100%; border-collapse: collapse; font-size: 13px; border-top: 2px solid var(--rule); }
 .cost th, .cost td { border-bottom: 1px solid var(--rule); padding: 6px 4px; text-align: left; vertical-align: middle; }

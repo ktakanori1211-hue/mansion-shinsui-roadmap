@@ -246,6 +246,98 @@ MUNICIPAL_SUBSIDIES = [
         "url": "https://www.city.utsunomiya.lg.jp/_res/projects/default_project/_page_/001/045/688/youkou.pdf", "checked": "2026-11-06",
         "covers": {"pillar": {"rate": 1 / 2, "cap": 500000, "unit": 1000}}}),
 ]
+# 2026-11-06 の2回目の調査で足した市区。原文（要綱・市の案内）で確かめたもの。管理組合が申請できると原文に書かれていないものは、計算例を出さず、そう書く。
+_HALF50 = {"plate": {"rate": 1 / 2, "cap": 500000, "unit": 1}, "pillar": {"rate": 1 / 2, "cap": 500000, "unit": 1}}
+_ICHIKAWA = {"rate": 1 / 3, "cap": 1000000, "unit": 1000, "per_unit": 100000}
+MUNICIPAL_SUBSIDIES += [
+    ("千葉県", "市川市", "ichikawa", {
+        "label": "市川市（分譲マンションの防水板：1/3・上限100万円）",
+        "rate_label": "分譲マンション共用部分等あんしん住宅助成事業。建物の出入口の防水板・浸水警報装置・盛土が対象。工事費（税抜）の1/3と「10万円×居住用の戸数」の低い方、上限100万円。申請は管理組合",
+        "cautions": ["対象は、令和7年度に市が行った分譲マンション実態調査に回答した管理組合に限ります（要綱第4条）。", "施工は市内の施工業者等に限ります（要綱第2条）。駐車場の浸水対策と電気設備は、対象に書かれていません。", "申請は着手前で、年度の1月末日まで（市のページでは令和9年2月1日まで）。先着順です。"],
+        "url": "https://www.city.ichikawa.lg.jp/uploaded/attachment/44705.pdf", "checked": "2026-11-06",
+        "covers": {"plate": _ICHIKAWA, "pillar": _ICHIKAWA}}),
+    ("千葉県", "佐倉市", "sakura", {
+        "label": "佐倉市（止水板：1/2・上限50万円）",
+        "rate_label": "止水板の設置の1/2、上限50万円。管理組合は理事長の名前で申請できる（市のQ&A）",
+        "cautions": ["受付は毎年4月1日〜2月末。令和8年度に続いているかは市に確かめます。補助の対象の区域があります。"],
+        "url": "https://www.city.sakura.lg.jp/material/files/group/42/sisuibanyoukou.pdf", "checked": "2026-11-06",
+        "covers": _HALF50}),
+    ("千葉県", "柏市", "kashiwa", {
+        "label": "柏市（止水板：1/2・上限50万円。令和8年度の受付は終了）",
+        "rate_label": "止水板の設置の1/2、上限50万円。受付は毎年4月10日〜5月31日で、令和8年度分は終了。過去に浸水被害のあった区域が対象",
+        "cautions": ["要綱の申請者は「管理団体」の書き方で、管理組合が当たるかは市に確かめます（そのため計算例は出しません）。"],
+        "url": "https://www.city.kashiwa.lg.jp/documents/33910/shisuibanyoko_2026.pdf", "checked": "2026-11-06"}),
+    ("千葉県", "我孫子市", "abiko", {
+        "label": "我孫子市（浸水対策：1/2・上限30万円。管理組合が使えるかは未確認）",
+        "rate_label": "止水板のほか、設備機器（給湯器・エアコン等）のかさ上げも対象。1/2、上限30万円（市の公式ページ）",
+        "cautions": ["要綱の本文を取れておらず、管理組合が申請できるかは市民安全課に確かめます（そのため計算例は出しません）。"],
+        "url": "https://www.city.abiko.chiba.jp/", "checked": "2026-11-06"}),
+    ("神奈川県", "藤沢市", "fujisawa", {
+        "label": "藤沢市（止水板：1/2・上限50万円）",
+        "rate_label": "止水板の設置の1/2、上限50万円。管理組合も申請できる。公共下水道などの排水区域の中が対象",
+        "cautions": ["受付は年度の12月末まで、先着順です。"],
+        "url": "https://www.city.fujisawa.kanagawa.jp/documents/35548/20260224100654.pdf", "checked": "2026-11-06",
+        "covers": _HALF50}),
+    ("神奈川県", "厚木市", "atsugi", {
+        "label": "厚木市（止水板：1/2・上限50万円。管理組合が使えるかは未確認）",
+        "rate_label": "止水板設置補助金は1/2、上限50万円（要綱は令和4年4月施行。令和8年度の運用は未確認）。別に、電気設備を浸水想定階より上に移す工事に1/3・上限1億円の制度があるが、市と避難施設の使用協定を結ぶ建物などに限る",
+        "cautions": ["どちらも管理組合が申請できるとは原文に書かれていないので、市に確かめます（そのため計算例は出しません）。"],
+        "url": "https://www.city.atsugi.kanagawa.jp/material/files/group/41/youkou1.pdf", "checked": "2026-11-06"}),
+    ("神奈川県", "平塚市", "hiratsuka", {
+        "label": "平塚市（簡易止水板の購入補助は個人向け。管理組合は対象外）",
+        "rate_label": "簡易止水板の購入の1/2、上限10万円。管理組合は対象外と明記されている",
+        "cautions": [],
+        "url": "https://www.city.hiratsuka.kanagawa.jp/", "checked": "2026-11-06"}),
+    ("埼玉県", "新座市", "niiza", {
+        "label": "新座市（止水板：1/2・上限40万円。管理組合が使えるかは未確認）",
+        "rate_label": "止水板等の設置の1/2、上限40万円（市の案内）。要綱の本文は取れていない",
+        "cautions": ["管理組合が申請できるかは市に確かめます（そのため計算例は出しません）。"],
+        "url": "https://www.city.niiza.lg.jp/uploaded/attachment/71665.pdf", "checked": "2026-11-06"}),
+    ("東京都", "足立区", "adachi", {
+        "label": "足立区（止水板：1/2・上限50万円。地域によって9/10・100万円）",
+        "rate_label": "止水板の設置の1/2、上限50万円。令和8年7月17日以降に浸水被害があった地域か、内水の想定の最大浸水深0.5m以上の地域は9/10・上限100万円",
+        "cautions": ["受付は令和8年4月1日〜令和9年1月29日。計算例は1/2・50万円で出しています（地域の条件は区に確かめます）。", _TOKYO_TOO],
+        "url": "https://www.city.adachi.tokyo.jp/documents/60552/kaiseiyoukou.pdf", "checked": "2026-11-06",
+        "covers": _HALF50}),
+    ("東京都", "葛飾区", "katsushika", {
+        "label": "葛飾区（浸水対応型拠点建築物等の補助：1/2。上限と受付は案内に記載なし）",
+        "rate_label": "15戸以上かつ3階以上の集合住宅の新設・改修が対象で、止水板と電気室の浸水対策を含む。補助率は1/2",
+        "cautions": ["上限額と受付期間は案内に書かれていないので、区に確かめます（そのため計算例は出しません）。", _TOKYO_TOO],
+        "url": "https://www.city.katsushika.lg.jp/_res/projects/default_project/_page_/001/029/109/panfu.pdf", "checked": "2026-11-06"}),
+    ("東京都", "狛江市", "komae", {
+        "label": "狛江市（止水板：1/2・止水板30万円＋関連工事20万円）",
+        "rate_label": "止水板の設置の1/2、上限は止水板30万円と関連工事（室外機等のかさ上げ・止水弁を含む）20万円",
+        "cautions": ["東京都の「東京とどまるマンション」の補助とは併用できません。受付の期間は市に確かめます。"],
+        "url": "https://www.city.komae.tokyo.jp/index.cfm/42,114720,c,html/114720/20260324-123536.pdf", "checked": "2026-11-06",
+        "covers": {"plate": {"rate": 1 / 2, "cap": 300000, "unit": 1}, "pillar": {"rate": 1 / 2, "cap": 300000, "unit": 1}}}),
+    ("東京都", "八王子市", "hachioji", {
+        "label": "八王子市（止水板：1/2・上限50万円。令和8年度の受付は終了）",
+        "rate_label": "止水板の設置の1/2、上限50万円。令和8年度は予算に達して受付終了（2026年10月22日のページ）",
+        "cautions": ["次の年度の受付は市に確かめます（受付終了のため計算例は出しません）。", _TOKYO_TOO],
+        "url": "https://www.city.hachioji.tokyo.jp/kurashi/life/003/001/004/p006694_d/fil/hokjyokinyoukou.pdf", "checked": "2026-11-06"}),
+    ("東京都", "三鷹市", "mitaka", {
+        "label": "三鷹市（止水板の助成は住民登録のある個人向け。管理組合は対象外）",
+        "rate_label": "住民登録のある個人が対象で、管理組合は申請できない",
+        "cautions": [_TOKYO_TOO],
+        "url": "https://www.city.mitaka.lg.jp/", "checked": "2026-11-06"}),
+    ("東京都", "調布市", "chofu", {
+        "label": "調布市（止水板：1/2・上限20万円など。令和8年度の原文は未確認）",
+        "rate_label": "市のページ（2022年更新）では1/2、上限は止水板20万円・排水ポンプ5万円・発電機10万円。管理組合も対象と読める",
+        "cautions": ["令和8年度の原文で確かめていないので、数字は市に確かめます（そのため計算例は出しません）。", _TOKYO_TOO],
+        "url": "https://www.city.chofu.lg.jp/", "checked": "2026-11-06"}),
+]
+# 探したが見つからなかった市（市のサイト内の検索1〜2回。補助金の一覧の通読ではないので「ない」とは言わない）。
+SEARCHED_NOT_FOUND = [
+    ("千葉県", ["船橋市", "松戸市", "浦安市", "習志野市", "八千代市", "市原市", "流山市", "野田市", "鎌ケ谷市"]),
+    ("神奈川県", ["相模原市", "横須賀市", "茅ヶ崎市", "大和市", "海老名市"]),
+    ("埼玉県", ["さいたま市", "川口市", "越谷市", "草加市", "春日部市", "所沢市", "川越市"]),
+]
+SUBSIDIES["searched"] = {
+    "label": "この市の止水板の補助は、探した範囲では見つかりませんでした",
+    "rate_label": "市の補助金の一覧を全部は読んでいないので、ないとは言い切れません。市の窓口（防災・下水道・住宅の担当）に確かめます。",
+    "cautions": [],
+    "checked": "2026-11-06",
+}
 for _pref, _city, _key, _item in MUNICIPAL_SUBSIDIES:
     SUBSIDIES[_key] = _item
 
@@ -522,6 +614,9 @@ def region_of(label: str) -> str:
     for pref, city, key, _item in MUNICIPAL_SUBSIDIES:
         if city in label and _in_prefecture(label, pref):
             return key
+    for pref, cities in SEARCHED_NOT_FOUND:
+        if any(city in label for city in cities) and _in_prefecture(label, pref):
+            return "searched"
     if "千葉市" in label:
         return "chiba"
     if "横浜市" in label:

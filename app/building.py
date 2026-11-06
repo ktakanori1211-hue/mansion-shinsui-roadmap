@@ -805,7 +805,7 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
         a4_notes.append(A4_NOTE_CHIBA)
     else:
         steps = answer_steps(equipment)
-        lead = f"確認待ち {len(steps)}件（図面で階を確かめる）。" if steps else "確認待ち（依頼メモの項目）。"
+        lead = f"確認待ち {len(steps)}件。" if steps else "確認待ち（依頼メモの項目）。"
         notes.append("どこまで水が来るかと盤の高さが未確認。もし浸かれば制御盤の製作に約2か月（建築設備技術者協会の報告書）など長引くおそれがあるので、まず依頼メモで高さを確かめる。")
     return {"lead": lead, "notes": notes, "a4_notes": a4_notes, "steps": answer_steps(equipment)}
 
