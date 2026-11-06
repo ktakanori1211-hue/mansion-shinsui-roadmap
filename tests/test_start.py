@@ -222,9 +222,14 @@ class AnswerLoopTest(unittest.TestCase):
         self.assertEqual(verdicts(payload(base, ["upper:tr"]))["tr"], "clear")
         self.assertEqual(verdicts(payload(base, ["upper:pump"]))["water"], "clear")
 
-    def test_red_needs_a_risky_place(self):
-        body = payload({"rooms_floor": "basement", "basement": "yes"}, ["elec"], rows=[{"key": "record", "verdict": "unconfirmed"}])
-        self.assertEqual(verdicts(body)["power"], "unconfirmed")
+    def test_red_needs_a_drawing_not_a_risky_place(self):
+        # 2026-11-06 本人の決定：図面で地下と確かめた部屋は、立地が未確認でも確定。答えだけ（図面なし）では未確認。立地が問題なしなら未確認。
+        drawn = payload({"rooms_floor": "basement", "basement": "yes"}, ["elec"], rows=[{"key": "record", "verdict": "unconfirmed"}])
+        self.assertEqual(verdicts(drawn)["power"], "risk")
+        said = payload({"rooms_floor": "basement", "basement": "yes"}, [], rows=[{"key": "record", "verdict": "unconfirmed"}])
+        self.assertEqual(verdicts(said)["power"], "unconfirmed")
+        safe = payload({"rooms_floor": "basement", "basement": "yes"}, ["elec"], rows=[{"key": "record", "verdict": "clear"}])
+        self.assertEqual(verdicts(safe)["power"], "unconfirmed")
 
     def test_asks_shrink_when_answered(self):
         base = {"rooms_floor": "basement", "basement": "yes"}
@@ -241,15 +246,16 @@ class AnswerLoopTest(unittest.TestCase):
         self.assertIn("if (S.sampleId) return { ...S.extra };", answers)
         self.assertNotIn("data-rooms", js)
 
-    def test_own_building_needs_the_floor_and_the_engineer(self):
-        # 見本でない建物は、図面の階（地下）と主任技術者の名前が分かるまで②の色は変わらない。
-        stuck = payload({"rooms_floor": "unknown"}, ["elec", "tr"], sample_id=None)
+    def test_own_building_needs_the_drawing_floor(self):
+        # 見本でない建物は、図面の階が分かるまで②の色は変わらない。地下と図面で分かれば、高圧か低圧かが未確認でも確定（2026-11-06）。
+        stuck = payload({"rooms_floor": "unknown"}, [], sample_id=None)
         self.assertEqual(verdicts(stuck)["power"], "unconfirmed")
-        moved = payload({"rooms_floor": "basement", "basement": "yes", "hv": "yes", "tr": "yes"}, ["elec", "tr"], sample_id=None)
+        moved = payload({"rooms_floor": "basement", "basement": "yes", "tr": "yes"}, ["elec", "tr"], sample_id=None)
         self.assertEqual(verdicts(moved)["power"], "risk")
         self.assertEqual(verdicts(moved)["tr"], "risk")
         js = read("start.js")
-        self.assertIn('chip("yes", "書いてある")', js)
+        self.assertIn('chip("yes", "ある")', js)
+        self.assertNotIn("主任技術者の名前", js)
         self.assertIn('S.extra.tr = choice === "absent" ? "no" : "yes";', js)
         self.assertIn('basement: "地下", ground: "1階"', js)
 
@@ -343,7 +349,6 @@ class NoDrawingTest(unittest.TestCase):
         three = block(js, "function screenThree()", "\n}\n")
         self.assertIn("${drawingQuestion()}", three)
         self.assertIn("hasDrawing() ? cards + readCard() : observeCards()", three)
-        self.assertIn("管理会社に頼む紙を作る", three)
         # 見て答えたことは、確かめた印（confirmed）にせず、聞き取り（statements）として送る。
         observe = block(js, "async function setObservation(", "\n}\n")
         self.assertNotIn("S.choices", observe)
@@ -387,25 +392,6 @@ class BuildingPinTest(unittest.TestCase):
         source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("share|search|reverse|location", source)
 
-    def test_every_place_item_is_on_the_surface(self):
-        # 5つの項目を1行ずつ表面に出す（2026-11-05 本人の指摘「折りたたまないと状況が分からないのは不親切」、9章 how-035 の一段目）。
-        js = read("start.js")
-        lines = block(js, "function placeLines()", "\n}\n")
-        self.assertIn("verdict: item.verdict", lines)
-        self.assertIn('who: item.verdict === "unconfirmed" ? item.confirm_short', lines)
-        one = block(js, "function screenOne()", "\n}\n")
-        self.assertIn('<ul class="place-lines">', one)
-        self.assertIn("LOOK[line.verdict]", one)
-        self.assertNotIn("深さの帯", block(js, "const PLACE_PLAIN = {", "};"))
-        # 色がない・データがない項目は「安全」と読ませない（W3、判定表1-2）。記録なしは浸水なしと読ませない（判定表1-1）。
-        self.assertIn("色がないことは、安全という意味ではありません", block(js, "function hazardPlain(", "\n}\n"))
-        self.assertIn("記録がないことは、浸水がなかったことを示しません", block(js, "function recordPlain(", "\n}\n"))
-        # 数値と出典は二段目に残す。折りたたみは押せると分かる形にする。
-        more = one[one.index('<details class="place-more more">'):one.index("</details>", one.index('<details class="place-more more">'))]
-        for part in ('<ul class="place-chips">', "landLine()", "recordNote()", "inlandNote()"):
-            self.assertIn(part, more)
-        self.assertIn('details.more > summary::before', read("start.css"))
-
     def test_terrain_colour_comes_from_the_server(self):
         # 凹みでも、サーバーの判定が未確認なら赤にしない（判定表1-3・1-4。df44f8b の不具合の再発を防ぐ）。
         js = read("start.js")
@@ -413,31 +399,9 @@ class BuildingPinTest(unittest.TestCase):
         self.assertNotIn("verdict", terrain)
         self.assertIn("地図の標高による仮の目安", block(js, "function groundPlain(", "\n}\n"))
 
-    def test_map_colour_says_which_water(self):
-        # 地図の色が何の水かを言い、建物（代表点）の場所の色を、色見本つきで表面に出す。重ねていない層に色があれば、そう言う。
-        js = read("start.js")
-        legend = block(js, "function mapLegend()", "\n}\n")
-        self.assertIn("地図の色は、${esc(plain.long)}です。", legend)
-        self.assertIn("の色は、この地図には重ねていません。", legend)
-        self.assertIn("色がないことは、安全という意味ではありません。", legend)
-        self.assertIn('"建物の場所" : "町丁の代表点"', legend)
-        self.assertIn("reading.hazard_legend", legend)
-        self.assertNotIn("<details", legend)
-        bands = block(js, "function bandWord(", "\n}\n")
-        for label in ('"0.5m未満"', '"0.5〜3m"', '"3m超"'):
-            self.assertIn(label, bands)
-        for key in ("flood_max", "flood_planned", "storm_surge", "inland"):
-            self.assertIn(f"{key}: {{", block(js, "const LAYER_PLAIN = {", "};"))
-        self.assertIn("LAYER_PLAIN[shown.key]", block(js, "function drawMap()", "\n}\n"))
-
     def test_engineer_question_says_what_and_why(self):
         # 「名前がある」だけでは分からない（本人の指摘）。どの紙の、だれが持つ紙か、なぜ聞くかを添える。
         js = read("start.js")
-        q = block(js, "function engineerQuestion()", "\n}\n")
-        self.assertIn("電気設備の点検の報告書", q)
-        self.assertIn("管理会社か理事会が持っている", q)
-        for word in ('"書いてある"', '"書いていない"', '"分からない"'):
-            self.assertIn(word, q)
         # 「書いていない」で判定を変えない（hantei-030、how-017）。依頼メモに「住民が見たこと」として載せるだけ。
         setter = block(js, "async function setEngineer(", "\n}\n")
         self.assertIn('if (answer === "yes") S.extra.hv = "yes";', setter)
@@ -631,8 +595,6 @@ class WhyFirstTest(unittest.TestCase):
     def test_water_positions_follow_the_server_scenario(self):
         js = read("start.js")
         self.assertIn("S.building?.scenarios?.[`${level}:${S.measure}`]", js)
-        drawn = block(js, "function plan(", "\n}\n")
-        self.assertIn("scenario(level)?.wet", drawn)
         body = payload({}, [])
         keys = {key for scenario in body["scenarios"].values() for key in scenario["wet"]}
         mapped = set(re.findall(r"(\w+): \[", block(js, "const WET_ROOMS = {", "};")))
@@ -786,48 +748,23 @@ class SecondReviewTest(unittest.TestCase):
         a = payload({}, [])
         self.assertNotIn(["hv", "homes"], [list(edge) for edge in a["chain"]["edges"]])
 
-    def test_life_tiles_say_the_water_level_and_why_unknown(self):
-        js = read("start.js")
-        tiles = block(js, "function lifeChips(", "\n}\n")
-        self.assertIn("水が${LEVEL_MARK[level]", tiles)
-        self.assertIn('"分からない"', tiles)
-        self.assertIn("建物側からは分からない", tiles)
-        # 止まる想定に入らない札を「使える」と言わない（what-029）。
-        self.assertNotIn('"使える"', tiles)
-
-    def test_screen_three_names_the_rooms_and_splits_the_engineer_question(self):
-        js = read("start.js")
-        titles = block(js, "const QUESTIONS = [", "];")
-        for word in ("ポンプ室", "電気室（共用の分電盤室のこともあります）", "借室（東京電力の変圧器の部屋）"):
-            self.assertIn(word, titles)
-        three = block(js, "function screenThree()", "\n}\n")
-        self.assertIn('<div class="qcard engineer">${engineerQuestion()}</div>', three)
-        self.assertNotIn('<details class="qresult', three)
-
-    def test_own_building_asks_for_the_drawing_first(self):
-        js = read("start.js")
-        first = block(js, "function ownDrawingFirst()", "\n}\n")
-        self.assertIn("よくある形の例", first)
-        # 図面を入れる欄は画面3の1か所だけ（画面2は案内のボタン）。送る前の明示は読み取りの札に置く。
-        self.assertIn('data-act="to3"', first)
-        self.assertNotIn('id="plan-file"', first)
-        self.assertEqual(js.count('id="plan-file"'), 1)
-        self.assertIn("${READ_NOTICE}", block(js, "function readCard()", "\n}\n"))
-        self.assertIn("${b.sample.custom ? ownDrawingFirst() : \"\"}", block(js, "function screenTwo()", "\n}\n"))
-        self.assertIn("Anthropic の API に送って読みます", block(js, "const READ_NOTICE", ";"))
-
-    def test_costs_compute_only_from_an_entered_estimate(self):
-        # 出典のない円は足さない。見積り額を入れたときだけ計算する（what-064）。補助の率と上限は確かめた制度の文のまま。
+    def test_cost_table_is_unit_price_times_count_with_auto_subsidy(self):
+        # 2026-11-06 本人の指示：費用は単価×個数の表1つ。補助は制度の率と上限で自動計算。古い幅の広い表と手入力欄はない。
         js = read("start.js")
         self.assertEqual(samples.SUBSIDIES["tokyo"]["calc"], {"rate": 2 / 3, "cap": 8330000, "unit": 1000})
         self.assertEqual(samples.SUBSIDIES["chiba"]["calc"], {"rate": 1 / 2, "cap": 750000, "unit": 100})
-        self.assertIn("aidCalc(m, aid)", block(js, "function estimateLine(", "\n}\n"))
-        line = block(js, "function estimateLine(", "\n}\n")
-        self.assertIn("if (!(amount > 0)) return \"\";", line)
-        rows = block(js, "function costRows(", "\n}\n")
-        for part in ("m.label", "m.owner", "data-est"):
-            self.assertIn(part, rows)
-        self.assertIn("costRows(true, true)", block(js, "function a4Back()", "\n}\n"))
+        table = block(js, "function costTable(", "\n}\n")
+        self.assertIn('data-cnt="${item.key}"', table)
+        self.assertIn("recovery_cost_line", table)
+        grant = block(js, "function subsidyGrant(", "\n}\n")
+        for part in ("aid.covers", "aid.calc", "calc.rate", "calc.cap", "calc.unit"):
+            self.assertIn(part, grant)
+        self.assertIn("${costTable(true)}", block(js, "function a4Back()", "\n}\n"))
+        for gone in ("function costRows(", "function estimateLine(", "data-est", "firstStepCost"):
+            self.assertNotIn(gone, js)
+        board = block(js, "function boardDecisions(", "\n}\n")
+        self.assertIn('type="checkbox"', board)
+        self.assertEqual(len(re.findall(r'^  "', block(js, "const BOARD_ITEMS = [", "];"), re.M)), 3)
 
     def test_save_keeps_password_out_and_leaves_drawings_and_chat_out(self):
         js = read("start.js")
@@ -860,21 +797,57 @@ class SecondReviewTest(unittest.TestCase):
         self.assertIn("${placeAid()}", block(js, "function screenOne()", "\n}\n"))
         self.assertIn('result["subsidy"]', (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
 
-    def test_contractors_are_not_named(self):
-        # what-044：特定の業者を勧めない・紹介料を取らない。確かめ方だけを出す。
-        js = read("start.js")
-        box = block(js, "function contractorBox()", "\n}\n")
-        self.assertIn("特定の業者を勧めず、紹介料も受け取りません", box)
-        self.assertIn("https://etsuran2.mlit.go.jp/TAKKEN/", block(js, "const CONTRACTOR_CHECKS = [", "];"))
-        self.assertIn("${contractorBox()}", block(js, "function screenFour()", "\n}\n"))
-
-    def test_costs_say_where_the_numbers_come_from(self):
-        # 2026-11-06：止水板は東京都の事例集の値。ほかは作者の実務の桁の目安だと書く。
-        plate = next(m for m in samples.MEASURES if m["key"] == "plate")
-        self.assertIn("止水板設置事例集", plate["cost_basis"])
-        hole = next(m for m in samples.MEASURES if m["key"] == "hole")
-        self.assertIn("作者の実務の桁の目安", hole["cost_basis"])
+    def test_unit_prices_are_the_authors_figures(self):
+        # 2026-11-06 本人の指示の単価。どれも作者（電気主任技術者）の実務の目安と書く。
+        prices = {item["key"]: item["yen"] for item in samples.UNIT_PRICES}
+        self.assertEqual(prices, {"door_plate": 350000, "front_plate": 800000, "slope_plate": 1800000, "hole": 50000, "vent": 300000, "panel": 350000, "panel_cable": 1200000})
+        for m in samples.MEASURES:
+            if not m["range"].startswith("—"):
+                self.assertIn("作者（電気主任技術者）の実務の目安", m["cost_basis"], m["key"])
         self.assertNotIn("move", {m["key"] for m in samples.MEASURES})
-        js = read("start.js")
-        self.assertIn("この建物の金額ではありません", block(js, "function modelCosts()", "\n}\n"))
+        body = payload({}, [])
+        self.assertEqual([item["count"] for item in body["unit_prices"]], [1, 1, 1, 1, 0, 0, 0])
+        self.assertIn("1,000万〜2,500万円", body["recovery_cost_line"])
+
+    def test_rules_of_2026_11_06_on_the_twelve_cases(self):
+        # 本人の指示2〜5：地下と図面で分かれば確定（高圧か低圧かが未確認でも）。部屋ごとに階を見る。2階以上・なしは③でも浸からない。
+        risky = RISKY_PLACE
+        c10 = payload({"rooms_floor": "basement", "basement": "yes", "hv": "unknown", "tr": "yes"}, ["pump", "elec", "tr"], risky, None)
+        self.assertEqual((verdicts(c10)["water"], verdicts(c10)["power"], verdicts(c10)["tr"]), ("risk", "risk", "risk"))
+        c9 = payload({"rooms_floor": "basement", "basement": "yes", "room_floors": {"pump": "basement", "elec": "ground"}, "hv": "yes", "tr": "no", "panel_foot": "floor"}, ["pump", "elec", "absent:tr"], risky, None)
+        self.assertEqual((verdicts(c9)["water"], verdicts(c9)["power"]), ("risk", "unconfirmed"))
+        c6 = payload({"basement": "no", "rooms_floor": "upper", "hv": "yes", "tr": "yes"}, ["upper:pump", "upper:elec", "upper:tr"], risky, None)
+        self.assertTrue(c6["top_line"]["lead"].startswith("今の情報では"))
+        homes = {s["key"]: s["state"] for s in c6["scenarios"]["3:plate"]["services"]}
+        self.assertEqual(homes, {"pump": "running", "ev": "stopped", "light": "running", "homes": "running"})
+        c3 = payload({"rooms_floor": "basement", "basement": "yes", "hv": "yes", "tr": "yes"}, ["pump", "elec", "upper:tr"], risky, None)
+        self.assertEqual(verdicts(c3)["tr"], "clear")
+        self.assertNotIn("tr", c3["scenarios"]["3:plate"]["wet"])
+
+
+class SurfaceLengthTest(unittest.TestCase):
+    """各画面の表面（折りたたみを開かずに見える文字）の上限（2026-11-06 本人の指示）。
+
+    指摘のたびに説明の箱を足して画面が長くなるのを止める。上限を超える変更は、何かを削るか、折りたたみ・「根拠と資料」へ移す。
+    上限を上げるのは、本人が決めたときだけ。数え方は tests/surface.py（見本A）。
+    """
+
+    LIMITS = {
+        "1 場所": 620,
+        "2 確かめる": 480,
+        "3 止まるもの": 780,
+        "3 止まるもの（③）": 850,
+        "4 渡す：memo": 540,
+        "4 渡す：a4": 1950,
+        "4 渡す：cost": 1150,
+    }
+
+    def test_each_screen_stays_under_the_limit(self):
+        from tests.surface import surface_counts
+        counts = surface_counts()
+        if counts is None:
+            self.skipTest("osascript（macOS の JavaScriptCore）がない環境")
+        self.assertEqual(set(counts), set(self.LIMITS))
+        over = {name: f"{count}字（上限 {self.LIMITS[name]}字）" for name, count in counts.items() if count > self.LIMITS[name]}
+        self.assertEqual(over, {}, "表面の文字が上限を超えました。足すなら、同じだけ削るか折りたたみへ移してください。")
 

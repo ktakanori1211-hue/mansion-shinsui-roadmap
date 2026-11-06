@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import re
+import unicodedata
 from typing import List, Optional
 
 # 図面の用紙。部屋の x, y, w, h は、図の外周を 0〜1 とした割合で、3D の模型とピンも同じ値を使う。
@@ -39,11 +40,12 @@ def _door(side: str, at: float, kind: str = "door", width: int = 900) -> dict:
 
 
 # 図面の語と部屋の種類の対応。語のゆれはここで吸収する。
+# 2026-11-06 本人の指示：文字の間の空白（「電 気 室」）を無視し、「東電借室」「電力借室」「TR室」「自家用電気室」「高圧受電室」「増圧ポンプ」「受水槽室」も読む。
 ROOM_WORDS = {
-    "elec": ["電気室", "受変電室", "受電室", "キュービクル室"],
-    "tr": ["借室", "供給用変圧器室", "東京電力"],
+    "elec": ["電気室", "受変電室", "受電室", "キュービクル室", "自家用電気室", "高圧受電室"],
+    "tr": ["借室", "東電借室", "電力借室", "TR室", "供給用変圧器室", "東京電力"],
     "panel_room": ["共用分電盤室", "盤室", "主開閉器盤室"],
-    "pump": ["給水ポンプ室", "ポンプ室"],
+    "pump": ["給水ポンプ室", "ポンプ室", "増圧ポンプ", "受水槽室"],
     "ev": ["EV", "エレベーター", "昇降機"],
     "park": ["機械式駐車場", "駐車場ピット"],
     "slope": ["車路スロープ", "スロープ"],
@@ -53,6 +55,20 @@ ROOM_WORDS = {
     "gen": ["発電機室", "非常用発電機"],
     "door": ["坂下側出入口", "足元換気口"],
 }
+
+def _plain_word(text: str) -> str:
+    """全角・半角をそろえ、空白（全角の空白も）を除き、英字を大文字にする。"""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text or "")).upper()
+
+
+def room_kind(text: str) -> Optional[str]:
+    """図面の語から部屋の種類を返す。「電 気 室」「ＴＲ室」「tr室」も読む。"""
+    plain = _plain_word(text)
+    for kind, names in ROOM_WORDS.items():
+        if any(_plain_word(name) in plain for name in names):
+            return kind
+    return None
+
 
 ROOM_NAMES = {
     "elec": "電気室（マンション側の受電の箱の部屋）",
@@ -71,14 +87,14 @@ ROOM_NAMES = {
 
 # 11/8 までの費用は判定表の桁だけを使う。band は 4=数万 5=数十万 6=数百万 7=数千万 8=1億円超。
 MEASURES = [
-    {"key": "hole", "tier": "今すぐ", "label": "ケーブルを通す壁の穴をふさぐ（マンション側の部屋の穴。施工は電気工事の業者が、主任技術者と停電の要否・離隔を決めてから。理事や管理員は部屋に入らない。東京電力の変圧器の部屋の穴には、だれも栓や止水材を入れない）", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "数万〜十数万円", "low": 4, "high": 5, "sample_yen": 100000, "tokyo": "with_plate", "chiba": "no"},
-    {"key": "plate", "tier": "今すぐ", "label": "置くだけの止水板と吸水土のうを備える", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "約30万〜50万円（1か所）", "low": 5, "high": 5, "sample_yen": 300000, "tokyo": "yes", "chiba": "yes"},
+    {"key": "hole", "tier": "今すぐ", "label": "ケーブルを通す壁の穴をふさぐ（マンション側の部屋の穴。施工は電気工事の業者が、主任技術者と停電の要否・離隔を決めてから。理事や管理員は部屋に入らない。東京電力の変圧器の部屋の穴には、だれも栓や止水材を入れない）", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "5万円（穴1か所）", "low": 4, "high": 5, "sample_yen": 50000, "tokyo": "with_plate", "chiba": "no"},
+    {"key": "plate", "tier": "今すぐ", "label": "置くだけの止水板と吸水土のうを備える", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費", "range": "35万円（幅1mの扉1か所）", "low": 5, "high": 5, "sample_yen": 350000, "tokyo": "yes", "chiba": "yes"},
     {"key": "procedure", "tier": "今すぐ", "label": "大雨の前とさなかの手順を決めておく", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "—", "range": "—（契約による）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "tepco", "tier": "今すぐ", "label": "東京電力の変圧器の部屋の扉と穴の浸水対策を、東京電力パワーグリッドに照会し、申し入れて話し合う", "decision": "理事会で申し入れる。工事になるときの決め方は内容が分かってから", "account": "話し合いの結果による", "range": "—（確認が要る）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
-    {"key": "panel", "tier": "工事が要る", "label": "ポンプのスイッチ盤を高い位置に付け替える（盤の下の端が低いと分かった場合）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜150万円", "low": 5, "high": 6, "sample_yen": 1000000, "tokyo": "unknown", "chiba": "no"},
-    {"key": "pillar", "tier": "工事が要る", "label": "支柱式の止水板（アンカーで固定）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "約30万〜300万円（1か所）", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "yes", "chiba": "no"},
+    {"key": "panel", "tier": "工事が要る", "label": "ポンプのスイッチ盤を高い位置に付け替える（盤の下の端が低いと分かった場合）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "35万円（ケーブル延長ありは120万円）", "low": 5, "high": 6, "sample_yen": 350000, "tokyo": "unknown", "chiba": "no"},
+    {"key": "pillar", "tier": "工事が要る", "label": "支柱式の止水板（アンカーで固定）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "80万〜180万円（正面玄関〜地下車路）", "low": 5, "high": 6, "sample_yen": 800000, "tokyo": "yes", "chiba": "no"},
     {"key": "door", "tier": "工事が要る", "label": "マンション側の電気室の扉を防水扉にする（今の枠を使う場合。東京電力の変圧器の部屋の扉は含めない）", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "100〜300万円", "low": 6, "high": 6, "sample_yen": 2000000, "tokyo": "yes", "chiba": "no"},
-    {"key": "vent", "tier": "工事が要る", "label": "足元の換気口を高くする", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜数百万円", "low": 5, "high": 6, "sample_yen": 1000000, "tokyo": "with_plate", "chiba": "no"},
+    {"key": "vent", "tier": "工事が要る", "label": "足元の換気口を高くする", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "30万円（換気口1か所）", "low": 5, "high": 6, "sample_yen": 300000, "tokyo": "with_plate", "chiba": "no"},
     {"key": "power", "tier": "工事が要る", "label": "停電したとき外から電源車をつなげる受け口を 1 階につくる", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜数百万円", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "unknown", "chiba": "no"},
     {"key": "door_rebuild", "tier": "更新と一緒", "label": "壁を壊して枠ごと防水扉にする", "decision": "総会（特別決議）", "account": "修繕積立金", "range": "300万円〜", "low": None, "high": None, "open_ended": True, "sample_yen": 4000000, "tokyo": "yes", "chiba": "no"},
     # 「受電の箱を屋上へ移す」は、現実的でないため外した（2026-11-06 本人決定）。
@@ -101,19 +117,23 @@ HOLE_OWNER_NO_ENGINEER = "管理会社→電気工事の業者"
 
 # 壁の穴の行の折りたたみに出す、塞ぎ方の使い分け。施工時間や停電の要否は根拠が確かめられていないので書かない。
 HOLE_NOTE = "使っていない予備の管の口は栓で塞ぎ、ケーブルが通った穴は固まらない（非硬化の）止水材で埋めます（ケーブルの通った穴に栓は使えません）。"
-# 費用の目安の出どころ（2026-11-06 本人の指摘「金額を現実的に」）。止水板は東京都の事例集の集合住宅の事例（材料費と施工費込み・税込）。
-# ほかは公的な資料で金額を確かめられていないので、作者の実務の桁の目安のまま、そうと書く。
-COST_BASIS = {
-    "plate": "東京都都市整備局「止水板設置事例集」（2026年7月版）の集合住宅の事例：直接貼付け型（幅約0.9m・高さ0.4〜0.5m）で約30万〜50万円。材料費と施工費込み・税込。間口に合わせて作るので、同じ大きさでも価格は前後します。",
-    "pillar": "東京都都市整備局「止水板設置事例集」（2026年7月版）の集合住宅の事例：支柱差込み型で、幅1.2〜2m・高さ0.5mが約30万円、幅1.8m・高さ1mが約60万円、エントランス幅3.4m・高さ約0.7m（Ws-6相当）が約300万円。材料費と施工費込み・税込。",
-}
-COST_BASIS_URL = "https://www.toshiseibi.metro.tokyo.lg.jp/documents/d/toshiseibi/2026-08-04-142041-430"
-COST_BASIS_NONE = "公的な資料で金額を確かめられていない、作者の実務の桁の目安です。見積りで確かめます。"
+# 費用の単価（2026-11-06 本人＝電気主任技術者の実務の目安）。場所・サイズ別の単価×個数で、画面4の表と A4 と相談の文に使う。
+# kind：plate は止水板（補助の対象の計算に使う）。default は、その建物で最初に入れておく個数の決め方。
+COST_BASIS_NONE = "作者（電気主任技術者）の実務の目安です。見積りに置き換えます。"
+UNIT_PRICES = [
+    {"key": "door_plate", "label": "通用口・機械室の扉の止水板（幅1m）", "yen": 350000, "kind": "plate", "measure": "plate", "default": "one"},
+    {"key": "front_plate", "label": "正面玄関の止水板（幅2.5m）", "yen": 800000, "kind": "plate", "measure": "pillar", "default": "one"},
+    {"key": "slope_plate", "label": "地下車路スロープの止水板（幅4m）", "yen": 1800000, "kind": "plate", "measure": "pillar", "default": "slope"},
+    {"key": "hole", "label": "壁の配管・ケーブル穴の穴埋め（1か所）", "yen": 50000, "kind": "hole", "measure": "hole", "default": "feed"},
+    {"key": "vent", "label": "地下換気口のカバー（1か所）", "yen": 300000, "kind": "vent", "measure": "vent", "default": "zero"},
+    {"key": "panel", "label": "ポンプ制御盤の壁掛け・かさ上げ", "yen": 350000, "kind": "panel", "measure": "panel", "default": "floor_panel"},
+    {"key": "panel_cable", "label": "同上（ケーブル延長あり）", "yen": 1200000, "kind": "panel", "measure": "panel", "default": "zero"},
+]
+# 未対策で浸水したときの復旧費の目安（同じく作者の実務の目安）。
+RECOVERY_COST_LINE = "未対策で浸水したときの復旧費の目安：約1,000万〜2,500万円（1〜4週間の断水・停電）"
 for _measure in MEASURES:
     if not _measure["range"].startswith("—"):
-        _measure["cost_basis"] = COST_BASIS.get(_measure["key"], COST_BASIS_NONE)
-        if _measure["key"] in COST_BASIS:
-            _measure["cost_url"] = COST_BASIS_URL
+        _measure["cost_basis"] = COST_BASIS_NONE
     if _measure["key"] in MEASURE_OWNERS:
         _measure["owner"] = MEASURE_OWNERS[_measure["key"]]
     if _measure["key"] == "hole":

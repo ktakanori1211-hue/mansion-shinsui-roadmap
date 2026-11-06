@@ -21,7 +21,7 @@ FACTS = [
     {"topic": "断水", "text": "断水は、ポンプのスイッチ盤が浸かる場合のほか、受電の箱が浸かって停電する場合にも起きる。原因を一つに絞らない。"},
     {"topic": "地図の外", "text": "地図に色がないことは安全を意味しない。2026年9月の台風25号では、浸水・道路冠水447件の64%が洪水マップで色のない場所だった（ウェザーニューズ）。"},
     {"topic": "決議", "text": "壁の穴の止水と置くだけの止水板は、総会から任されている、規約に定めがある、予算に入っている、のどれかに当たるとき理事会で決められる場合がある。当たるかは管理会社に規約・予算書・議事録で確かめる。"},
-    {"topic": "費用", "text": "壁の穴の止水は数万〜十数万円、盤の付け替えは数十万〜150万円（作者の実務の桁の目安で、裏取りした相場ではない）。置くだけの止水板は1か所約30万〜50万円、支柱式の止水板は1か所約30万〜300万円（東京都の止水板設置事例集の集合住宅の事例。材料費と施工費込み・税込）。どれも見積りに置き換える。"},
+    {"topic": "費用", "text": "費用の目安（作者の実務の目安）：通用口・機械室の扉の止水板（幅1m）35万円、正面玄関（幅2.5m）80万円、地下車路スロープ（幅4m）180万円、壁の穴埋め1か所5万円、地下換気口カバー30万円、ポンプ制御盤の壁掛け・かさ上げ35万円（ケーブル延長ありは120万円）。未対策で浸水したときの復旧費は約1,000万〜2,500万円（1〜4週間の断水・停電）。どれも見積りに置き換える。"},
     {"topic": "分担", "text": "東京電力の変圧器の部屋の中の設備と、ケーブルを通す穴の止水は電力会社の対策、扉を含む室外は建物側の対策というのが国の資料の考え方。境目は東京電力パワーグリッドに確かめる。"},
 ]
 
@@ -304,14 +304,13 @@ def _text_rooms(words: List[dict]) -> List[dict]:
     found = {}
     for word in words:
         text = word.get("str", "").strip()
-        for kind, names in samples.ROOM_WORDS.items():
-            if kind in found:
-                continue
-            if any(name in text for name in names):
-                floor = ""
-                if headings:
-                    floor = re.sub(r"平面図.*", "", _heading_of(word, headings)["str"]).strip()
-                found[kind] = {"kind": kind, "word": text, "floor": floor, "x": word["x"], "y": word["y"], "source": "text"}
+        # 文字の間の空白や全角・半角のゆれは samples.room_kind が吸収する（「電 気 室」「ＴＲ室」）。
+        kind = samples.room_kind(text)
+        if kind and kind not in found:
+            floor = ""
+            if headings:
+                floor = re.sub(r"平面図.*", "", _heading_of(word, headings)["str"]).strip()
+            found[kind] = {"kind": kind, "word": text, "floor": floor, "x": word["x"], "y": word["y"], "source": "text"}
     return list(found.values())
 
 

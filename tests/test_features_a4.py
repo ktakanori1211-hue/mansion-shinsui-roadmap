@@ -61,7 +61,7 @@ class PayloadShapeTest(unittest.TestCase):
 
     def test_renewal_tier_only_where_shown(self):
         keys = lambda d: [m["key"] for m in d["measures"] if m["tier"] == "更新と一緒"]
-        self.assertIn("gen_move", keys(payload("c")))
+        self.assertNotIn("gen_move", keys(payload("c")))  # 2026-11-06 本人の指示でメインの画面から外した
         self.assertEqual(keys(payload("b")), [])
 
 

@@ -5,7 +5,7 @@
 // 絵は構内平面図だけ。部屋の位置は /api/building の sample.views から描き、部屋の色はサーバーの判定（equipment の verdict）のまま塗る。
 // この画面では新しい判定を作らない。色は 赤＝確かめて止まるおそれ／橙＝未確認（危険という意味ではない）／緑＝問題なし。
 // 青い矢印は水の入り道（入りうる所）で、判定ではない。
-// 画面3の答えは「管理会社が図面で確かめた答え」で、今の判定の語（pump・upper:pump・absent:pump など）のまま送る。
+// 画面2（確かめる）の答えは「管理会社が図面で確かめた答え」で、今の判定の語（pump・upper:pump・absent:pump など）のまま送る。
 
 const S = {
   screen: 1,
@@ -17,9 +17,9 @@ const S = {
   place: null,
   demoId: null,
   sampleId: null,
-  // 画面3で分かった、判定が読む答え（hv：主任技術者がいるか、tr：東京電力の部屋があるか）。
+  // 画面2（確かめる）で分かった、判定が読む答え（hv：主任技術者がいるか、tr：東京電力の部屋があるか）。
   extra: {},
-  // 画面3の答え。部屋の種類ごとに basement / ground / upper / absent。
+  // 画面2（確かめる）の答え。部屋の種類ごとに basement / ground / upper / absent。
   choices: {},
   building: null,
   floor: "",
@@ -34,7 +34,7 @@ const S = {
   statements: [],
   // 自分の建物で、住民が答えられる2つ（何階建てか・地下はあるか）。分からないときは空のまま。
   own: { floors: "", basement: "unknown" },
-  // 画面3：図面が手元にあるか（null は未回答）と、図面がない人が見て答えたこと。
+  // 画面2（確かめる）：図面が手元にあるか（null は未回答）と、図面がない人が見て答えたこと。
   drawing: null,
   obs: {},
   // 画面1：この辺りが水につかった経験（住民の話。判定は変えず、依頼メモに載せる）。
@@ -71,7 +71,7 @@ const WET_ROOMS = { ev: ["ev"], hv: ["elec", "panel_room"], panel: ["pump"], tr:
 // 管理会社に頼む確認を、電気を知らない人の言葉で言う（サーバーの top_line.steps の key ごと。中身は同じ確認）。
 const PLAIN_ASK = {
   water: "水を送るポンプのスイッチの箱が、床から何cmの高さにあるか",
-  power: "電気の機械がどの階にあり、点検の担当者が決まっているか",
+  power: "電気の機械がどの階にあり、高圧（保安会社の契約）か低圧か",
   tr: "東京電力の機械の部屋が、建物の中にあるか・どの階か",
   entry: "電気の機械の部屋の壁の穴が、ふさがれているか",
   ev: "エレベーターの底に水が入ったときの手順",
@@ -87,7 +87,7 @@ const CAPTIONS = {
   2: "水が、入り道から建物に入る",
   3: "機械の部屋が水につかり、止まる想定",
 };
-// 画面3の問い。kind は今の判定が読む部屋の語。「地下」「1階」は、図面でその部屋を確かめた印になる。
+// 画面2（確かめる）の問い。kind は今の判定が読む部屋の語。「地下」「1階」は、図面でその部屋を確かめた印になる。
 const QUESTIONS = [
   { no: "①", row: "water", kind: () => "pump", title: "ポンプ室（水を送るポンプの部屋）は、図面で何階ですか？", options: ["basement", "ground", "upper", "absent"] },
   { no: "②", row: "power", kind: (b) => (b.sample.has_chief_engineer ? "elec" : "panel_room"), title: "電気室（共用の分電盤室のこともあります）は、図面で何階ですか？", options: ["basement", "ground", "upper"] },
@@ -201,7 +201,7 @@ function joinJa(words) {
 
 function titleLine() {
   if (MAIN.every((key) => verdict(key) === "clear")) return S.building.top_line.lead;
-  if (roomsFloor() === "upper") return "機械が2階以上かを図面で確かめると、答えが出ます";
+  if (roomsFloor() === "upper") return "機械の階を図面で確認";
   const names = TILES.filter((tile) => worst(tile.from) !== "clear").map((tile) => tile.short);
   const where = { basement: "地下", ground: "1階" }[roomsFloor()] || "";
   return `${where ? `${where}の` : ""}機械が水につかると、全部の家で${joinJa(names)}が止まります`;
@@ -225,17 +225,6 @@ function measureName(m) {
   return MEASURE_SHORT[m.key] || m.label.replace(/（.*$/, "");
 }
 
-// 最初の手の桁。「今すぐ」の段の費用の幅を、安い順のまま端から端までつなぐ。
-function firstStepCost() {
-  const ranges = measures()
-    .filter((m) => m.tier === "今すぐ" && m.key !== "power")
-    .map((m) => m.range)
-    .filter((range) => range && !range.startsWith("—"));
-  if (!ranges.length) return "";
-  const low = ranges[0].split("〜")[0];
-  const high = ranges[ranges.length - 1].split("〜")[1];
-  return ranges.length === 1 ? ranges[0] : `${low}〜${high || ""}`;
-}
 
 function subsidy() {
   const region = S.building?.sample?.subsidy || "none";
@@ -310,19 +299,17 @@ function pinAnchors(shape, X, Y) {
   return anchors;
 }
 
-// 部屋が浸かると止まる暮らし（サーバーの停電の連鎖と同じつながり。分電盤室から各戸へ電気が行く建物では各戸も）。
-function roomStops(key) {
-  const homesFromPanel = (S.building?.chain?.edges || []).some(([a, b]) => a === "hv" && b === "homes");
-  return { ev: "エレベーター", pump: "水・トイレ", elec: "水・エレベーター", panel_room: homesFromPanel ? "水・エレベーター・各戸の電気" : "水・エレベーター", tr: "各戸の電気" }[key] || "";
-}
+// 平面図の横の高さの目盛り（2026-11-06 本人の指示。数字は作者の実務の目安で、建物ごとに竣工図か実測で確かめる）。
+// 水の位置①②③に合わせて、今の高さの行に印を付ける。
+const HEIGHT_SCALE = [
+  [3, "50cm", "止水板・受電の箱"],
+  [2, "20〜30cm", "床置きのポンプの盤が浸かって断水"],
+  [1, "0cm", "壁の穴・EVピット"],
+];
 
-// 平面図のすぐ下：水につかる想定の部屋と、そこで止まる暮らしを、1行ずつ言葉で出す（部屋が小さくて図に書き切れないときも読めるように）。
-function wetList(level) {
-  if (level < 2) return "";
-  const rooms = new Set((S.building?.sample?.views || []).flatMap((view) => view.rooms.map((room) => room.key)));
-  const wet = [...new Set((scenario(level)?.wet || []).flatMap((key) => WET_ROOMS[key] || []))].filter((key) => rooms.has(key) && roomStops(key));
-  if (!wet.length) return "";
-  return `<ul class="wet-list">${wet.map((key) => `<li><b>${esc(ROOM_SHORT[key] || key)}に水</b><span>→ 止まる：${esc(roomStops(key))}</span></li>`).join("")}</ul>`;
+function heightScale(level) {
+  const rows = HEIGHT_SCALE.map(([n, cm, what]) => `<li class="${level >= n ? "on" : ""}${level === n ? " now" : ""}"><b>${cm}</b><span>${what}</span></li>`).join("");
+  return `<div class="height-scale"><p>床からの高さ（目安）</p><ol>${rows}</ol><small>作者の実務の目安。建物ごとに竣工図か実測で確かめます。</small></div>`;
 }
 
 // 水の位置①②③の見出し。サーバーの water_levels の文は、その下に小さく添える。
@@ -382,17 +369,7 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
     const flash = S.flash.includes(room.key) ? " flash" : "";
     const cls = v ? `p-room p-key ${v}${flash}` : room.hatch ? "p-room p-soil" : `p-room${flash}`;
     parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" class="${cls}" data-room="${esc(room.key)}"/>`);
-    // 水の位置（what-018）。①は道路と入り道まで。②は一番低い床（車路・廊下・EVの底）に浅く。③は盤や受電の箱の高さまで。
-    // 機械の部屋が浸かるかは、サーバーの scenario（選んだ対策）の wet のまま。対策で浸からない部屋は塗らない。
-    const wetNow = new Set((level >= 2 ? scenario(level)?.wet || [] : []).flatMap((key) => WET_ROOMS[key] || []));
-    const lowFloor = /^(aisle|corridor)/.test(room.key) || room.key === "park";
-    let depth = 0;
-    if (level >= 2 && (lowFloor || wetNow.has(room.key))) depth = level >= 3 ? 0.55 : 0.25;
-    if (depth) parts.push(`<rect x="${x + 3}" y="${y + h * (1 - depth)}" width="${w - 6}" height="${h * depth - 3}" class="p-water"/>`);
-    // 浸かる想定の機械の部屋には、何が止まるかを部屋の中に直接書く（2026-11-06 本人の指摘「浸水の状況が理解しにくい」）。
-    const stops = wetNow.has(room.key) ? roomStops(room.key) : "";
-    const stopSize = stops ? fitText(`止まる：${stops}`, w, 15, 12) : 0;
-    if (stopSize) parts.push(`<text x="${x + w / 2}" y="${y + h - 8}" class="p-stops" style="font-size:${stopSize}px">止まる：${esc(stops)}</text>`);
+    // 部屋に水色は塗らない（2026-11-06 本人の指示）。平面図は、水の入り道の矢印と部屋の色だけ。高さは横の目盛りで見せる。
     const cx = x + w / 2;
     if (v) {
       const name = ROOM_SHORT[room.key];
@@ -974,7 +951,6 @@ function ownGuide(index) {
 
 function screenTwo() {
   const b = S.building;
-  const count = openCount();
   // S.play は平面図に出している水の位置（0 は判定のまま）。再生中かは S.timer で見る。再生が終わっても③のまま止める（2026-11-05）。
   const playing = Boolean(S.timer);
   const shown = S.play > 0;
@@ -984,10 +960,8 @@ function screenTwo() {
     <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
     <h1 class="title">${esc(b.top_line.lead)}</h1>
     <p class="lead-why">${esc(titleLine())}</p>
-    ${b.sample.custom ? ownDrawingFirst() : ""}
     <h2 class="part"><span>1</span>水が入る順と、止まるもの</h2>
-    <div class="plan">${plan({ level: S.play })}</div>
-    ${wetList(S.play)}
+    <div class="plan-row"><div class="plan">${plan({ level: S.play })}</div>${heightScale(S.play)}</div>
     <div class="play-row">
       <button type="button" class="play" data-act="play">${playing ? "❚❚ 止める" : shown ? "▶ もう一度見る" : "▶ 水が入る順に見る"}</button>
       <span class="caption">${shown ? `<b class="level-head">${LEVEL_HEAD[S.play] || ""}</b><small>${esc(now ? now.text : CAPTIONS[S.play])}</small>` : "道路 → 入り道 → 一番低い床 → 盤"}</span>
@@ -999,7 +973,7 @@ function screenTwo() {
     ${legend()}
     <h2 class="part"><span>2</span>暮らしが止まるまで</h2>
     ${timeline()}
-    <button type="button" class="primary" data-act="to3">${count ? `？を確かめる（未確認 ${count}）` : "確かめた答えを見直す"}</button>
+    <button type="button" class="primary" data-act="to4">管理会社と理事会に渡す</button>
   </section>`;
 }
 
@@ -1021,7 +995,7 @@ function screenThree() {
     const item = row(q.row);
     const v = verdict(q.row);
     const chosen = S.choices[kind] || "none";
-    // 主任技術者の名前の問いは、見出しの問いと混ぜず、別の札にする（2026-11-05 本人の指摘⑤）。
+    // 高圧か低圧かの問い（保安会社のシール・高圧の表示）は、見出しの問いと混ぜず、別の札にする（2026-11-05 本人の指摘⑤）。
     const options = `<div class="options">${[...q.options, "none"]
           .map((o) => `<button type="button" class="option${chosen === o ? " chosen" : ""}" data-kind="${kind}" data-choice="${o}" aria-pressed="${chosen === o}">${OPTION_WORDS[o]}</button>`)
           .join("")}</div>`;
@@ -1042,7 +1016,7 @@ function screenThree() {
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
     ${drawingQuestion()}
     ${hasDrawing() ? cards + readCard() : observeCards()}
-    <button type="button" class="primary" data-act="to4">${hasDrawing() ? "管理会社と理事会に渡す" : "管理会社に頼む紙を作る"}</button>
+    <button type="button" class="primary" data-act="to3">水が入る順と、止まるものを見る</button>
   </section>`;
 }
 
@@ -1082,21 +1056,18 @@ function observeCards() {
 // 住民が見たことを、サーバーの聞き取り（statements）の文にする。
 function obsStatements() {
   const seen = OBSERVE.map((q) => q.says[S.obs[q.key]]).filter(Boolean);
-  if (S.hvSaid === "no") seen.push("電気設備の点検の報告書に、電気主任技術者の名前が見当たらなかった");
+  if (S.hvSaid === "no") seen.push("電気室の扉や盤に、保安会社の連絡先シールや高圧の表示が見当たらなかった");
   return seen.map((text) => `住民が見たこと：${text}`);
 }
 
-// ②の前に聞く、電気主任技術者の名前（2026-11-05 本人の指摘「名前があるの意味がよく分からない」）。
-// 何の紙の、どこを見るか、だれが持っているか（what-046）と、なぜ聞くか（what-022：主任技術者がいるかで、浸水の日の連絡先と手順が変わる）を添える。
-// 「書いていない」では判定を変えない。受電設備なしと読むのは、書類に「受電設備なし」と「選任なし」の両方があるときだけ（hantei-030、how-017）。
+// ②の前に聞く、高圧か低圧か（2026-11-06 本人の指示：電気室に貼ってあるのは保安会社のシールと高圧の表示なので、それを聞く）。
+// 「ない」では判定を変えない。受電設備なしと読むのは、書類に「受電設備なし」と「選任なし」の両方があるときだけ（hantei-030、how-017）。
 function engineerQuestion() {
   const said = S.hvSaid || "";
   const chip = (key, word) => `<button type="button" class="option${said === key ? " chosen" : ""}" data-hv="${key}" aria-pressed="${said === key}">${word}</button>`;
-  return `<p class="qtitle">電気の点検の報告書に、電気主任技術者の名前はありますか？</p>
-    <p class="qsub">管理会社か理事会が持っている「電気設備の点検の報告書」を見ます。</p>
-    <p class="hint">電気の点検を任された人がいるかで、浸水の日にだれへ連絡し、だれが電気を切るかが変わります。</p>
-    <div class="options">${chip("yes", "書いてある")}${chip("no", "書いていない")}${chip("none", "分からない")}</div>
-    ${said === "no" ? `<p class="hint">名前がないことだけでは、電気を受ける部屋がないとは決めません。依頼メモで管理会社に確かめてもらいます。</p>` : ""}`;
+  return `<p class="qtitle">電気室の扉や盤に、保安会社（電気保安協会など）の連絡先シールか「高圧」の表示はありますか？</p>
+    <p class="qsub">年1回の停電点検がある建物も「ある」。高圧で受ける建物は保安会社が点検し、浸水の日の連絡先が変わります。</p>
+    <div class="options">${chip("yes", "ある")}${chip("no", "ない")}${chip("none", "分からない")}</div>`;
 }
 
 // 依頼メモに載せる、聞き取りの文（サーバーの memos の文のまま）。
@@ -1114,16 +1085,6 @@ async function setObservation(key, value) {
 
 // 図面を読むときの、送る前の明示（what-063）。
 const READ_NOTICE = "選んだ図面は、Anthropic の API に送って読みます（APIキーがないときは送らず、見本の答えを出します）。";
-
-// 自分の建物：下の平面図は見本の形を借りた「よくある形の例」だと大きく言い、図面を入れる場所（3「確かめる」）へ案内する。
-// 図面を入れる欄は3の1か所だけにする（2026-11-06 本人の指摘「画面2と3で重複」「導線がおかしい」）。
-function ownDrawingFirst() {
-  return `<div class="qcard own-drawing">
-      <p class="example-tag">下の図は「よくある形の例」です。あなたの建物の図ではありません。</p>
-      <p class="qsub">竣工図（建物の図面）があれば、3「確かめる」で入れると、電気室・ポンプ室・借室の階が答えに入り、図の色が変わります。</p>
-      <button type="button" class="option" data-act="to3">図面を入れる（3へ）</button>
-    </div>`;
-}
 
 function readCard() {
   return `<div class="qcard read">
@@ -1205,7 +1166,7 @@ function readResult() {
     return `<p class="hint">Claude が部屋と階を読み、答えの候補を出します。入れるかは、あなたが決めます。${key}</p><p class="hint">入れるのは、機械のある階の平面図のページだけ（32MBまで）。</p>`;
   }
   const kinds = { pump: "①", elec: "②", panel_room: "②", tr: "③" };
-  // 名前は画面3の問いの見出しとそろえる。図面に書かれた語は小さく添える。
+  // 名前は画面2（確かめる）の問いの見出しとそろえる。図面に書かれた語は小さく添える。
   const names = { pump: "ポンプ室", elec: "電気室", panel_room: "分電盤室", tr: "借室（東京電力の変圧器の部屋）" };
   // 同じ部屋の種類と階の候補は1つにまとめる（Claude が同じ部屋を2度挙げることがあるため。2026-11-05 の実機で確かめた）。
   const seen = new Set();
@@ -1238,97 +1199,69 @@ function asksList(list) {
 // 費用の欄（2026-11-05 本人の指摘「工事金額がわかりにくい。これでは理事会が進めようと思えない」）。
 // 出典のない円の数字は足さない（費用の桁はサーバーの帯のまま）。そのかわり、工事の中身・見積りを頼む先・決め方を出し、
 // 見積り額を入れたときだけ、補助を使えた場合の計算例と1戸あたりを計算する（what-064）。補助の率と上限は、出典を確かめた制度だけ。
-// 補助の率と上限は、サーバーの SUBSIDIES の calc（都・市の全体）か covers（区市の、対策ごと）のまま。
-function aidCalc(m, aid) {
-  if (aid.covers) return aid.covers[m.key] || null;
-  const status = m[aid.region];
-  return aid.calc && (status === "yes" || status === "with_plate") ? aid.calc : null;
-}
-
-// 対策の行の印。都・千葉市は対策ごとの読み（m.tokyo など）、区市は covers にある対策だけ。
-function aidStatus(m, aid) {
-  if (aid.covers) return aid.covers[m.key] ? "yes" : "";
-  return m[aid.region] || "";
-}
-
 function yen(value) {
   return `${Math.round(value).toLocaleString("ja-JP")}円`;
 }
 
-// 入れた見積り額からの計算。率と上限と切り捨ては、制度の文のまま。計算例で、交付を約束しない。
-function estimateLine(m, aid) {
-  const amount = Number(S.est?.[m.key]);
-  if (!(amount > 0)) return "";
-  const units = Number(S.units);
-  const calc = aidCalc(m, aid);
-  const status = aidStatus(m, aid);
-  const parts = [`見積り ${yen(amount)}`];
-  let own = amount;
-  if (calc) {
-    const grant = Math.floor(Math.min(amount * calc.rate, calc.cap) / calc.unit) * calc.unit;
-    own = amount - grant;
-    parts.push(`${aid.label}を使えた場合：補助 ${yen(grant)}、組合の負担 ${yen(own)}${status === "with_plate" ? "（止水板などと併せる場合に限る）" : ""}`);
-  }
-  if (units >= 1) parts.push(`1戸あたり ${yen(own / units)}（${units}戸で割った計算）`);
-  return `<p class="m-calc">${esc(parts.join("／"))}</p>`;
+function man(value) {
+  const n = Math.round(value / 10000);
+  return `${n.toLocaleString("ja-JP")}万円`;
 }
 
-// print：入力欄を出さない（紙）。compact：A4の裏に収めるため、工事の中身と頼む先を省く。
-function costRows(print = false, compact = false) {
+// 費用（2026-11-06 本人の指示）：場所・サイズ別の単価×個数の表1つ。単価はサーバーの unit_prices（作者の実務の目安）のまま。
+function counts() {
+  if (!S.cnt) S.cnt = Object.fromEntries((S.building?.unit_prices || []).map((item) => [item.key, item.count]));
+  return S.cnt;
+}
+
+function costTotals() {
+  const cnt = counts();
+  const items = (S.building?.unit_prices || []).map((item) => ({ ...item, n: Number(cnt[item.key] || 0), sub: item.yen * Number(cnt[item.key] || 0) }));
+  const total = items.reduce((sum, item) => sum + item.sub, 0);
+  const plates = items.filter((item) => item.kind === "plate").reduce((sum, item) => sum + item.sub, 0);
+  const withPlates = items.filter((item) => ["plate", "hole", "vent"].includes(item.kind)).reduce((sum, item) => sum + item.sub, 0);
+  return { items, total, plates, withPlates };
+}
+
+// 補助の自動計算。率・上限・切り捨ては、その制度の文のまま。対象は止水板（都は、止水板と併せる穴・換気口も）。計算例で、交付を約束しない。
+function subsidyGrant(totals) {
   const aid = subsidy();
-  return TIERS.map((tier) => {
-    const items = measures()
-      .filter((m) => m.tier === tier)
-      .map((m) => {
-        const status = aidStatus(m, aid);
-        const chip = AID_WORDS[status] ? `<span class="aid ${status}">${AID_WORDS[status]}</span>` : "";
-        const input = print ? "" : `<label class="m-est">見積り額<input type="number" inputmode="numeric" min="0" step="1000" data-est="${esc(m.key)}" value="${esc(S.est?.[m.key] || "")}" placeholder="例：見積書の金額">円</label>`;
-        return `<li><div class="m-head"><b>${esc(measureName(m))}</b><span class="m-range">${esc(m.range)}${m.account ? `（${esc(m.account)}）` : ""}</span></div>
-          <div class="m-sub"><small>決め方：${esc(m.decision)}</small>${chip}</div>
-          ${compact ? "" : `<p class="m-what"><b>工事の中身</b>${esc(m.label)}</p>`}
-          ${!compact && m.owner ? `<p class="m-what"><b>見積りを頼む先</b>${esc(m.owner)}</p>` : ""}
-          ${!compact && m.cost_basis ? `<p class="m-what"><b>金額の出どころ</b>${esc(m.cost_basis)}${m.cost_url ? `（<a href="${esc(m.cost_url)}" target="_blank" rel="noopener">事例集</a>）` : ""}</p>` : ""}
-          ${input}${estimateLine(m, aid)}</li>`;
-      })
-      .join("");
-    return items ? `<h3 class="tier">${tier}</h3><ul class="measures">${items}</ul>` : "";
-  }).join("");
+  let calc = null;
+  let base = 0;
+  if (aid.covers) {
+    calc = aid.covers.pillar || aid.covers.plate || null;
+    base = totals.plates;
+  } else if (aid.calc) {
+    calc = aid.calc;
+    base = aid.region === "tokyo" ? (totals.plates > 0 ? totals.withPlates : 0) : totals.plates;
+  }
+  if (!calc || base <= 0) return { grant: 0, label: aid.label || "", known: Boolean(calc) };
+  const grant = Math.floor(Math.min(base * calc.rate, calc.cap) / calc.unit) * calc.unit;
+  return { grant, label: aid.label, known: true };
 }
 
-// 建物全体での比べ方の参考（日本建築学会 技術報告集 28巻68号、2022年2月。仮想のマンションの試算で、直接工事費のみ・諸経費と消費税は別）。
-// 対策の費用と、対策をせずに浸水したときの修復の費用を並べる。この建物の金額ではない。
-const MODEL_COSTS = {
-  source: "日本建築学会 技術報告集「既存分譲マンションの浸水対策改修とその費用対効果に関するモデル的検討」（2022年2月）",
-  url: "https://www.jstage.jst.go.jp/article/aijt/28/68/28_442/_pdf/-char/ja",
-  rows: [
-    ["地下に電気室がある型（65戸）", "床上10cm：対策 39万円／修復 1,900万円", "床上30cm：対策 1,775万円／修復 2,800万円", "床上130cm：対策 3,065万円／修復 6,100万円"],
-    ["電気室が1階の型（62戸）", "住棟には浸水なし（ポンプ室・駐車場に浸水）：対策 405万円／修復 2,500万円", "床上10cm：対策 2,170万円／修復 4,850万円", "床上110cm：対策 3,215万円／修復 9,500万円"],
-  ],
-};
-
-function modelCosts() {
-  const rows = MODEL_COSTS.rows.map(([name, ...cells]) => `<li><b>${esc(name)}</b>${cells.map((cell) => `<span>${esc(cell)}</span>`).join("")}</li>`).join("");
-  return `<div class="model-costs"><p class="qtitle">参考：対策の費用と、浸水したときの修復の費用</p>
-    <ul>${rows}</ul>
-    <p class="hint">仮想のマンションの試算です（直接工事費のみ、諸経費と消費税は別。電力会社の負担分と専有部分は除く）。この建物の金額ではありません。出典：<a href="${MODEL_COSTS.url}" target="_blank" rel="noopener">${esc(MODEL_COSTS.source)}</a></p></div>`;
-}
-
-// 業者の確かめ方（2026-11-06 本人の指摘「サクラではない業者を選べるように」）。
-// この道具は特定の業者を勧めず、紹介料も取らない（what-044）。だから業者の名前は出さず、自分で確かめる方法だけを出す。
-const CONTRACTOR_CHECKS = [
-  ["建設業の許可を調べる", "見積りを出した会社の名前で、国土交通省の「建設業者・宅建業者等企業情報検索システム」を引きます。", "https://etsuran2.mlit.go.jp/TAKKEN/"],
-  ["電気の工事は登録を聞く", "盤や電気室に関わる工事は、電気工事業の登録（都道府県など）があるかを、登録番号で確かめます。工事の前に、主任技術者（いない建物は電気工事の業者）と停電の要否を決めます。", ""],
-  ["止水板は性能の書類を求める", "JIS A 4716 の等級（Ws-1〜Ws-6）や「Ws-3相当」などの表示が、どの試験によるものかを書面で出してもらいます。", ""],
-  ["見積りは2社以上から", "「無料で点検する」と訪ねてくる業者には応じず、急がされてもその場で契約しません。保険金の申請を前提にした工事の勧誘にも応じません。困ったときは消費者ホットライン（188）へ。", "https://www.kokusen.go.jp/pdf/tenken_reform.pdf"],
-];
-
-function contractorBox() {
-  const items = CONTRACTOR_CHECKS.map(([head, text, url]) => `<li><b>${esc(head)}</b><span>${esc(text)}${url ? ` <a href="${url}" target="_blank" rel="noopener">出典・検索先</a>` : ""}</span></li>`).join("");
-  return `<div class="contractor-box"><p class="qtitle">業者の確かめ方</p><p class="hint">この道具は、特定の業者を勧めず、紹介料も受け取りません。業者は、管理会社と理事会が次のことを確かめて選びます。</p><ul>${items}</ul></div>`;
-}
-
-function unitsBox() {
-  return `<label class="m-est units">このマンションの戸数<input type="number" inputmode="numeric" min="1" step="1" data-units="1" value="${esc(S.units || "")}" placeholder="例：50">戸<small>（入れると、見積り額から1戸あたりを計算します）</small></label>`;
+function costTable(print = false) {
+  const totals = costTotals();
+  const aid = subsidyGrant(totals);
+  const own = totals.total - aid.grant;
+  const units = Number(S.units);
+  const rows = totals.items.map((item) => `<tr>
+      <td>${esc(item.label)}</td>
+      <td class="num">${man(item.yen)}</td>
+      <td class="num cnt">${print ? item.n : `<button type="button" data-cnt="${item.key}" data-d="-1" aria-label="減らす">−</button><b>${item.n}</b><button type="button" data-cnt="${item.key}" data-d="1" aria-label="増やす">＋</button>`}</td>
+      <td class="num">${item.n ? man(item.sub) : "—"}</td>
+    </tr>`).join("");
+  const unitsCell = print ? `${units || "—"}戸` : `<input type="number" inmode="numeric" min="1" step="1" data-units="1" value="${esc(S.units || "")}" placeholder="50">戸`;
+  return `<table class="cost">
+    <thead><tr><th>場所・工事</th><th>単価</th><th>個数</th><th>小計</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><th colspan="3">工事の目安の合計</th><td class="num">${man(totals.total)}</td></tr>
+    <tr><th colspan="3">補助（${esc(aid.label.replace(/（.*$/, "") || "未調査")}。自動計算）</th><td class="num">− ${man(aid.grant)}</td></tr>
+    <tr><th colspan="3">戸数</th><td class="num">${unitsCell}</td></tr></tfoot>
+  </table>
+  <p class="cost-sum"><span>組合の実質負担</span><b>${man(own)}</b><small>${units >= 1 ? `（1戸あたり約${yen(own / units)}）` : "（戸数を入れると1戸あたりを出します）"}</small></p>
+  <p class="cost-risk">${esc(S.building?.recovery_cost_line || "")}</p>
+  <p class="hint">単価と復旧費は作者（電気主任技術者）の実務の目安で、見積りに置き換えます。${aid.known ? "補助は制度の率と上限で計算した例で、交付を約束するものではありません。" : "この市区町村の補助は未調査のため、0円で計算しています。"}</p>`;
 }
 
 function subsidyBox(all = false) {
@@ -1345,16 +1278,16 @@ function placeAid() {
   return `<div class="place-aid"><p><b>この地域の補助</b>${esc(aid.label)}</p><small>${esc(aid.rate_label)}</small></div>`;
 }
 
-function boardDecisions() {
-  const list = steps();
-  const cost = firstStepCost();
-  const aid = subsidy();
-  const now = measures().filter((m) => m.tier === "今すぐ").map(measureName);
-  return `<ol class="decide">
-    <li><b>${list.length ? `管理会社に、残りの確認${list.length}つを頼む` : "大事な確認は済んでいます"}</b><small>依頼メモ（図の番号つき）を渡す</small></li>
-    ${now.length ? `<li><b>今すぐの手を選ぶ${cost ? `（${esc(cost)}）` : ""}</b><small>${esc(now.join("・"))}</small></li>` : ""}
-    <li><b>補助を確かめる</b><small>${esc(aid.label || "")}</small></li>
-  </ol>`;
+// 理事会で決めること（2026-11-06 本人の指示）：今日0円で決められる3つ。チェックは画面の中だけ（保存には入る）。
+const BOARD_ITEMS = [
+  "対象箇所の無料の現地調査と、2〜3社の相見積もりを頼む",
+  "自治体の補助金の窓口へ事前に相談する担当を決める",
+  "次回の電気点検で、盤の下端の高さとケーブルの余長の確認を頼む",
+];
+
+function boardDecisions(print = false) {
+  const items = BOARD_ITEMS.map((text, i) => `<li><input type="checkbox" data-chk="${i}"${S.chk?.[i] ? " checked" : ""}${print ? " disabled" : ""}><span>${esc(text)}</span></li>`).join("");
+  return `<ol class="decide">${items}</ol>`;
 }
 
 function a4Front(date) {
@@ -1366,8 +1299,8 @@ function a4Front(date) {
     <div class="sheet-plan">${plan({ pins: pinsOf(steps()) })}</div>
     ${b.sample.custom ? `<p class="hint">${BORROWED}</p>` : ""}
     ${lifeChips()}
-    <h2>理事会で決めること</h2>
-    ${boardDecisions()}
+    <h2>理事会で決めること（今日0円で決められる3つ）</h2>
+    ${boardDecisions(true)}
     ${rain ? `<h2>大雨が近づいたら</h2><p class="sheet-line strong">${esc(rain)}</p>` : ""}
     <p class="print-fixed">${esc(disclaimer() || "")}</p>
   </div>`;
@@ -1376,8 +1309,8 @@ function a4Front(date) {
 function a4Back() {
   return `<div class="sheet back">
     <p class="sheet-tag">理事会資料（裏）</p>
-    <h2>対策の費用の目安と、決める場</h2>
-    ${costRows(true, true)}
+    <h2>対策の費用の目安</h2>
+    ${costTable(true)}
     <h2>補助</h2>
     ${subsidyBox()}
     <div class="print-fixed">${[disclaimer() || "", ...SHEET_FIXED, ...SCOPE_LINES].map((line) => `<p>${esc(line)}</p>`).join("")}</div>
@@ -1399,14 +1332,11 @@ function screenFour() {
       <div class="paper">${a4Front(today())}</div>
       <div class="paper">${a4Back()}</div>`;
   } else {
-    const cost = firstStepCost();
-    body = `<h1 class="title">${cost ? `最初の手は ${esc(cost)}` : "対策の費用・補助の目安"}</h1>
-      <p class="hint">${COST_FIXED}。円の金額は、見積り額を入れたときだけ計算します。</p>
-      ${unitsBox()}
-      ${costRows()}
+    body = `<h1 class="title">対策の費用と補助の目安</h1>
+      ${costTable()}
       ${subsidyBox()}
-      ${contractorBox()}
-      ${modelCosts()}`;
+      <h2 class="part"><span>✓</span>理事会で決めること（今日0円で決められる3つ）</h2>
+      ${boardDecisions()}`;
   }
   const print = TABS.find(([key]) => key === S.tab)[2];
   return `<section class="s4">
@@ -1437,8 +1367,8 @@ function summaryText() {
     lines.push(`・管理会社に頼む確認（${list.length}つ）`);
     list.forEach((step, i) => lines.push(`  ${i + 1}. ${PLAIN_ASK[step.key] || step.what}`));
   }
-  const cost = firstStepCost();
-  if (cost) lines.push(`・今すぐの手の費用の目安：${cost}（${COST_FIXED}）`);
+  const totals = costTotals();
+  if (totals.total > 0) lines.push(`・対策の費用の目安：合計${man(totals.total)}（単価×個数。${COST_FIXED}）`);
   // 文には図がないので、「図は」ではなく、建物の形を確かめていないことを言う。
   if (b.sample.custom) lines.push("・建物の形（階数・機械の部屋の位置）はまだ確かめておらず、見本の形を借りた説明です");
   lines.push(`※${disclaimer() || ""}`);
@@ -1524,7 +1454,7 @@ function printSheet() {
   } else if (S.tab === "a4") {
     html = a4Front(date) + a4Back();
   } else {
-    html = `<div class="sheet"><h1>対策の費用・補助の目安</h1><p>${esc(where())}　${date}</p>${costRows(true)}${subsidyBox(true)}<p class="sheet-line">${COST_FIXED}</p>${fixed}</div>`;
+    html = `<div class="sheet"><h1>対策の費用・補助の目安</h1><p>${esc(where())}　${date}</p>${costTable(true)}${subsidyBox(true)}<p class="sheet-line">${COST_FIXED}</p>${boardDecisions(true)}${fixed}</div>`;
   }
   const box = document.getElementById("print-memo");
   box.innerHTML = html;
@@ -1535,7 +1465,8 @@ function printSheet() {
 // ---- 描く ----
 
 function render() {
-  const views = { 1: screenOne, 2: screenTwo, 3: screenThree, 4: screenFour };
+  // 2026-11-06 本人の指示：先に建物の階と図面を確かめ（画面2 = screenThree）、そのあと水が入る順と対策を見る（画面3 = screenTwo）。
+  const views = { 1: screenOne, 2: screenThree, 3: screenTwo, 4: screenFour };
   screen.innerHTML = views[S.screen]();
   document.querySelectorAll("#steps [data-go]").forEach((button) => {
     const n = Number(button.dataset.go);
@@ -1588,7 +1519,8 @@ async function choosePlace(params, sampleId, demoId) {
     S.drawing = null;
     S.obs = {};
     S.hvSaid = "";
-    S.est = {};
+    S.cnt = null;
+    S.chk = {};
     S.units = "";
     S.exp = "";
     S.facts = null;
@@ -1603,15 +1535,17 @@ async function choosePlace(params, sampleId, demoId) {
   }
 }
 
-// 判定に送る答え。見本は見本の答えのまま。自分の建物は、画面3で図面の階が分かったときだけ部屋の階を送る。
+// 判定に送る答え。見本は見本の答えのまま。自分の建物は、画面2（確かめる）で図面の階が分かったときだけ部屋の階を送る。
 function answers() {
   if (S.sampleId) return { ...S.extra };
   const floors = Object.values(S.choices);
   const roomsFloor = ["basement", "ground", "upper"].find((f) => floors.includes(f)) || "unknown";
-  // 地下の有無は、画面1の答えを先に。画面3で部屋が地下と分かれば「ある」。
+  // 地下の有無は、画面1の答えを先に。画面2（確かめる）で部屋が地下と分かれば「ある」。
   const basement = roomsFloor === "basement" ? "yes" : S.own.basement;
   const built = Number(S.own.floors);
-  return { rooms_floor: roomsFloor, basement, ...(built >= 1 ? { floors: built } : {}), ...S.extra };
+  // 部屋ごとの階（地下／1階）。判定は部屋ごとに階を見る（2026-11-06）。
+  const roomFloors = Object.fromEntries(Object.entries(S.choices).filter(([, c]) => c === "basement" || c === "ground"));
+  return { rooms_floor: roomsFloor, basement, room_floors: roomFloors, ...(built >= 1 ? { floors: built } : {}), ...S.extra };
 }
 
 function confirmedTokens() {
@@ -1640,6 +1574,11 @@ async function loadBuilding() {
     statements: [...S.statements, ...obsStatements()],
     location_rows: location.rows,
   });
+  // 建物の形が変わったら、費用の個数は初期値に戻す。同じ建物なら人が変えた個数を残す。
+  if (!before || S.building.sample.id !== S.cntSample) {
+    S.cnt = null;
+    S.cntSample = S.building.sample.id;
+  }
   // 色が変わった部屋を光らせる。
   if (before) {
     S.flash = Object.entries(KIND_ROWS)
@@ -1824,6 +1763,10 @@ screen.addEventListener("click", (event) => {
   } else if (target.dataset.cand) {
     const c = S.candidates[Number(target.dataset.cand)];
     if (c) choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude }, null, null);
+  } else if (target.dataset.cnt) {
+    const cnt = counts();
+    cnt[target.dataset.cnt] = Math.max(0, Number(cnt[target.dataset.cnt] || 0) + Number(target.dataset.d));
+    render();
   } else if (target.dataset.saveDays) {
     S.saveDays = Number(target.dataset.saveDays);
     render();
@@ -1901,9 +1844,8 @@ screen.addEventListener("change", (event) => {
     render();
   }
   // 見積り額と戸数（この画面の中だけで計算する。サーバーには送らない）。
-  if (event.target.dataset.est) {
-    S.est = { ...(S.est || {}), [event.target.dataset.est]: event.target.value };
-    render();
+  if (event.target.dataset.chk) {
+    S.chk = { ...(S.chk || {}), [event.target.dataset.chk]: event.target.checked };
   }
   if (event.target.dataset.units) {
     S.units = event.target.value;
@@ -1972,7 +1914,7 @@ const ShareCrypto = (() => {
 })();
 
 const SAVE_DAYS = [[7, "1週間"], [30, "1か月"], [90, "3か月"]];
-const SAVE_FIELDS = ["place", "demoId", "sampleId", "choices", "extra", "floor", "measure", "obs", "exp", "own", "statements", "hvSaid", "est", "units", "drawing", "screen", "reached"];
+const SAVE_FIELDS = ["place", "demoId", "sampleId", "choices", "extra", "floor", "measure", "obs", "exp", "own", "statements", "hvSaid", "cnt", "chk", "units", "drawing", "screen", "reached"];
 const PASS_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
 // 見分けにくい字（0/O、1/l/I）を除いた16字。偏りが出ないよう、使えない値は捨てて引き直す。
@@ -2002,7 +1944,7 @@ function saveBox() {
   const chips = SAVE_DAYS.map(([d, word]) => `<button type="button" class="option${days === d ? " chosen" : ""}" data-save-days="${d}" aria-pressed="${days === d}">${word}</button>`).join("");
   return `<div class="save-box">
     <p class="qtitle">入力した内容を保存する（パスワードつき）</p>
-    <p class="qsub">次に開くとき、場所と答えを入れ直さずに続きから見られます。入れるのは、場所・答え・住んでいる階・選んだ対策・見たこと・見積り額です。図面・チャット・APIキーは入れません。</p>
+    <p class="qsub">次に開くとき、場所と答えを入れ直さずに続きから見られます。入れるのは、場所・答え・住んでいる階・選んだ対策・見たこと・費用の個数です。図面・チャット・APIキーは入れません。</p>
     <div class="own-row"><span>期限</span><div class="options">${chips}</div></div>
     <label class="save-pass">パスワード<input id="save-pass" type="text" autocomplete="off" spellcheck="false" value="${esc(S.savePass || "")}" placeholder="8文字以上"></label>
     <div class="options"><button type="button" class="option" data-act="pass-random">ランダムに作る</button><button type="button" class="option" data-act="pass-copy">パスワードをコピー</button></div>
@@ -2217,7 +2159,7 @@ async function applyAction(action) {
     S.flash = [action.target];
     render();
   } else if (action.type === "water") {
-    go(2);
+    go(3);
     startPlay();
   } else if (action.type === "measure") {
     S.tab = "cost";

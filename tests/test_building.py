@@ -27,8 +27,11 @@ class EquipmentTest(unittest.TestCase):
         self.assertEqual(row(before, "tr")["verdict"], "unconfirmed")
         self.assertEqual(row(after, "tr")["verdict"], "risk")
 
-    def test_transformer_room_stays_open_without_location_risk(self):
+    def test_transformer_room_in_basement_by_drawing_is_risk_unless_place_is_clear(self):
+        # 2026-11-06 本人の決定：図面で地下と確かめた部屋は、立地が問題なしでない限り確定。
         rows = building.judge_equipment(samples.SAMPLES["c"], ["tr"], False)
+        self.assertEqual(row(rows, "tr")["verdict"], "risk")
+        rows = building.judge_equipment(samples.SAMPLES["c"], ["tr"], False, location_clear=True)
         self.assertEqual(row(rows, "tr")["verdict"], "unconfirmed")
 
     def test_ground_floor_transformer_room_stays_open(self):
@@ -66,8 +69,11 @@ class ReceivingBoxTest(unittest.TestCase):
     def test_drawing_with_location_risk_is_risk(self):
         self.assertEqual(self.verdict(confirmed=["elec"])["verdict"], "risk")
 
-    def test_document_without_location_risk_stays_open(self):
-        self.assertEqual(self.verdict(document_read=True, location_risk=False)["verdict"], "unconfirmed")
+    def test_document_basement_is_risk_unless_place_is_clear(self):
+        # 2026-11-06：書類で地下と読めた受電の箱は、立地が問題なしでない限り確定（最上段が「長引く」のとき確定にそろえる）。
+        self.assertEqual(self.verdict(document_read=True, location_risk=False)["verdict"], "risk")
+        rows = building.judge_equipment(samples.SAMPLES["a"], [], False, True, location_clear=True)
+        self.assertEqual(row(rows, "power")["verdict"], "unconfirmed")
 
     def test_report_reader_finds_basement_box(self):
         self.assertTrue(assistant.read_report(samples.REPORTS["a"])["basement_power"])
@@ -145,7 +151,7 @@ class AnswersTest(unittest.TestCase):
     def test_unknown_rooms_do_not_say_basement(self):
         sample, rows = self.rows({"basement": "unknown"})
         lead = building.top_line(sample, rows, [{"verdict": "risk"}], [])["lead"]
-        self.assertTrue(lead.endswith("分かれば、答えが出ます。"), lead)
+        self.assertTrue(lead.startswith("確認待ち"), lead)
         text = str([item["headline"] for item in rows])
         self.assertNotIn("地下の電気の部屋", text)
         self.assertNotIn("damp", [item["key"] for item in rows])
@@ -226,7 +232,7 @@ class TopLineTest(unittest.TestCase):
     def test_ground_floor_building(self):
         # 「まだ分からない」で終わらせず、何が分かれば答えが出るかと、誰に頼むかを出す（2026-11-04）。
         top = self.payload("b", RISK_ROW)
-        self.assertEqual(top["lead"], "次の3つが分かれば、答えが出ます。")
+        self.assertEqual(top["lead"], "確認待ち 3件（図面で階を確かめる）。")
         self.assertNotIn("まだ分からない", top["lead"])
         self.assertEqual([step["key"] for step in top["steps"]], ["water", "power", "tr"])
         for step in top["steps"]:

@@ -421,7 +421,7 @@ class MeasureOwnerTest(unittest.TestCase):
         self.assertNotIn("主任技術者", row(b, "hole")["owner"])
 
     def test_f029_generator_move_only_with_generator(self):
-        self.assertIn("gen_move", keys(building.building_payload(samples.SAMPLES["c"], [], RISK_ROW)["measures"]))
+        self.assertNotIn("gen_move", keys(building.building_payload(samples.SAMPLES["c"], [], RISK_ROW)["measures"]))  # 2026-11-06 メインの画面から外した
         self.assertNotIn("gen_move", keys(building.building_payload(samples.SAMPLES["a"], [], RISK_ROW)["measures"]))
 
     def test_f031_main_panel_only_without_engineer(self):
