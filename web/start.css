@@ -931,3 +931,21 @@ details.facts[open] { display: flex; }
 .rh-stop b { color: var(--risk); display: block; }
 .rh-stop span { display: inline-block; margin: 2px 6px 2px 0; padding: 1px 10px; background: var(--risk-line); color: #fff; font-weight: 800; border-radius: 2px; }
 .rh-stop small { display: block; color: #4a4e58; font-size: 12.5px; font-weight: 600; }
+/* 29回目：2026年の大雨の帯、カードの釣り合い、平面図の水深 */
+.found-2026 { margin: 0 0 8px; padding: 10px 12px; background: #13294b; color: #fff; border-left: 8px solid #f2b705; }
+.found-2026 .f-head { margin: 0 0 2px; font-size: 12px; font-weight: 900; letter-spacing: .06em; color: #f2b705; }
+.found-2026 .f-body { margin: 0; font-size: 14px; line-height: 1.6; }
+.found-2026 b { color: #ffe08a; font-size: 1.1em; }
+.found-2026 a { color: #cfe3ff; }
+.mul-card ul { padding-left: 0; list-style: none; }
+.mul-card li { display: flex; align-items: baseline; gap: 6px; margin: 2px 0; }
+.mul-card li i { margin-left: 0; flex: none; min-width: 4.4em; text-align: center; }
+.mul-no { display: inline-block; background: var(--navy); color: #fff; font-size: 11px; padding: 1px 6px; margin-right: 6px; border-radius: 2px; vertical-align: 1px; }
+.mul-card.new { border-width: 2px; }
+.mul-card.new .mul-no { background: #f2b705; color: #13294b; }
+.p-depth rect { fill: #0b4fa8; opacity: .92; }
+.p-depth text { fill: #fff; font-size: 11px; font-weight: 800; text-anchor: middle; }
+.p-level-tag rect { fill: #fff; stroke: #1f5f99; stroke-width: 1.5; }
+.p-level-tag text { fill: #1f5f99; font-size: 14px; font-weight: 800; }
+.p-water-pattern { animation: drift 2.4s linear infinite; }
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(24px); } }

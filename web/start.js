@@ -393,8 +393,16 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   Object.entries(cad.rooms).forEach(([key, box]) => {
     if (states[key]) parts.push(roomOverlay(key, box, states[key], !small));
     // 浸かる部屋には青い波の模様を重ねる（水が来ている見た目。2026-11-07・25回目）。
-    if (states[key]?.state === "wet") parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern ${states[key].depth || ""}"/>`);
+    if (states[key]?.state === "wet") {
+      parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern ${states[key].depth || ""}"/>`);
+      // 水深の札（上から見ても深さが分かるように。2026-11-07・29回目）。
+      if (!small && box.h > 60) parts.push(`<g class="p-depth"><rect x="${box.x + 4}" y="${box.y + box.h - 24}" width="92" height="19"/><text x="${box.x + 50}" y="${box.y + box.h - 10}">${states[key].depth === "deep" ? "水深 約50cm" : "水深 20〜30cm"}</text></g>`);
+    }
   });
+  if (level >= 1 && !small) {
+    const tag = level >= 2 ? `${LEVEL_HEAD[level]}：${protectedNow ? "止水板と穴埋めで止める" : "青＝水が来る範囲"}` : LEVEL_HEAD[1];
+    parts.push(`<g class="p-level-tag"><rect x="8" y="8" width="${tag.length * 14.5 + 22}" height="26"/><text x="18" y="26">${esc(tag)}</text></g>`);
+  }
   // 道路の冠水。
   const road = cad.marks.find((m) => m.kind === "road");
   if (road && level >= 1) parts.push(`<rect x="0" y="${road.y}" width="${cad.w}" height="${cad.h - road.y}" class="p-flood-band"/>${wave(0, cad.w, road.y + 10, 3, 22)}`);
@@ -1184,8 +1192,9 @@ function waterGauge(playing) {
 }
 
 function simBox(playing, shown) {
-  const figs = [["plan", "▦ 平面図（上から）"], ["section", "▤ 断面図（横から）"], ...(S.drawingImages?.length ? [["drawing", "🖼 アップロード図面"]] : [])];
-  const fig = figs.some(([key]) => key === S.fig) ? S.fig : "plan";
+  // 深さは横から見た方が分かるので、断面図を最初に出す（2026-11-07・29回目）。
+  const figs = [["section", "▤ 断面図（横から）"], ["plan", "▦ 平面図（上から）"], ...(S.drawingImages?.length ? [["drawing", "🖼 アップロード図面"]] : [])];
+  const fig = figs.some(([key]) => key === S.fig) ? S.fig : "section";
   const tabs = figs.map(([key, word]) => `<button type="button" class="option${fig === key ? " chosen" : ""}" data-fig="${key}" aria-pressed="${fig === key}">${word}</button>`).join("");
   const figure = fig === "section" ? sectionFigure(S.play) : fig === "drawing" ? drawingFigure(true) : plan({ level: S.play });
   const allSafe = TILES.every((tile) => serviceState(3, SERVICE_OF_TILE[tile.key]) !== "stopped");
@@ -1638,17 +1647,21 @@ function riskHead(lines, compact = false) {
   const mapLines = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]]
     .map(([name, line]) => {
       const inlandNone = line?.key === "inland" && line.verdict !== "risk" && line.verdict !== "clear";
-      return `<li>${name}：${inlandNone ? "国のデータなし" : esc(mapWord(line))}</li>`;
+      const hit = line?.verdict === "risk" ? true : line?.verdict === "clear" ? false : null;
+      return `<li>${mark(hit)}${name}：${inlandNone ? "国のデータなし" : esc(mapWord(line))}</li>`;
     }).join("");
-  const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${esc(line.name)}：${esc(shortRainText(line))} ${mark(line.hit)}</li>`).join("");
-  const fact = rain?.accent ? `<p class="mul-fact">台風25号（2026年9月・千葉県）の浸水447件のうち、洪水の地図に色のない場所が足すと64%（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>` : "";
+  const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${mark(line.hit)}${esc(line.name)}：${esc(shortRainText(line))}</li>`).join("");
+  // この道具の売り：ハザードマップだけでは足りないと 2026 年の大雨で分かった。その事実を帯で先に見せる（数字は出典のまま）。
+  const found = rain?.accent && !compact ? `<div class="found-2026"><p class="f-head">2026年の大雨で分かったこと</p><p class="f-body">ハザードマップに色のない場所でも浸水しました。台風25号（2026年9月・千葉県）の浸水447件のうち<b>64%</b>は、洪水の地図に色のない高台のくぼ地と水路沿いの低地（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）。だからこの道具は、<b>国の想定 × 地形</b>の掛け算で見ます。</p></div>` : "";
+  const fact = "";
   // 結論の下に「浸かると止まるもの」を添える（画面1の時点で何が止まるか分かるように。建物の階で変わるので、断定せず「浸かると」）。
   const consequence = !compact && head[0] === "risk" ? `<p class="rh-stop"><b>機械室（給水ポンプ室・電気室・借室）が浸かると、全戸で止まるもの：</b><span>水・トイレ</span><span>エレベーター</span><span>各戸の電気</span><small>何階にあるかで変わります。次の画面で竣工図から確かめます。</small></p>` : "";
   return `<div class="risk-head ${head[0]}"><p class="rh-title">${head[0] === "risk" ? "⚠ " : ""}${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p>${consequence}</div>
+  ${found}
   <div class="mul">
-    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-head">国が公表する浸水の想定（ハザードマップ）${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
+    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-head"><span class="mul-no">国の想定</span>ハザードマップ ${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
     <div class="mul-x">×</div>
-    <div class="mul-card${rainHit ? " hit" : ""}"><p class="mul-head">地形から見た浸かりやすさ（台風・大雨・線状降水帯）${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul>${fact}</div>
+    <div class="mul-card new${rainHit ? " hit" : ""}"><p class="mul-head"><span class="mul-no">地形</span>台風・大雨で浸かりやすいか ${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul></div>
   </div>`;
 }
 
@@ -2362,7 +2375,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.unitsFrom = "";
     S.hintsFrom = "";
     S.drawingImages = [];
-    S.fig = "plan";
+    S.fig = "section";
     S.reached = 1;
   } catch (error) {
     S.error = error.message;
