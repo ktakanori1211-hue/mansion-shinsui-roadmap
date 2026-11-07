@@ -43,6 +43,8 @@ const S = {
   query: "",
   facts: null,
   factsBusy: false,
+  // 住所で選んだとき、その住所の建物名と階数を Web で探した候補（busy / found / message / answer：yes・no）。人が「はい」を押すまで使わない。
+  at: null,
   sendMsg: "",
   sendText: "",
   // 画面2の対策の切り替え（what-019）：plate（止水板だけ）／hole（壁の穴を塞ぐ）／raise（盤を高くする）。
@@ -97,6 +99,8 @@ const OPTION_WORDS = { basement: "地下", ground: "1階", upper: "2階以上", 
 const ROOM_ASK_SHORT = { pump: "給水ポンプ室", elec: "電気室", panel_room: "電気室", tr: "借室" };
 // 画面2（確かめる）の一文（2026-11-07・13回目：本人の指示で骨組みから作り直し）。
 const CHECK_LEAD = "機械の部屋が何階にあるかで、止まるものが決まります。図面で3つ確かめてください。";
+// 図面がない人向けの一文（見て分かる3つで建物の形を仮に決め、確認は管理会社に頼む）。
+const CHECK_LEAD_NO_DRAWING = "図面がなくても進めます。見て分かる3つで建物の形を仮に決め、確かめることは管理会社への依頼メモにします。";
 // 立地の行の短い名前。
 const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", ground: "土地の高さ", landform: "土地の成り立ち", rainband: "線状降水帯", record: "浸水の記録" };
 // 対策の短い名前（サーバーの measures の key ごと。くわしい文は折りたたみに入れる）。
@@ -770,6 +774,7 @@ function dropFloors() {
   if (applied.hv) delete S.extra.hv;
   S.own = { floors: "", basement: "unknown" };
   S.facts = null;
+  if (S.at) S.at.answer = "";
   S.floorsApplied = null;
   if (S.building) loadBuilding().then(render);
   else render();
@@ -797,7 +802,7 @@ function ownQuestions(withBasement = true) {
     .join("");
   return `<div class="own">
     <p class="own-head">あなたの建物（分からなくても進めます）</p>
-    <label class="floor">何階建て<input id="own-floors" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.own.floors)}" placeholder="11">階建て</label>
+    <label class="floor">何階建て<input id="own-floors" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.own.floors)}" placeholder="例 11">階建て</label>
     ${withBasement ? `<div class="own-row"><span>地下は</span><div class="options">${chips}</div></div>` : ""}
     ${factsBox()}
   </div>`;
@@ -824,6 +829,7 @@ function screenOne() {
       <div class="picked">
         ${riskHead(lines)}
         ${factsLine()}
+        ${buildingAsk()}
         ${terrainFigure(lines)}
         <details class="more"><summary>根拠の数値（判定と出典）</summary>
           <table class="place"><thead><tr><th>項目</th><th>判定</th><th>理由</th></tr></thead><tbody>${lines.map((line) => `<tr class="${line.verdict}"><td>${esc(line.name)}</td><td><i>${line.word}</i></td><td>${line.html}</td></tr>`).join("")}</tbody></table>
@@ -852,6 +858,45 @@ function screenOne() {
   </section>`;
 }
 
+// 住所で選んだとき：その住所の建物名と階数を Web で探し、「この建物ですか？」と1行で聞く（2026-11-07 本人の指示・15回目）。
+// 「はい」で階数と地下の有無を入れる（factsLine に出典つきで出る。取り消せる）。「違う」か見つからないときは、その場で建物名か階数を入れる欄を出す。
+async function findBuildingAt() {
+  if (!S.place || S.sampleId) return;
+  S.at = { busy: true, found: null, message: "", answer: "" };
+  render();
+  try {
+    const got = await postJSON("/api/building-at", { address: S.place.site.label });
+    S.at = { busy: false, found: got.found || null, message: got.message || "", answer: "" };
+  } catch (error) {
+    S.at = { busy: false, found: null, message: error.message, answer: "" };
+  }
+  render();
+}
+
+function answerBuilding(answer) {
+  if (!S.at) return;
+  S.at.answer = answer;
+  if (answer === "yes" && S.at.found) {
+    S.facts = { found: S.at.found, message: S.at.message };
+    S.query = S.at.found.building || S.query;
+    applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web");
+  }
+  render();
+}
+
+function buildingAsk() {
+  if (S.sampleId || !S.at) return "";
+  if (S.at.busy) return `<p class="hint ask-bldg-wait">この住所にある建物の名前と階数を Web で探しています…</p>`;
+  if (S.at.answer === "yes") return "";
+  const f = S.at.found;
+  if (f && S.at.answer !== "no") {
+    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : ""].filter(Boolean).join("・");
+    return `<div class="ask-bldg"><p>この建物ですか？：<b>${esc(f.building)}</b>（${esc(floors)}・<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a>）</p>
+      <div class="options"><button type="button" class="option" data-at="yes">はい</button><button type="button" class="option" data-at="no">違う</button></div></div>`;
+  }
+  return `<div class="ask-bldg none"><p class="hint">${esc(S.at.message || "この住所の建物名と階数は見つかりませんでした。")}</p>${ownQuestions(true)}</div>`;
+}
+
 // 選んだ場所の行に添える、建物名と階数（見本はその見本の名前と階数、自分の建物は分かっている階数だけ）。
 function chosenFloors() {
   if (S.sampleId) {
@@ -862,7 +907,8 @@ function chosenFloors() {
   }
   const above = Number(S.own.floors);
   if (!above) return "";
-  return `<span>地上${above}階${S.own.basement === "yes" ? "・地下あり" : S.own.basement === "no" ? "・地下なし" : ""}</span>`;
+  const name = S.floorsApplied?.source === "web" && S.facts?.found?.building ? `${esc(S.facts.found.building)}・` : "";
+  return `<span>${name}地上${above}階${S.own.basement === "yes" ? "・地下あり" : S.own.basement === "no" ? "・地下なし" : ""}</span>`;
 }
 
 // 「別の場所を探す」：場所と、それに結びついた答え・図面・候補を全部戻して画面1の入力に戻る。
@@ -870,7 +916,7 @@ function resetPlace() {
   stopPlay(false);
   Object.assign(S, {
     place: null, building: null, sampleId: null, demoId: null, candidates: [], message: "", error: "",
-    facts: null, factsBusy: false, query: "", floorsApplied: null, own: { floors: "", basement: "unknown" },
+    facts: null, factsBusy: false, at: null, query: "", floorsApplied: null, own: { floors: "", basement: "unknown" },
     choices: {}, extra: {}, read: null, drawingImages: [], obs: {}, drawing: null, exp: "", statements: [], hvSaid: "",
     reached: 1, screen: 1, measure: "none", play: 0, sendMsg: "", sendText: "",
   });
@@ -1081,13 +1127,13 @@ function screenThree() {
   const figure = own ? drawingFigure() : hasDrawing() ? `<div class="plan check-plan">${plan({ pins: pinsOf(steps()), small: true })}</div>${b.sample.custom ? `<p class="hint">${borrowedNote()}</p>` : ""}` : "";
   return `<section class="s3">
     <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
-    <h1 class="title">${CHECK_LEAD}</h1>
-    ${progressLine(b, count)}
-    <p class="hint">未確認（危険という意味ではありません）は、図面で確かめた答えを入れると色が変わります。</p>
+    <h1 class="title">${hasDrawing() ? CHECK_LEAD : CHECK_LEAD_NO_DRAWING}</h1>
+    ${hasDrawing() ? progressLine(b, count) : ""}
+    ${hasDrawing() ? `<p class="hint">未確認（危険という意味ではありません）は、図面で確かめた答えを入れると色が変わります。</p>` : ""}
     ${drawingQuestion()}
     ${hasDrawing() ? readCard() + cards : observeCards()}
     ${figure}
-    ${S.sampleId ? "" : `<details class="more"><summary>建物のこと（階数・この辺りの経験）</summary>${ownQuestions(!hasDrawing())}${S.sampleId ? "" : experienceQuestion()}</details>`}
+    ${S.sampleId ? "" : hasDrawing() ? `<details class="more"><summary>建物のこと（階数・この辺りの経験）</summary>${ownQuestions(!hasDrawing())}${S.sampleId ? "" : experienceQuestion()}</details>` : `<div class="own-open">${ownQuestions(true)}${experienceQuestion()}</div>`}
     ${criticalPreview()}
     <button type="button" class="primary" data-act="to3">水が入る順と、止まるものを見る</button>
   </section>`;
@@ -1196,7 +1242,10 @@ function readProposals() {
   const names = { pump: "給水ポンプ室", elec: "電気室", panel_room: "分電盤室", tr: "借室（東京電力の変圧器室）" };
   const seen = new Set();
   const list = [];
-  (read.rooms || []).filter((room) => ROOM_MARKS[room.kind]).forEach((room) => {
+  // 同じ種類の部屋が複数読めたら、問いの名前と同じ語（給水ポンプ室など）を先にする（「受水槽室」が先に出ないように。2026-11-07・15回目）。
+  const main = (read.rooms || []).filter((room) => ROOM_MARKS[room.kind]);
+  main.sort((p, q) => (p.word === names[p.kind] ? 0 : 1) - (q.word === names[q.kind] ? 0 : 1));
+  main.forEach((room) => {
     const choice = floorChoice(room.floor);
     const key = `${room.kind}:${choice || room.floor}`;
     if (seen.has(key)) return;
@@ -1291,7 +1340,8 @@ function riskHead(lines, compact = false) {
   let head, sub;
   if (mapHit && rainHit) [head, sub] = [["risk", "浸水リスクあり"], "国の地図の想定にも、線状降水帯で浸かる型にも当たる場所"];
   else if (mapHit) [head, sub] = [["risk", "浸水リスクあり"], "国の地図の想定に当たる場所"];
-  else if (rainHit) [head, sub] = [["risk", "浸水リスクあり"], "国の地図に色はないが、線状降水帯で浸かる型の土地"];
+  // 国の地図が「色なし」か「データなし」かで言い分ける（データなしを色なしと言わない。2026-11-07・15回目）。
+  else if (rainHit) [head, sub] = [["risk", "浸水リスクあり"], mapClear ? "国の地図に色はないが、線状降水帯で浸かる型の土地" : "国の地図では色を確かめられないが、線状降水帯で浸かる型の土地"];
   else if (mapClear && rainClear) [head, sub] = [["clear", "国の地図にも、線状降水帯で浸かる型にも当たらない"], "今の根拠では色のない場所（現地は見ていません）"];
   else [head, sub] = [["unconfirmed", "浸水リスクは、まだ確かめられていない"], "データの取れていない項目があります"];
   const mapWord = (line) => {
@@ -1666,7 +1716,7 @@ function a4Front(date) {
           ${costTable(true)}
         </div>
         <div class="a4-box a4-decide-box">
-          <h2>5. 本日の理事会で決めること（0円で着手できる3項目）</h2>
+          <h2>5. 本日の理事会で決めること</h2>
           ${boardDecisions(true)}
         </div>
       </div>
@@ -1696,7 +1746,7 @@ function screenFour() {
     body = `<h1 class="title">対策の費用と補助金の試算</h1>
       ${costTable()}
       ${aidSource()}
-      <h2 class="part"><span>✓</span>本日の理事会で決めること（0円で着手できる3項目）</h2>
+      <h2 class="part"><span>✓</span>本日の理事会で決めること</h2>
       ${boardDecisions()}`;
   }
   const print = TABS.find(([key]) => key === S.tab)[2];
@@ -1903,6 +1953,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.units = "";
     S.exp = "";
     S.facts = null;
+    S.at = null;
     S.floorsApplied = null;
     S.extra = {};
     S.read = null;
@@ -1921,13 +1972,25 @@ async function choosePlace(params, sampleId, demoId) {
 function answers() {
   if (S.sampleId) return { ...S.extra };
   const floors = Object.values(S.choices);
-  const roomsFloor = ["basement", "ground", "upper"].find((f) => floors.includes(f)) || "unknown";
+  let roomsFloor = ["basement", "ground", "upper"].find((f) => floors.includes(f)) || "unknown";
   // 地下の有無は、画面1の答えを先に。画面2（確かめる）で部屋が地下と分かれば「ある」。
-  const basement = roomsFloor === "basement" ? "yes" : S.own.basement;
+  let basement = roomsFloor === "basement" ? "yes" : S.own.basement;
   const built = Number(S.own.floors);
   // 部屋ごとの階（地下／1階）。判定は部屋ごとに階を見る（2026-11-06）。
   const roomFloors = Object.fromEntries(Object.entries(S.choices).filter(([, c]) => c === "basement" || c === "ground"));
-  return { rooms_floor: roomsFloor, basement, room_floors: roomFloors, ...(built >= 1 ? { floors: built } : {}), ...S.extra };
+  // 図面がない人の3問（見たこと）は、図面の答えがないときだけ建物の形（借りる見本・対策の切り替え）に使う。
+  // 判定の色は図面で確かめるまで変えない（confirmed には入れない。2026-11-07 本人の指示・15回目）。
+  const seen = {};
+  if (S.drawing === "no" && !floors.length) {
+    if (S.obs.door === "basement" || S.obs.slope === "yes") {
+      roomsFloor = "basement";
+      basement = "yes";
+    } else if (S.obs.door === "ground" || (S.obs.slope === "no" && basement !== "yes")) {
+      roomsFloor = "ground";
+    }
+    if (S.obs.slope === "yes" || S.obs.slope === "no") seen.slope = S.obs.slope;
+  }
+  return { rooms_floor: roomsFloor, basement, room_floors: roomFloors, ...(built >= 1 ? { floors: built } : {}), ...seen, ...S.extra };
 }
 
 function confirmedTokens() {
@@ -2179,8 +2242,9 @@ screen.addEventListener("submit", async (event) => {
     if (S.candidates.length === 1 && !looksLikeName(q)) {
       const c = S.candidates[0];
       await choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null);
-      // マンション名で探したときは、続けて階数を Web で探す（見つかれば建物の形に反映）。
+      // マンション名で探したときは、続けて階数を Web で探す（見つかれば建物の形に反映）。住所なら、その住所の建物名と階数を探して「この建物ですか？」と聞く。
       if (looksLikeName(q) && S.place) findFacts(q);
+      else if (S.place && !S.sampleId) findBuildingAt();
       return;
     }
   } catch (error) {
@@ -2201,6 +2265,7 @@ screen.addEventListener("click", (event) => {
     // 選んだ時点で建物の位置として読む（地図をもう一度押させない）。地図は位置を直したいときだけ押す。
     if (c) choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null).then(() => {
       if (looksLikeName(S.query) && S.place) findFacts(S.query);
+      else if (S.place && !S.sampleId) findBuildingAt();
     });
   } else if (target.dataset.cnt) {
     const cnt = counts();
@@ -2244,6 +2309,8 @@ screen.addEventListener("click", (event) => {
     applyAllRead();
   } else if (target.dataset.act === "re-search") {
     resetPlace();
+  } else if (target.dataset.at) {
+    answerBuilding(target.dataset.at);
   } else if (target.dataset.act === "apply-floors") {
     const d = S.read?.drawing;
     if (d) applyFloors(d.floors_above, d.floors_below, "drawing");

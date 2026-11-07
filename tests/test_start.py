@@ -331,6 +331,20 @@ class PlanTest(unittest.TestCase):
         self.assertIn("hasBasement()", figure)  # 地下1階がある建物は、地面の下に箱を描く（2026-11-06・10回目）
         one = block(js, "function screenOne()", "\n}\n")
         self.assertIn("${terrainFigure(lines)}", one)
+        # 2026-11-07・15回目：住所で選んだときは「この建物ですか？」を断面図の上に1行。人が「はい」を押すまで階数は使わない。
+        self.assertLess(one.index("${buildingAsk()}"), one.index("${terrainFigure(lines)}"))
+        ask = block(js, "function buildingAsk()", "\n}\n")
+        self.assertIn('data-at="yes"', ask)
+        self.assertIn('data-at="no"', ask)
+        self.assertIn("ownQuestions(true)", ask)
+        self.assertIn('postJSON("/api/building-at"', block(js, "async function findBuildingAt()", "\n}\n"))
+        self.assertIn('applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web")', block(js, "function answerBuilding(", "\n}\n"))
+        # 図面がない人の3問は、図面の答えがないときだけ建物の形に使い、確かめた印（confirmed）には入れない。
+        answers = block(js, "function answers()", "\n}\n")
+        self.assertIn('S.drawing === "no" && !floors.length', answers)
+        self.assertIn('S.obs.door === "basement" || S.obs.slope === "yes"', answers)
+        self.assertIn('seen.slope = S.obs.slope', answers)
+        self.assertNotIn("S.obs", block(js, "function confirmedTokens()", "\n}\n"))
         # 画面1は ①結論＝ハザードマップ × 線状降水帯 の2枚のカード（riskHead）→ 図 → 折りたたみ（判定表）→ ②補助 → ③ボタン（2026-11-07）。
         self.assertIn("${riskHead(lines)}", one)
         head = block(js, "function riskHead(", "\n}\n")

@@ -187,6 +187,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(200, assistant.rephrase_pins(body.get("pins") or [], body.get("context") or {}))
         elif path == "/api/building-facts":
             self._send_json(200, search.building_facts(body.get("name", ""), body.get("address", "")))
+        elif path == "/api/building-at":
+            self._send_json(200, search.building_at(body.get("address", "")))
         elif path == "/api/plan":
             self._send_json(200, assistant.read_plan(body))
         elif path == "/api/report":

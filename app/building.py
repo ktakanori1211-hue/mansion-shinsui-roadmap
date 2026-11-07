@@ -858,7 +858,8 @@ def answer_steps(equipment: List[dict]) -> List[dict]:
 def unit_prices(sample: dict) -> List[dict]:
     """画面4の単価の表の行。個数の初期値は建物の形から決める（人が ＋− で変える）。"""
     answers = sample.get("answers") or {}
-    has_slope = answers.get("slope") == "yes" or any(room["key"] == "slope" for view in sample["views"] for room in view["rooms"])
+    # スロープ：答えが「ない」なら、借りた見本の図にスロープがあっても数えない（2026-11-07・15回目）。
+    has_slope = answers.get("slope") == "yes" or (answers.get("slope") != "no" and any(room["key"] == "slope" for view in sample["views"] for room in view["rooms"]))
     rule = {
         "one": 1,
         "zero": 0,
@@ -1157,7 +1158,9 @@ def critical_measures(sample: dict, location_rows: Optional[List[dict]] = None) 
         frequent[0] = {**frequent[0], "title": "地下の電気室・盤の部屋の壁や床の穴（管路口を含む）の止水埋め", "why": "引込みが地中なら道路の下の管を伝って管路口から、架空でも壁や床の穴から、地下の電気室に水が入る。玄関の止水板では防げない経路。引込み方式は単線結線図で確かめる"}
     elif shape == "basement" and not sample.get("underground_feed"):
         frequent[0] = {**frequent[0], "title": "地下の電気室・盤の部屋の壁や床の穴の止水埋め", "why": "壁や床の穴から、地下の電気室に水が入る。玄関の止水板では防げない経路"}
-    if shape == "basement" and not any(room["key"] == "slope" for view in sample["views"] for room in view["rooms"]):
+    slope_answer = (sample.get("answers") or {}).get("slope")
+    drawn_slope = any(room["key"] == "slope" for view in sample["views"] for room in view["rooms"])
+    if shape == "basement" and (slope_answer == "no" or (slope_answer != "yes" and not drawn_slope)):
         frequent[1] = {**frequent[1], "title": "地下へ降りる階段・出入口の止水板", "cost": "35万円（幅1mの扉1か所）", "units": {"door_plate": 1}}
     # 盤の対策の題名は、分かっている盤の形に合わせる（床置きと分かっていないのに「床置き」とは書かない。2026-11-06 本人の指摘）。
     if shape == "ground":

@@ -52,7 +52,7 @@ _SYSTEM_CHAT_RULES = """あなたはマンションの浸水対策を理事会�
 答えるのは「今の質問」だけです。「これまでに聞いたこと」は話の流れを知るためのもので、もう一度答えません。
 答えは text に書きます。300 字以内を目安に、一番大事なことから、理事長に読める言葉で書きます。専門の語には説明を添えます（管路口はケーブルを通す壁の穴、借室は東京電力の変圧器室、ハンドホールは歩道ぎわの蓋、キュービクルは高圧受変電設備）。
 場所の説明をするときは focus にその場所を入れます。水の位置や対策の話では water と measure を入れます。切り替えないときは none です。画面を切り替えたと書くのは、その欄を入れたときだけです。
-利用者が建物について事実を話したら（例：うちは1階に電気室がある）、statement にその事実を短く写します。判定は変わらず、図面で確かめるまで未確認のままだと答えます。ないときは空にします。"""
+利用者が建物について事実を話したら（例：うちは1階に電気室がある）、statement にその事実を短く写します。判定は変わらず、図面で確かめるまで未確認のままだと答えます。ないときは空にします。「もし床置きだったら」「〜だと何が困る」のような仮定や一般の問いは事実ではないので、statement に写しません。"""
 
 # 毎回同じなので、指示と事実をまとめて Anthropic 側のキャッシュに置く。
 _MEASURE_COSTS = "\n".join(f"・{m['label']}｜{m['decision']}｜{m['range']}" for m in samples.MEASURES if not m["range"].startswith("—"))
@@ -326,8 +326,8 @@ _ROOM_SCHEMA = {
 SYSTEM_PLAN = """マンションの竣工図（平面図・配置図・断面図・立面図・電気設備図・単線結線図・給排水設備図・外構図）から、浸水の確認に関わる部屋・設備と、建物の階数、引込み・受電・盤・排水の形を読み取ります。
 図面は細かい建築CADの図です。丸囲みの通り芯（X1〜X6、Y1〜Y3 など）、寸法線の数字、柱、二重線の壁、扉の円弧は部屋ではないので読み飛ばします。
 rooms：kind の定義に当たる語だけを返します。「キュービクル」「受変電設備」「受電の箱」「高圧受電室」はマンション側の電気室（elec）で、東京電力の借室（tr）ではありません。tr は「借室」「東電借室」「供給用変圧器室」など東京電力の部屋だけです。大きな「電気室」の文字だけでなく、小さく書かれた「EPS」「PS」「MB」「受水槽」「ポンプ」「EV」「階段」「借室」「キュービクル」も読みます。
-word は図面に書かれている語をそのまま写します。floor は図面の見出し（「地下1階平面図」「1階平面図」「基準階平面図」）か、断面図の階の札から読める階です。x, y は図面全体を 0〜1000 とした、その語のおおよその位置です。
-drawing：図面の種類（plan＝平面図、site_plan＝配置図、section＝断面図、elevation＝立面図、electrical＝電気設備図・単線結線図・幹線系統図、plumbing＝給排水衛生設備図・給水系統図、exterior＝外構図・雨水排水図）。断面図・立面図では、階の札（Z1〜Z10、1FL〜10FL、1F〜10F など）を数えて floors_above（地上の階数。屋上・PH・塔屋は数えない）を出し、地下（B1・地下1階・地下ピット）があれば floors_below、基礎ピットが描かれていれば pit を true にします。平面図・配置図では floors_above は null にします（1枚の平面図から階数は分かりません）。
+word は図面に書かれている語をそのまま写します。floor は図面の見出し（「地下1階平面図」「1階平面図」「基準階平面図」）か、断面図の階の札から読める階です。x, y は図面全体の幅と高さをそれぞれ 0〜1000 とした千分率で、その語のおおよその位置です（画像の画素の値ではありません。右端・下端でも 1000 を超えません）。
+drawing：図面の種類（plan＝平面図、site_plan＝配置図、section＝断面図、elevation＝立面図、electrical＝電気設備図・単線結線図・幹線系統図、plumbing＝給排水衛生設備図・給水系統図、exterior＝外構図・雨水排水図）。断面図・立面図では、階の札（Z1〜Z10、1FL〜10FL、1F〜10F など）を数えて floors_above（地上の階数）を出します。数え方：地上の階数は「1FL（1F・GL の階）」から最上階の「nFL」までの札の数で、RFL（屋上）・PH・塔屋・地下（B1FL など）は数えません。札が Z1〜Zn だけのときは、Z1 が 1FL か B1FL かを図から判断し、1FL〜最上階の数を数えます（例：Z1=B1FL、Z2=1FL、Z12=11FL、Z13=RFL なら地上11階）。「2,900×10」のような階高の寸法の個数も手がかりにします。地下（B1・地下1階・地下ピット）があれば floors_below、基礎ピットが描かれていれば pit を true にします。平面図・配置図では floors_above は null にします（1枚の平面図から階数は分かりません）。
 entrance_steps は、エントランスの階段の段数が読めるときだけ入れます。floor_shown は、その図面が何階を描いているか（「地下1階」「1階」など。読めなければ空）。
 次の項目は、その図面に明記があるときだけ値を入れ、なければ null にします（図面の種類を問いません）。
 feed：電気の引込みが地中（ハンドホール・地中管路・「地中引込」）なら "underground"、電柱からの架空（「架空引込」「引込柱」）なら "overhead"。
@@ -410,12 +410,16 @@ def read_plan(body: dict) -> dict:
             by_text = {room["kind"]: room for room in text_rooms}
             rooms = []
             for room in parsed["rooms"]:
-                exact = by_text.get(room["kind"])
+                # 種類は、図に書かれた語（word）を対応表（ROOM_WORDS）に当てて決め直す（実機で「受水槽」を pump、「雨水貯留槽」を basin と読んだため。2026-11-07・15回目）。
+                kind = samples.room_kind(str(room.get("word") or "")) or room["kind"]
+                exact = by_text.get(kind)
                 rooms.append(
                     {
                         **room,
-                        "x": exact["x"] if exact else room["x"] / 1000,
-                        "y": exact["y"] if exact else room["y"] / 1000,
+                        "kind": kind,
+                        # 位置は千分率。画素で返ってきても 0〜1 に収める。
+                        "x": exact["x"] if exact else _unit(room["x"]),
+                        "y": exact["y"] if exact else _unit(room["y"]),
                         "source": "text" if exact else "claude",
                     }
                 )
@@ -431,6 +435,14 @@ def read_plan(body: dict) -> dict:
         rooms = _sample_rooms(sample)
         return {"mode": "sample", "rooms": _with_names(rooms), "pins": _pins_for(rooms, sample), "unreadable": [], "message": f"{notice} 見本に付けてある答えを表示しています（読み取りの結果ではありません）。"}
     return {"mode": "unreadable", "rooms": [], "pins": [], "unreadable": ["図面全体"], "message": f"{notice} 文字のない画像は読めません。文字のある PDF を入れるか、API キーを設定してください。"}
+
+
+def _unit(value) -> float:
+    """千分率（0〜1000）の座標を 0〜1 にする。画素のような大きい値や負の値は端に寄せる。"""
+    try:
+        return min(1.0, max(0.0, float(value) / 1000))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _valid_drawing(drawing: dict) -> dict:

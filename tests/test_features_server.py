@@ -542,6 +542,20 @@ class DrawingReadTest(unittest.TestCase):
         self.assertIn("電気設備図・単線結線図から読めた", assistant._read_message(got))
         self.assertIn("外構図から読めた", assistant._read_message(assistant._valid_drawing({"kind": "exterior"})))
 
+    def test_room_kind_follows_the_drawn_word_and_coordinates_stay_inside(self):
+        # 2026-11-07・15回目（実機で見つけた）：モデルが「受水槽」を pump、「雨水貯留槽」を basin と返し、座標を画素で返すことがあった。
+        from app import assistant, samples
+        # 対応表では「受水槽室」は給水ポンプ室の群（pump）、「雨水貯留槽」は地下の貯留槽（tank）。モデルの読みより表を優先する。
+        self.assertEqual(samples.room_kind("受水槽室"), "pump")
+        self.assertEqual(samples.room_kind("雨水貯留槽"), "tank")
+        self.assertEqual(samples.room_kind("平置き駐車場"), None)
+        self.assertEqual(assistant._unit(1100), 1.0)
+        self.assertEqual(assistant._unit(-5), 0.0)
+        self.assertAlmostEqual(assistant._unit(250), 0.25)
+        self.assertIn("画素の値ではありません", assistant.SYSTEM_PLAN)
+        self.assertIn('kind = samples.room_kind(str(room.get("word") or "")) or room["kind"]', (ROOT / "app" / "assistant.py").read_text(encoding="utf-8"))
+        self.assertIn("仮定や一般の問いは事実ではないので、statement に写しません", assistant.SYSTEM_CHAT if hasattr(assistant, "SYSTEM_CHAT") else (ROOT / "app" / "assistant.py").read_text(encoding="utf-8"))
+
     def test_feed_unknown_is_not_asserted_in_facts_or_measures(self):
         # 2026-11-07・13回目の不具合：自分の建物で単線結線図を見ていないのに「引込みは電柱から」と出ていた。未確認は未確認と書く。
         from app import building, samples
@@ -590,4 +604,29 @@ class DrawingReadTest(unittest.TestCase):
         from app import assistant
         self.assertIn("東京電力の借室（tr）ではありません", assistant.SYSTEM_PLAN)
         self.assertIn('"HH（未確認）"', (ROOT / "web" / "cad.js").read_text(encoding="utf-8"))
+
+    def test_slope_answer_switches_the_plate_measure(self):
+        # 2026-11-07・15回目：図面がない人の「地下スロープがあるか」の答えで、スロープ止水板（180万円）か階段・出入口の止水板（35万円）かが切り替わる。
+        from app import building, samples
+        rows = [{"key": "flood", "verdict": "risk", "value": "3m〜5m"}]
+        with_slope = samples.apply_answers(None, {"rooms_floor": "basement", "basement": "yes", "slope": "yes"}, "東京都")
+        no_slope = samples.apply_answers(None, {"rooms_floor": "basement", "basement": "yes", "slope": "no"}, "東京都")
+        self.assertIn("スロープ", building.critical_measures(with_slope, rows)["items"][1]["title"])
+        self.assertIn("階段・出入口", building.critical_measures(no_slope, rows)["items"][1]["title"])
+        counts = {item["key"]: item["count"] for item in building.unit_counts(no_slope)} if hasattr(building, "unit_counts") else None
+        if counts is not None:
+            self.assertEqual(counts.get("slope_plate"), 0)
+        # 判定の色は答えだけでは変わらない（図面で確かめるまで未確認）。
+        payload = building.building_payload(no_slope, [], rows, False, {}, [], [], [], False)
+        self.assertTrue(all(item["verdict"] == "unconfirmed" for item in payload["equipment"] if item["key"] in ("water", "power", "tr")))
+
+    def test_building_at_needs_a_key_and_a_matched_source(self):
+        from app import search
+        self.assertIsNone(search.building_at("")["found"])
+        self.assertIn("API キー", search.building_at("千葉県市川市八幡一丁目")["message"])
+        self.assertIsNone(search._valid_facts({"building": "X", "floors_above": 10, "matched": False, "source_url": "https://e.x/"}))
+        for word in ("分譲マンション", "番地まで", "記憶だけで答えません", "matched"):
+            self.assertIn(word, search.SYSTEM_AT)
+        server = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"/api/building-at"', server)
 

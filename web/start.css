@@ -734,3 +734,13 @@ details.facts[open] { display: flex; }
 .t-pit { fill: url(#t-hatch); stroke: var(--ink); stroke-width: 1.5; }
 .t-footing { fill: var(--ink); }
 .t-pit-label { font-size: 10px; font-weight: 700; fill: #4a3b24; }
+
+/* 15回目：住所で選んだときの「この建物ですか？」 */
+.ask-bldg { border: 2px solid var(--navy); background: #f3f7fd; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.ask-bldg p { margin: 0; font-size: 16px; font-weight: 700; }
+.ask-bldg p b { font-size: 17px; }
+.ask-bldg .option { min-height: 40px; font-size: 16px; border: 2px solid var(--navy); color: var(--navy); }
+.ask-bldg.none { border-style: dashed; background: #fff; }
+.ask-bldg.none .hint { font-size: 14px; font-weight: 400; }
+.own-open { display: flex; flex-direction: column; gap: 8px; }
+.ask-bldg .option.chosen { background: var(--navy); color: #fff; }
