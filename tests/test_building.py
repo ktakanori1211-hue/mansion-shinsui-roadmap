@@ -1150,7 +1150,11 @@ class LiveFindingsTest(unittest.TestCase):
         self.assertTrue(result["basement_power"])
         self.assertEqual(result["answers"]["feed"], "underground")
         self.assertEqual(result["answers"]["panel_foot"], "floor")
-        self.assertEqual(result["answers"]["rooms_floor"], "basement")
+        # 2026-11-07・30回目：建物全体を地下扱いにせず、書いてある部屋（ここでは電気室）だけに階を入れる。
+        self.assertEqual(result["answers"]["room_floors"], {"elec": "地下1階"})
+        self.assertNotIn("rooms_floor", result["answers"])
+        mixed = assistant._documented_facts("受電設備：地下1階 受変電室。給水ポンプ室は1階。")
+        self.assertEqual(mixed["room_floors"], {"elec": "地下1階", "pump": "1階"})
 
 
 class TokenBudgetTest(unittest.TestCase):

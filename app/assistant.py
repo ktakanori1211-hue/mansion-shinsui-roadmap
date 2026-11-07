@@ -589,6 +589,37 @@ def _basement_power(text: str) -> bool:
     return bool(re.search(r"(受電設備|受変電|受電室|電気室|キュービクル).{0,12}(地下|地階)|(地下|地階).{0,12}(受変電|受電|電気室|キュービクル)", text)) and "受電設備なし" not in text
 
 
+_ROOM_WORDS_FOR_FLOOR = {
+    "elec": r"電気室|受変電室|受電室|受変電設備|受電設備|キュービクル|共用分電盤室|分電盤室",
+    "pump": r"給水ポンプ室|ポンプ室|給水ポンプ",
+    "tr": r"借室|供給用変圧器室|東電借室|変圧器室",
+}
+_FLOOR_WORD = r"(地下\s*\d*\s*階|地階|B\d+F?L?|\d+\s*階|\d+F|地下(?![\d階]))"
+
+
+def _floor_text(raw: str) -> str:
+    raw = raw.replace(" ", "")
+    if raw.startswith("B"):
+        return "地下" + re.sub(r"\D", "", raw) + "階"
+    if raw == "地階":
+        return "地下1階"
+    if raw.startswith("地下"):
+        digits = re.sub(r"\D", "", raw)
+        return f"地下{digits}階" if digits else "地下"
+    return re.sub(r"\D", "", raw) + "階"
+
+
+def _room_floors(text: str) -> dict:
+    """書類の文から、部屋ごとの階を読む（書いてある部屋だけ。「階」の語がない部屋は入れない）。"""
+    out = {}
+    for kind, words in _ROOM_WORDS_FOR_FLOOR.items():
+        m = re.search(rf"({words})[^。\n]{{0,8}}?{_FLOOR_WORD}", text) or re.search(rf"{_FLOOR_WORD}[^。\n]{{0,6}}?({words})", text)
+        if m:
+            raw = next(g for g in m.groups() if g and re.search(r"\d|地階|階", g) and not re.search(words, g))
+            out[kind] = _floor_text(raw)
+    return out
+
+
 def _documented_facts(text: str) -> dict:
     """書類に明記があるときだけ答えに入れる。受電設備の「なし」は、なしと選任なしの両方の明記が要る。"""
     plain = _without_fiction_marks(text)
@@ -603,8 +634,11 @@ def _documented_facts(text: str) -> dict:
         facts["panel_foot"] = "floor"
     elif re.search(r"盤.{0,24}(壁掛け|架台)", plain):
         facts["panel_foot"] = "raised"
-    if _basement_power(plain):
-        facts["rooms_floor"] = "basement"
+    # 部屋ごとの階（2026-11-07・30回目）：「電気室 地下1階」「1階 給水ポンプ室」のように階が書いてあれば、その部屋だけに入れる。
+    # 前は電気室＋地下の記載で建物全体を地下扱いにしていたが、ポンプ室が1階の建物まで全部地下になるのでやめた。
+    room_floors = _room_floors(plain)
+    if room_floors:
+        facts["room_floors"] = room_floors
     # ここから下は、書類に明記があるときだけ答えに入れる項目（ノートの機能から足した）。
     lines = [row.strip() for row in plain.splitlines()]
     finding_lines = [row for row in lines if row.startswith("指摘")]

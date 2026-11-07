@@ -634,7 +634,7 @@ function experienceLine() {
 
 // ---- WHY に沿った画面1・2の部品（2026-11-05 作り直し） ----
 // 画面1の一行：命を守る避難の判断と、機械を守る足元の対策を混ぜない。
-const EVAC_LINE = "避難するかどうかは、自治体のハザードマップと警戒レベルで決めます。この道具は、地図に色がなくても浅い水で止まる、建物の電気と水の足元の対策を整理します。";
+const EVAC_LINE = "避難するかどうかは、自治体のハザードマップと警戒レベルで決めます。マンション浸水チェックは、地図に色がなくても浅い水で止まる、建物の電気と水の足元の対策を整理します。";
 
 
 // 対策の切り替え（what-019）。名前はサーバーの model_measures のまま。選んだ対策の固定の文（what-026）を言い換えずに添える。
@@ -1412,7 +1412,7 @@ function readCard() {
 
 // ---- 点検報告書・管理資料の文から読む（/api/report。2026-11-07・19回目で画面に戻した）----
 // 読めた語→項目→効き方を見せ、人が「答えに入れる」を押したときだけ答え（S.extra）と書類の印（document_read）に入れる。
-const REPORT_ANSWER_WORDS = { hv: { no: "受電設備なし（書類に明記）" }, feed: { underground: "引込み 地中", overhead: "引込み 架空" }, panel_foot: { floor: "給水ポンプ制御盤 床置き", raised: "給水ポンプ制御盤 壁掛け・架台" }, rooms_floor: { basement: "受電設備は地下（書類）" }, damp: { yes: "湿気・漏水の指摘あり", no: "指摘なし" }, tank: { yes: "貯留槽あり" }, sealed: { yes: "止水バルブあり" } };
+const REPORT_ANSWER_WORDS = { hv: { no: "受電設備なし（書類に明記）" }, feed: { underground: "引込み 地中", overhead: "引込み 架空" }, panel_foot: { floor: "給水ポンプ制御盤 床置き", raised: "給水ポンプ制御盤 壁掛け・架台" }, damp: { yes: "湿気・漏水の指摘あり", no: "指摘なし" }, tank: { yes: "貯留槽あり" }, sealed: { yes: "止水バルブあり" } };
 
 async function readReport(text) {
   const body = String(text || "").trim();
@@ -1443,10 +1443,20 @@ async function readSampleReport() {
 async function applyReport() {
   const r = S.report;
   if (!r) return;
-  const keys = Object.keys(r.answers || {});
+  const keys = Object.keys(r.answers || {}).filter((key) => key !== "room_floors");
   keys.forEach((key) => {
     S.extra[key] = r.answers[key];
   });
+  // 部屋ごとの階（書類に「電気室 地下1階」のように書いてあったもの）は、その部屋の答えにだけ入れる（人が選んだ答えは上書きしない）。
+  const rooms = [];
+  Object.entries(r.answers?.room_floors || {}).forEach(([kind, text]) => {
+    const choice = floorChoice(text);
+    if (choice && !S.choices[kind]) {
+      S.choices[kind] = choice;
+      rooms.push(kind);
+    }
+  });
+  S.reportRooms = rooms;
   S.reportApplied = keys;
   S.documentRead = Boolean(r.basement_power);
   await loadBuilding();
@@ -1455,6 +1465,8 @@ async function applyReport() {
 
 async function dropReport() {
   (S.reportApplied || []).forEach((key) => delete S.extra[key]);
+  (S.reportRooms || []).forEach((kind) => delete S.choices[kind]);
+  S.reportRooms = null;
   S.reportApplied = null;
   S.documentRead = false;
   await loadBuilding();
@@ -1467,7 +1479,8 @@ function reportBox() {
   if (S.reportBusy) result = busyBox(BUSY_REPORT);
   else if (r) {
     const findings = (r.findings || []).map((f) => `<li><b>${esc(f.word)}</b> → ${esc(f.item)}：${esc(f.effect)}</li>`).join("");
-    const answerWords = Object.entries(r.answers || {}).map(([key, value]) => REPORT_ANSWER_WORDS[key]?.[String(value)]).filter(Boolean);
+    const roomNames = { elec: "電気室", pump: "給水ポンプ室", tr: "借室" };
+    const answerWords = Object.entries(r.answers || {}).flatMap(([key, value]) => key === "room_floors" ? Object.entries(value || {}).map(([kind, text]) => `${roomNames[kind] || kind} ${text}（書類）`) : [REPORT_ANSWER_WORDS[key]?.[String(value)]]).filter(Boolean);
     const applyable = answerWords.length || r.basement_power;
     const action = S.reportApplied
       ? `<p class="auto-applied">書類の記載を反映しました。<button type="button" class="option small" data-act="report-drop">反映を取り消す</button></p>`
@@ -1652,16 +1665,16 @@ function riskHead(lines, compact = false) {
     }).join("");
   const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${mark(line.hit)}${esc(line.name)}：${esc(shortRainText(line))}</li>`).join("");
   // この道具の売り：ハザードマップだけでは足りないと 2026 年の大雨で分かった。その事実を帯で先に見せる（数字は出典のまま）。
-  const found = rain?.accent && !compact ? `<div class="found-2026"><p class="f-head">2026年の大雨で分かったこと</p><p class="f-body">ハザードマップに色のない場所でも浸水しました。台風25号（2026年9月・千葉県）の浸水447件のうち<b>64%</b>は、洪水の地図に色のない高台のくぼ地と水路沿いの低地（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）。だからこの道具は、<b>国の想定 × 地形</b>の掛け算で見ます。</p></div>` : "";
+  const found = rain?.accent && !compact ? `<div class="found-2026"><p class="f-head">2026年の大雨で分かったこと</p><p class="f-body">ハザードマップに色のない場所でも浸水しました。台風25号（2026年9月・千葉県）の浸水447件のうち<b>64%</b>は、洪水の地図に色のない高台のくぼ地と水路沿いの低地（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）。だからマンション浸水チェックでは、<b>国の想定 × 地形</b>の掛け算で見ます。</p></div>` : "";
   const fact = "";
   // 結論の下に「浸かると止まるもの」を添える（画面1の時点で何が止まるか分かるように。建物の階で変わるので、断定せず「浸かると」）。
   const consequence = !compact && head[0] === "risk" ? `<p class="rh-stop"><b>機械室（給水ポンプ室・電気室・借室）が浸かると、全戸で止まるもの：</b><span>水・トイレ</span><span>エレベーター</span><span>各戸の電気</span><small>何階にあるかで変わります。次の画面で竣工図から確かめます。</small></p>` : "";
   return `<div class="risk-head ${head[0]}"><p class="rh-title">${head[0] === "risk" ? "⚠ " : ""}${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p>${consequence}</div>
   ${found}
   <div class="mul">
-    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-head"><span class="mul-no">国の想定</span>ハザードマップ ${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
+    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-tag">これまでの見方</p><p class="mul-head"><span class="mul-no">国の想定</span>ハザードマップ ${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
     <div class="mul-x">×</div>
-    <div class="mul-card new${rainHit ? " hit" : ""}"><p class="mul-head"><span class="mul-no">地形</span>台風・大雨で浸かりやすいか ${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul></div>
+    <div class="mul-card new${rainHit ? " hit" : ""}"><p class="mul-tag">2026年の大雨で分かった見方</p><p class="mul-head"><span class="mul-no">地形</span>台風・大雨で浸かりやすいか ${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul></div>
   </div>`;
 }
 
@@ -2315,7 +2328,9 @@ function fitPapers() {
     const sheet = paper.firstElementChild;
     if (!sheet) return;
     sheet.style.zoom = "";
-    if (sheet.scrollHeight > sheet.clientHeight) sheet.style.zoom = String(Math.max(0.7, (sheet.clientHeight / sheet.scrollHeight) * 0.995));
+    // 画面では紙の高さを固定しないので、印刷の1ページ（A4 縦・余白込みで 1047px 相当）を超えるときだけ縮める。
+    const limit = 1047;
+    if (sheet.scrollHeight > limit) sheet.style.zoom = String(Math.max(0.7, (limit / sheet.scrollHeight) * 0.995));
   });
 }
 
@@ -2646,6 +2661,8 @@ function stopPlay(redraw = true) {
 
 function startPlay() {
   stopPlay(false);
+  // 対策を選んだままだと最初から緑で、どこから水が入るかが見えない。再生は「対策なし（現状）」から（2026-11-07・30回目）。
+  S.measure = "none";
   S.play = 1;
   // 先にタイマーを置いてから描く（ボタンを最初から「止める」にするため）。
   S.timer = setInterval(() => {

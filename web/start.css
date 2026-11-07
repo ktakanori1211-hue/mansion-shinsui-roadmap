@@ -949,3 +949,10 @@ details.facts[open] { display: flex; }
 .p-level-tag text { fill: #1f5f99; font-size: 14px; font-weight: 800; }
 .p-water-pattern { animation: drift 2.4s linear infinite; }
 @keyframes drift { from { transform: translateX(0); } to { transform: translateX(24px); } }
+/* 30回目：地形のカードを別の見方として、水は段々濃く */
+.mul-tag { margin: -2px 0 4px; font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: .04em; }
+.mul-card.new { background: #eef3ff; border-color: #13294b; }
+.mul-card.new .mul-tag { color: #8a5a00; }
+.mul-card.new.hit { background: #fff1e0; border-color: #c48000; }
+.mul-card.new i.hit { background: #c48000; }
+.p-over, .p-water-pattern { transition: fill .7s ease, opacity .7s ease; }

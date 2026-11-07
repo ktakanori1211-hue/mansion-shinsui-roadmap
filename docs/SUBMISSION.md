@@ -1,63 +1,83 @@
 # 提出フォームに貼る文（Built with Claude: Japan 2026）
 
-提出先：https://cerebralvalley.ai/e/built-with-claude-japan2026/hackathon/submit （ログインが要るので、本人がフォームを開いて貼る）。締切 2026-11-08（日）20:00 JST。
-フォームの項目名は開いてみるまで分からないので、よくある項目ごとに文を置く。字数の枠に合わせて [docs/OVERVIEW.md](OVERVIEW.md) の短い版・標準版・詳細版と組み合わせる。数字は「根拠と資料」とサーバーの表の出典のまま。
+提出先：https://cerebralvalley.ai/e/built-with-claude-japan2026/hackathon/submit （ログインして本人が貼る）。締切 2026-11-08（日）20:00 JST。
+フォームの 11 項目の順に、そのまま貼れる文を置く。数字は「根拠と資料」（web/materials.json）とサーバーの表の出典のまま。
 
-## 1. 作品名（Project name）
+## 1. プロジェクト名
 
-- 日本語：マンション浸水チェック
-- English: Mansion Shinsui Check — flood-readiness check for condominium boards
+マンション浸水チェック
 
-## 2. 一言（Tagline, 100字前後）
+## 2. 選択したテーマ
 
-- 日本語：ハザードマップに色がないマンションでも、地下の機械室が浸かれば全戸で水・トイレ・エレベーターが止まる。住所と竣工図から止まる設備と対策を読み、理事会に出すA4一枚にする。
-- English: Even where the hazard map shows no color, a flooded basement machine room stops water, toilets and elevators for every unit. From an address and the as-built drawings, it finds what stops, what to do first, and puts it on one A4 page for the board.
+**第一候補：「あなたにしかない深さを。」**
+理由：作者は電気主任技術者で、浸水した建物の現場に立ち会ってきた。受電設備は無事でも、一番低い階の給水ポンプ制御盤が浅い水につかるだけで全戸が断水する、という現場の知見が出発点。点検の項目にも管理会社の仕事にも入っていない「電気室への水の入り道」を、理事会で決められる対策に変えた。
 
-## 3. 説明（Description）
+**「本来、誰にでも届くべきものを。」を選ぶ場合の理由**
+ハザードマップに色のない土地の浸水リスクと、竣工図の読み方は、これまで専門家にしか見えなかった。住所と図面の写真だけで、電気の知識のない理事長が A4 一枚を手にできるようにした。
 
-字数の枠が 500 字前後なら OVERVIEW の標準版、1,000 字以上なら詳細版をそのまま貼る。英語の枠があれば次の要約。
+## 3. プロジェクト概要（500字以内）
 
-**English (about 180 words).** In Japan's August–September 2026 storms, 64% of the 447 flood and road-inundation reports in Chiba Prefecture (Typhoon 25, Weathernews 2026-09-22) were in places with no color on the flood hazard map. For a condominium, the real loss is not the power outage but what follows: when the basement or ground-floor electrical room or water-pump room floods, every unit loses water, toilets and elevators for days (8 days without water and 11 without toilets in a 2019 Kawasaki case). The path water takes into the electrical room (cable conduits, low vents, floor-mounted panels) falls between the building manager and the electrical safety contractor.
+このプロジェクトは、マンション管理組合の理事会の「ハザードマップに色がないので対策の決めようがない」という課題を、住所と竣工図から止まる設備と対策を読み取り、本日決めることまで書いた A4 一枚に変える Web アプリです。
 
-Mansion Shinsui Check takes an address, multiplies the national hazard maps by terrain data (GSI landform classification, elevation, inland-flood data) to flag "no color on the map, but a flood-prone landform", reads the as-built drawings with Claude to locate the pump room, electrical room and utility room, animates how water enters and what stops on CAD-style plans and sections, and produces a one-page A4 for the board: what it costs if nothing is done, what prevention costs per unit, and what to decide today. Judgments are rule-based; Claude only reads, searches and explains, and dangerous questions never reach the AI.
+2026年9月の台風25号では、千葉県の浸水447件のうち64%が洪水の地図に色のない場所でした。地下や1階の電気室・給水ポンプ室が浸かると、全戸で水・トイレ・エレベーターが止まります。
 
-## 4. Claude の使い方（How you used Claude / Claude Code）
+使い方：①住所を入れると、国のハザードマップ × 地形で「地図に色はないが台風・大雨で浸かりやすい土地」まで洗い出し、Web の公表情報で建物名・階数を確かめます。②竣工図や点検報告書を入れると、Claude が給水ポンプ室・電気室・借室の階、引込み、受電、盤の置き方を読み、答えに反映します。③平面図・断面図で水が入る順をシミュレーションし、止水板や穴埋めでどこで止まるかを見せます。④無対策の復旧費と事前対策の費用（1戸あたり）、補助、本日の理事会で決めることを A4 一枚に印刷します。
 
-**作り方**：設計からコード、テスト、見本の図面の作図、公開前の安全点検まで Claude Code で作った（Python 3.9 の標準ライブラリと素の JavaScript・SVG だけ。外部ライブラリなし。テスト 452 件）。要件の決定は docs/REQUIREMENTS.md に 24 回分を番号つきで残し、画面の文字量はテストで上限を見張る。
+判定はプログラムの規則で、Claude は読み取り・検索・説明だけ。危ない質問は AI を通さず安全基準の案内で止めます。
 
-**アプリの中の Claude（claude-opus-5-5）**：
-- 竣工図の読み取り（Vision）：平面図・断面図・電気設備図・給排水設備図を複数枚まとめて読み、給水ポンプ室・電気室・借室の階、階数、引込み（地中／架空）、受電（高圧／低圧）、盤の置き方、排水の放流先を候補にして、答えに自動で入れる（取り消せる）。
-- Web 検索：住所または建物名から、建物名・階数・戸数・築年を出典つきで探し、押させずに反映する。
-- チャット：建物の情報・判定・出典を読んで答え、平面図の部屋を光らせる・水位や対策を切り替えるといった画面の操作を返す。
-- 相談文の下書き：現地調査・見積もり仕様カルテ、管理会社・工事業者への依頼文、補助の手続きの順番。
+（文字数：499 字）
 
-**安全の設計**：判定はプログラムの規則だけで、Claude には変えさせない。分からないことは「未確認」で、危険とも安全とも言わない。浸水した電気室への立入や復電などの危ない質問は AI を通さず 0 秒で安全基準の案内（実機で 20 問すべて）。Claude の文は数字・禁止の語・留保・確かめる主語を事後に検査し、通らなければ定型に戻す。図面は Files API に上げず、その都度の要求に入れる。応答はキャッシュし、同じ入力では API を呼ばない。
+## 4. 公開 GitHub リポジトリの URL
 
-## 5. 独自性・だれが作ったか（What makes it unique）
+https://github.com/ktakanori1211-hue/mansion-shinsui-roadmap
 
-作者は電気主任技術者。浸水した建物の現場に立ち会い、受電設備は無事でも一番低い階の給水ポンプ制御盤が浅い水につかっただけで断水した例を見てきた。点検から抜けやすい「水の入り道」を、理事が管理会社に頼める問いと、理事会で決められる安い対策（止水板・壁の穴埋め、5 万〜180 万円）に変え、その場で動ける 1 枚に着地させる。出発点は「ひとりが深い知見から紡ぎ出すもの」。
+## 5. デモ動画の URL（3分以内）
 
-## 6. 技術（Tech stack）
+（2026-11-08 に撮影。URL が決まったらここと README の「デモ動画」の行に入れる）
 
-Python 3.9 標準ライブラリのサーバー（http.server）、素の JavaScript と SVG の画面、建築 CAD 風の平面図・断面図を描く自前の描画（web/cad.js、DXF も出力）、Anthropic Messages API（Vision・Web 検索ツール・JSON スキーマ・プロンプトキャッシュ）、国土地理院（住所検索・標高・地形分類）、ハザードマップポータル、zipcloud、OpenStreetMap Nominatim。追加のインストールなしで `python3 -m app.server`。
+## 6. 使用した Claude の製品・機能
 
-## 7. リンク（Links）
+- Claude Code Desktop（設計・実装・テスト・見本の図面の作図・公開前の安全点検・文書の全部）
+- Claude API（アプリの中：claude-opus-5-5 による図面の読み取り（Vision）、建物名・住所からの Web 検索ツール、JSON スキーマの構造化出力、プロンプトキャッシュ、チャットと相談文の下書き）
 
-- リポジトリ（public）：https://github.com/ktakanori1211-hue/mansion-shinsui-roadmap
-- デモ動画：（2026-11-08 に撮る。3 分以内・日本語・動く様子が中心。URL が決まったら README の「デモ動画」の行にも入れる）
-- 動作 URL：なし（手元で起動する。提出要件に必須とは確認できていない）
+## 7. 開発中に一番詰まった場面
 
-## 8. チーム（Team）
+**何を作ろうとしていましたか？**
+理事会の役員が、住所 → 図面 → 止まるもの → A4 の順に迷わず進める 4 画面を作ろうとしていました。
 
-1 名（作者）。GitHub：ktakanori1211-hue。
+**Claude にどのように指示しましたか？**
+要件定義（WHY・WHAT）を docs に書き、画面ごとに「この画面で何を判断させるか」を伝えて実装させました。途中からは、家族（電気の素人）に触ってもらった所感をそのまま渡して直させました。
 
-## 9. 期間中の開発分（Scope）
+**何が起きましたか？期待していた結果と何が違いましたか？**
+指示を足すたびに画面にボタンと説明が積み上がり、画面3は操作ボタンが10個、A4 は文字が2,000字を超えて、何を判断する画面なのか分からなくなりました。また住所を入れると「建物の検索」と「場所の判定」で2回待たされ、Web から見つけた建物名が図面を読むと消える、といった画面同士の食い違いも起きました。
 
-リポジトリのコードと README・docs はすべて 2026-11-02〜11-08 の期間中に書いた（初コミット 2026-11-02）。見本の建物・図面・点検報告書は期間中に `scripts/draw_plans.py` で新しく作った架空のもので、実在の建物の図面や記録は含まない。
+**どのように対処しましたか？**
+「足すなら同じだけ消す」「各画面の表面の文字数はテストで上限を見張る」を CLAUDE.md の決まりにして、Claude 自身に表面の文字数を数えるテスト（JavaScriptCore で画面の関数を呼ぶ）を書かせました。画面3は操作を 1 浸水シミュレーション → 2 対策を切り替えて比べる → 3 図を切り替える の3つに減らし、A4 は「今のまま／対策したら／本日決めること」の3つの数字を主役にして 1,100 字台に。検索は住所の判定と建物の検索を1回の呼び出しにまとめ、図面の読み取りは複数枚を同時に送るようにして待ち時間を半分以下にしました。決定は毎回 docs/REQUIREMENTS.md に番号つきで残し（30回）、前の決定を Claude が勝手に戻さないようにしました。
 
-## 10. 出す前の確認
+## 8. その問題が起きた製品・環境・原因
 
-- [ ] README のデモ動画の行に URL を入れて push した
-- [ ] 動画を最初から最後まで見返した（有効な API キー・他人の実データ・エラー画面の機密が映っていない）
-- [ ] GitHub の Settings：public、共同編集者なし、Secret scanning と Push protection が有効
-- [ ] フォームの各欄を、上の文と OVERVIEW の版から字数に合わせて貼った
+- 製品：Claude Code Desktop
+- 環境：モデル Claude Fable 5.1（claude-fable-5-1）、Claude Code のバージョンは未確認（Claude デスクトップアプリ 4.23118.0）、macOS 26.6.2、再現性：時々（長い作業の後半で起きやすい）
+- 主な原因：長い作業で文脈を失う（前の回で決めた「文字を増やさない」「決定を戻さない」が、何十回もやり取りした後に薄れる）
+
+## 9. 開発に必要な公式の情報を十分見つけられましたか？
+
+おおむね見つけられました。Messages API の Vision・Web 検索ツール・構造化出力・プロンプトキャッシュは公式ドキュメントで足りました。足りなかったのは、日本の公開データ側です。国土地理院の住所検索 API は公開の仕様がなく、ハザードマップポータルのタイルの凡例は画像の色から読むしかありませんでした。Claude 側では、Web 検索ツールが返す出典の扱い（どの URL を根拠として表示してよいか）の実例がもっと欲しかったです。
+
+## 10. Claude を使った感想と改善してほしい点
+
+**日本語や日本の業務から見た欠点と利点**
+利点は、竣工図の日本語の室名（「借室」「受変電室」「EPS」）や点検報告書の文を、こちらの語の対応表に当てて読めたこと。電気主任技術者の業務の語（高圧受電、主開閉器盤、借室の分担）も通じました。欠点は、「受電の箱（キュービクル）」を東京電力の借室と読み違える、低解像度の図面で室名を創作しかけるなど、日本の建築・電気の図面の慣行に自信を持ちすぎる場面があったこと。読み取り結果を「候補」として人が確かめる設計にして吸収しました。
+
+**他のツールと比べた感想**
+標準ライブラリだけの Python と素の JavaScript で、CAD 風の平面図・断面図の描画まで書き切れたのは、長い文脈を保ったまま設計の決まりを守れる Claude Code ならではでした。テストを 450 件以上書かせても、決まり（判定は規則で、Claude は変えない）を崩さなかったのが大きいです。
+
+**1つだけ直してほしい点**
+長い作業で、前に決めた禁止事項（文字を増やさない、決定を戻さない、数字は出典のあるものだけ）が薄れることです。CLAUDE.md と決定の記録で補いましたが、「このセッションで決めた決まり」をモデル側が常に前面に保つ仕組みがあると、日本の業務のように例外と決まりが多い仕事で助かります。
+
+## 11. 審査員が触るための案内
+
+- `python3 -m app.server` で起動し http://localhost:8000 を開きます（Python 3.9 以上。追加のインストールなし）。
+- API キーなしでも、画面1の「見本A・B・C」のボタンから画面1 → 2 → 3 → 4 まで通して試せます（見本の図面・見本の点検報告書・見本の答えで動き、その旨を画面に出します）。
+- 右上の「設定」から Anthropic の API キーを入れると、図面の読み取り、住所・建物名からの Web 検索、AI チャット、相談文の下書きも動きます（キーはホームの `.anthropic_api_key` にだけ保存し、画面にもログにも出しません）。
+- 見本の建物・図面・住所はすべて架空です。実在の建物の判断は、電気主任技術者が行います。
