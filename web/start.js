@@ -717,7 +717,9 @@ function factsBox() {
       <p class="hint">${esc(S.facts.message)}</p>
       ${S.floorsApplied?.source === "web" ? `<p class="hint">この値を使っています。<button type="button" class="option small" data-act="drop-floors">取り消す</button></p>` : `<button type="button" class="option" data-act="use-facts">この値を使う</button>`}</div>`;
   } else if (S.facts) result = `<p class="hint">${esc(S.facts.message)}</p>`;
-  return `<details class="facts"${S.facts || S.factsBusy ? " open" : ""}><summary>建物名から階数を探す</summary>
+  // 住所から建物が見つからなかったときは、建物名の欄を最初から開いておく（折りたたみに気づかれないため。2026-11-07・16回目）。
+  const openNow = S.facts || S.factsBusy || (S.at && !S.at.busy && (!S.at.found || S.at.answer === "no"));
+  return `<details class="facts"${openNow ? " open" : ""}><summary>建物名から階数を探す</summary>
     <label class="facts-name">建物名<input id="facts-name" type="text" autocomplete="off" value="${esc(name)}" placeholder="〇〇マンション"></label>
     <button type="button" class="option" data-act="facts"${S.factsBusy ? " disabled" : ""}>Web で階数を探す</button>
     <p class="hint">押すと、建物名と所在地を Anthropic の API に送り、Web を検索します。</p>
@@ -746,6 +748,8 @@ async function findFacts(given) {
     S.query = name;
     render();
   }
+  // 建物名で見つからなかったときは、住所からの「この建物ですか？」に回す（画面1に何も出ないままにしない。2026-11-07・16回目）。
+  if (!S.facts?.found && S.place && !S.sampleId && !S.at) await findBuildingAt();
 }
 
 // 候補を使う：地上の階数を「何階建て」に、地下の階数を「地下は ある／ない」に入れる（地下が書かれていなければ変えない）。
@@ -1389,10 +1393,19 @@ function terrainFigure(lines) {
   if (pts.length < 3) return "";
   const by = Object.fromEntries((lines || []).map((line) => [line.key, line]));
   const basement = hasBasement();
-  const W = 700, H = basement ? 380 : 330, y0 = 230, cx = 350;
+  // 階数：本人の答え・Web・図面（S.own.floors）か、見本の建物の階数。どちらもなければ描かない。
+  const known = Number(S.own.floors) || (S.sampleId ? Number(S.points.find((pt) => pt.sample === S.sampleId)?.floors) : 0) || 0;
+  // 2階以上もまとめずに各階を描く（2026-11-07 本人の指摘・17回目）。15階以上は下の10階と上の2階を描き、間を切断線で省く。
+  const brk = known > 14;
+  const drawn = known ? (brk ? 12 : known) : 1;
   const center = (pts.find((pt) => pt[0] === 0) || pts[Math.floor(pts.length / 2)])[1];
   const relief = Math.max(0.6, ...pts.map((pt) => Math.abs(pt[1] - center)));
-  const vs = Math.min(22, 60 / relief);
+  // 縦の縮尺（m→px）：地形の起伏と、描く階数の両方で決める。帯と階は同じ縮尺。
+  const vs = Math.min(22, 60 / relief, 300 / (2.9 * Math.max(drawn, 3)));
+  const floorPx = 2.9 * vs, gap = brk ? 16 : 0;
+  const W = 700, cx = 350;
+  const y0 = Math.round(36 + floorPx * drawn + gap + floorPx * 0.45 + 12);
+  const H = y0 + (basement ? Math.round(floorPx) : 0) + 110;
   const X = (d) => cx + d * 3;
   const Y = (e) => y0 - (e - center) * vs;
   const ground = pts.map((pt) => `${X(pt[0])},${Y(pt[1]).toFixed(1)}`).join(" ");
@@ -1421,24 +1434,24 @@ function terrainFigure(lines) {
   // 地面。
   parts.push(`<polygon points="${X(pts[0][0])},${H} ${ground} ${X(pts[pts.length - 1][0])},${H}" class="t-ground"/>`);
   parts.push(`<polyline points="${ground}" class="t-ground-line"/>`);
-  // 建物：建築の断面として描く（2026-11-07・14回目）。各階のスラブ（太線）・黒塗りの柱・間仕切り・窓・バルコニーの手すり、
+  // 建物：建築の断面として描く（2026-11-07・14回目、17回目で各階を描く形に）。各階のスラブ（太線）・黒塗りの柱・間仕切り・窓・バルコニーの手すり、
   // 地下があれば地下階と基礎ピット、下に黒塗りの基礎フーチング。1階の床の高さと帯を比べる絵は変えない。
-  const bw = 110, floorH = 2.9 * vs, colW = 6, wall = 2.5;
-  // 階数：本人の答え・Web・図面（S.own.floors）か、見本の建物の階数。どちらもなければ描かない。
-  const known = Number(S.own.floors) || (S.sampleId ? Number(S.points.find((pt) => pt.sample === S.sampleId)?.floors) : 0) || 0;
-  const shown = known ? Math.min(known, 3) : 1;
-  const top = y0 - floorH * (known ? shown : 2);
+  const bw = 110, floorH = floorPx, colW = 6, wall = 2.5;
   const L = cx - bw / 2, R = cx + bw / 2;
+  // n階の床の y（15階以上は、10階より上を切断線のぶん上へずらす）。
+  const floorY = (n) => y0 - floorH * (n - 1) - (brk && n > 10 ? gap : 0);
   const slab = (yy, x1 = L - 6, x2 = R + 6) => parts.push(`<path d="M${x1} ${yy.toFixed(1)} L${x2} ${yy.toFixed(1)}" class="t-slab"/>`);
   const columns = (yTop, yBottom) => {
     parts.push(`<rect x="${L + 3}" y="${yTop.toFixed(1)}" width="${colW}" height="${(yBottom - yTop).toFixed(1)}" class="t-col"/>`);
     parts.push(`<rect x="${R - 3 - colW}" y="${yTop.toFixed(1)}" width="${colW}" height="${(yBottom - yTop).toFixed(1)}" class="t-col"/>`);
     parts.push(`<rect x="${(L + bw * 0.36 - colW / 2).toFixed(1)}" y="${yTop.toFixed(1)}" width="${colW}" height="${(yBottom - yTop).toFixed(1)}" class="t-col"/>`);
   };
-  // 地上の階：下から順に。
-  parts.push(`<rect x="${L}" y="${(y0 - floorH * shown).toFixed(1)}" width="${bw}" height="${(floorH * shown).toFixed(1)}" class="t-bldg"/>`);
-  for (let n = 1; n <= shown; n += 1) {
-    const fy = y0 - floorH * (n - 1), ceil = fy - floorH;
+  const roofY = floorY(drawn + 1);
+  const top = known ? roofY : y0 - floorH * 2;
+  // 外形（1階の床から屋上まで）。
+  parts.push(`<rect x="${L}" y="${roofY.toFixed(1)}" width="${bw}" height="${(y0 - roofY).toFixed(1)}" class="t-bldg"/>`);
+  for (let n = 1; n <= drawn; n += 1) {
+    const fy = floorY(n), ceil = floorY(n + 1);
     columns(ceil + wall, fy - wall);
     slab(fy, n === 1 ? L : L - 6, n === 1 ? R : R + 6);
     // 間仕切り（細線）と、窓（外壁の中の二重線）、バルコニーの手すり（右側）。
@@ -1447,11 +1460,18 @@ function terrainFigure(lines) {
     if (n >= 2 || !basement) {
       parts.push(`<path d="M${R + 6} ${(fy - floorH * 0.42).toFixed(1)} L${R + 6} ${fy.toFixed(1)} M${R - 2} ${(fy - floorH * 0.42).toFixed(1)} L${R + 6} ${(fy - floorH * 0.42).toFixed(1)}" class="t-rail"/>`);
     }
-    const name = n === shown && known > shown ? `〜${known}階` : `${n}階`;
-    parts.push(`<text x="${(L + bw * 0.66).toFixed(1)}" y="${(fy - floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">${name}</text>`);
+    // 階の名前：15階以上では上の2階は実際の階（例：37階・38階）。
+    const label = brk && n > 10 ? `${known - (drawn - n)}階` : `${n}階`;
+    if (floorH >= 14) parts.push(`<text x="${(L + bw * 0.66).toFixed(1)}" y="${(fy - floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">${label}</text>`);
+  }
+  if (brk) {
+    // 切断線（11〜N-2階は省く）。
+    const by = floorY(10) - floorH - gap / 2;
+    parts.push(`<rect x="${L - 8}" y="${(by - 5).toFixed(1)}" width="${bw + 16}" height="10" class="t-break-bg"/>`);
+    parts.push(`<path d="M${L - 8} ${(by + 3).toFixed(1)} L${L + bw * 0.25} ${(by - 3).toFixed(1)} L${L + bw * 0.5} ${(by + 3).toFixed(1)} L${L + bw * 0.75} ${(by - 3).toFixed(1)} L${R + 8} ${(by + 3).toFixed(1)}" class="t-break"/>`);
+    parts.push(`<text x="${R + 12}" y="${(by + 4).toFixed(1)}" class="t-floor-label muted">11〜${known - 2}階は省略</text>`);
   }
   // 屋上のパラペットと、階段室・EV機械室の塔屋。
-  const roofY = y0 - floorH * shown;
   slab(roofY);
   parts.push(`<rect x="${(L + bw * 0.4).toFixed(1)}" y="${(roofY - floorH * 0.45).toFixed(1)}" width="${(bw * 0.3).toFixed(1)}" height="${(floorH * 0.45).toFixed(1)}" class="t-ph"/>`);
   if (!known) {
@@ -1466,7 +1486,7 @@ function terrainFigure(lines) {
     parts.push(`<rect x="${L}" y="${y0}" width="${bw}" height="${floorH.toFixed(1)}" class="t-bldg basement"/>`);
     columns(y0 + wall, by1 - wall);
     slab(by1, L, R);
-    parts.push(`<text x="${(L + bw * 0.66).toFixed(1)}" y="${(y0 + floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">地下1階</text>`);
+    if (floorH >= 14) parts.push(`<text x="${(L + bw * 0.66).toFixed(1)}" y="${(y0 + floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">地下1階</text>`);
     // 浅い水でも入口から地下へ流れ込むことを、矢印で見せる。
     parts.push(`<path d="M${R + 26} ${(y0 - 8).toFixed(1)} L${R + 8} ${(y0 - 8).toFixed(1)} L${R + 8} ${(by1 - 10).toFixed(1)}" class="t-flow thin" marker-end="url(#t-head)"/>`);
     baseY = by1;

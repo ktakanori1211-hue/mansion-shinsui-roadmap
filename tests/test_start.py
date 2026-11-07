@@ -140,7 +140,7 @@ class ChatTest(unittest.TestCase):
         self.assertLess(chat.index('class="chat-fixed"'), chat.index('id="chat-route"'))
         self.assertLess(chat.index('id="chat-route"'), chat.index('id="chat-log"'))
         # 押したときだけ開く。
-        self.assertIn('aria-label="質問する" hidden>', chat)
+        self.assertIn('aria-label="AI相談チャット" hidden>', chat)
 
     def test_route_is_said_before_sending(self):
         # F-038：送る前に、Anthropic の API を通るかを出す。表示を替えるだけで API は呼ばない。

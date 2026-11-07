@@ -37,18 +37,18 @@
     <p id="fixed-disclaimer">本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する</p>
   </footer>
 
-  <!-- 質問する（チャット）。押したときだけ開く。浸水・停電中の危険な場所への立入・操作・接触は、サーバーが AI を通さず固定の文で答える。 -->
-  <button type="button" class="chat-toggle" id="chat-toggle">質問する</button>
-  <aside class="chat" id="chat" aria-label="質問する" hidden>
+  <!-- AI相談チャット。押したときだけ開く。浸水・停電中の危険な場所への立入・操作・接触は、サーバーが AI を通さず固定の文で答える。 -->
+  <button type="button" class="chat-toggle" id="chat-toggle">💬 AIに質問・相談</button>
+  <aside class="chat" id="chat" aria-label="AI相談チャット" hidden>
     <div class="chat-head">
-      <strong>質問する</strong>
+      <strong>AI相談チャット（Claude）</strong>
       <button type="button" id="chat-close">閉じる</button>
     </div>
     <p class="chat-fixed">本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する。予報ではありません。</p>
     <p class="chat-route" id="chat-route" aria-live="polite"></p>
     <div class="chat-log" id="chat-log" aria-live="polite"></div>
     <form class="chat-form" id="chat-form">
-      <input id="chat-input" type="text" autocomplete="off" aria-label="質問" placeholder="例：ケーブルを通す壁の穴ってどういうこと？">
+      <input id="chat-input" type="text" autocomplete="off" aria-label="質問" placeholder="例：管路口って何？ / 止水板の補助金は使える？">
       <button type="submit">送る</button>
     </form>
   </aside>

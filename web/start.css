@@ -745,3 +745,6 @@ details.facts[open] { display: flex; }
 .own-open { display: flex; flex-direction: column; gap: 8px; }
 .ask-bldg .option.chosen { background: var(--navy); color: #fff; }
 .auto-applied { margin: 0; padding: 8px 10px; background: var(--clear-bg); border-left: 5px solid var(--clear-line); font-size: 15px; font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.t-break-bg { fill: #fbfcfe; }
+.t-break { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.t-floor-label { font-size: 10px; }
