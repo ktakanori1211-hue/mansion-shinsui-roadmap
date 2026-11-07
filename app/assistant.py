@@ -60,7 +60,7 @@ SYSTEM_CHAT = (
     _SYSTEM_CHAT_RULES
     + "\n\n裏取り済みの事実：\n"
     + "\n".join(f"・{fact['text']}" for fact in FACTS)
-    + "\n\n対策の決める場と費用の桁（この道具の目安。裏取りした相場ではありません。費用は書いてある形のまま写し、見積りに置き換えると添えます）：\n"
+    + "\n\n対策の決める場と費用の桁（このツールの目安。裏取りした相場ではありません。費用は書いてある形のまま写し、見積りに置き換えると添えます）：\n"
     + _MEASURE_COSTS
 )
 
@@ -491,7 +491,7 @@ def _read_message(drawing: dict) -> str:
     if drawing.get("floors_above"):
         below = drawing.get("floors_below")
         head += f" 階数：地上{drawing['floors_above']}階" + (f"・地下{below}階" if below else "") + "と読めたので、建物の階数に入れました（違えば直せます）。"
-    return head + " 部屋は、合っていればボタンで答えに入れます。"
+    return head + " 部屋は、合っていればボタンで反映します。"
 
 
 def _sample_rooms(sample: dict) -> List[dict]:

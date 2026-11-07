@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>マンション浸水ロードマップ</title>
+  <title>マンション浸水チェック</title>
   <link rel="stylesheet" href="start.css">
 </head>
 <body>
   <!-- 画面は1本（2026-11-05 一本化）。1画面に、図1枚・太字1行・ボタン1つ。
        絵は構内平面図だけ。判定はサーバーの決まりのまま（/api/building の equipment）。この画面は新しい判定を作らない。 -->
   <header class="top">
-    <a class="brand" href="/">マンション浸水ロードマップ</a>
+    <a class="brand" href="/">マンション浸水チェック</a>
     <span class="top-links">
       <a class="sources-link" href="/sources.html">根拠と資料</a>
       <button type="button" class="key-toggle" id="key-toggle" hidden>設定</button>
@@ -38,7 +38,7 @@
   </footer>
 
   <!-- AI相談チャット。押したときだけ開く。浸水・停電中の危険な場所への立入・操作・接触は、サーバーが AI を通さず固定の文で答える。 -->
-  <button type="button" class="chat-toggle" id="chat-toggle">AIチャット 💬</button>
+  <button type="button" class="chat-toggle" id="chat-toggle">AIチャット</button>
   <aside class="chat" id="chat" aria-label="浸水対策チャット相談" hidden>
     <div class="chat-head">
       <strong>浸水対策チャット相談</strong>

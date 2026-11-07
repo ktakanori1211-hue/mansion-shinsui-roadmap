@@ -223,7 +223,7 @@ class ChatTest(unittest.TestCase):
 class ColorMeaningTest(unittest.TestCase):
     def test_unconfirmed_is_not_called_danger(self):
         js = read("start.js")
-        self.assertIn("未確認（危険という意味ではありません）", js)
+        self.assertIn("「未確認」は危険という意味ではありません", js)
         self.assertIn('unconfirmed: { mark: "？", word: "未確認" }', js)
 
     def test_screen_reads_only_server_verdicts(self):
@@ -353,7 +353,7 @@ class PlanTest(unittest.TestCase):
 
     def test_borrowed_shape_is_said(self):
         js = read("start.js")
-        self.assertIn('"図は見本の形を借りた説明用です。あなたの建物の図面ではありません。"', js)
+        self.assertIn('"※表示している平面図・断面図は、入力された階数・設備位置をもとにした模式図です。実際の図面ではありません。"', js)
         # 画面ごとに何度も出さない：画面3は図の下に1回、理事会A4は脚注に1回（2026-11-07 本人の指示）。
         # 2026-11-07・13回目：BORROWED は borrowedNote()（引込み未確認なら仮の表示の注記つき）で1回だけ出す。
         self.assertEqual(block(js, "function simBox(", "\n}\n").count("borrowedNote()"), 1)
@@ -408,7 +408,7 @@ class PlanTest(unittest.TestCase):
         self.assertLess(one.index("<details"), one.index("${placeAid()}"))
         self.assertNotIn("waterWays", js)
         self.assertNotIn("areaLine", js)
-        self.assertIn("うちのマンションで何が止まるか、確かめる", one)
+        self.assertIn("この建物の浸水リスクを確認する", one)
 
 
 class HonestShapeTest(unittest.TestCase):
@@ -475,7 +475,7 @@ class BuildingPinTest(unittest.TestCase):
         self.assertNotIn("movePin", js)
         # 建物名で探したときは候補を押してから進み、押したら階数を Web で探す。住所なら1件のときは押させない。
         self.assertIn("if (S.candidates.length === 1 && !looksLikeName(q)) {", js)
-        self.assertIn("if (looksLikeName(S.query) && S.place) findFacts(S.query);", js)
+        self.assertIn("afterPlace(S.query)", js)
 
     def test_server_rejects_a_pin_outside_japan(self):
         base = OnePageTest.serve(self)
@@ -621,7 +621,12 @@ class BuildingFactsTest(unittest.TestCase):
         self.assertIn("S.facts = null", block(js, "function dropFloors()", "\n}\n"))  # 取り消したら地下の箱も消える
         self.assertIn("出典", block(js, "function factsBox()", "\n}\n"))
         self.assertIn('data-act="drop-floors"', block(js, "function factsLine()", "\n}\n"))
-        self.assertIn("if (looksLikeName(q) && S.place) findFacts(q);", js)
+        # 2026-11-07・21回目：場所が決まったあとは afterPlace()。検索で一緒に読めた階数があれば2回目の Web 検索をしない。
+        self.assertIn("afterPlace(q);", js)
+        after = block(js, "function afterPlace(", "\n}\n")
+        self.assertIn("if (S.searchFacts) {", after)
+        self.assertIn("if (looksLikeName(q)) findFacts(q);", after)
+        self.assertIn("else findBuildingAt();", after)
         # 図面の断面図・立面図から階数が読めたときも同じ入口を通る。
         self.assertIn('applyFloors(d.floors_above, d.floors_below, "drawing")', block(js, "async function readPlan(", "\n}\n"))
         # 2026-11-07・16回目：本当に読み取ったとき（Claude か PDF の文字）は自動で答えに入れる。見本の答え（mode sample）は入れない。取り消せる。
@@ -629,7 +634,7 @@ class BuildingFactsTest(unittest.TestCase):
         self.assertIn('if (merged.mode === "claude" || merged.mode === "text") {', read_fn)
         self.assertIn("await applyAllRead();", read_fn)
         self.assertNotIn('merged.mode === "sample"', read_fn)
-        self.assertIn("全部取り消す", block(js, "function readResult()", "\n}\n"))
+        self.assertIn("反映を取り消す", block(js, "function readResult()", "\n}\n"))
 
 
 class SendTest(unittest.TestCase):
@@ -642,7 +647,7 @@ class SendTest(unittest.TestCase):
         self.assertIn("disclaimer()", text)
         self.assertIn("EVAC_LINE", text)
         self.assertIn("COST_FIXED", text)
-        self.assertIn("見本の形を借りた説明です", text)
+        self.assertIn("模式図は入力をもとにした仮のもの", text)
         self.assertNotIn("site.label", text)
         self.assertIn("experienceLine()", text)
     def test_nothing_is_sent_to_the_server(self):
@@ -999,7 +1004,7 @@ class SurfaceLengthTest(unittest.TestCase):
         "2 確かめる": 600,  # 2026-11-07・13回目：一文の見出し、進み具合の行、答えた瞬間の一行、「未確認は危険ではない」の1行のぶん。本人の指示で上限を広げた
         "3 止まるもの": 3000,  # 2026-11-06・8回目：提案を2段構え（内水〜1m／大洪水3〜5m）にし、各提案に深さと根拠1行、分かっていることの行を足したぶん
         "3 止まるもの（③）": 3000,
-        "4 渡す：memo": 230,
+        "4 渡す：memo": 250,  # 2026-11-07・21回目：タブの名前に番号と役割を足したぶん（本人の了承済み）
         "4 渡す：a4": 4000,  # 2026-11-06・9回目：費用の補助なし→ありの2行と条件。紙の大きさは CSS で A4 の比率に固定（入らない分は見えない）
         "4 渡す：cost": 2000,  # 2026-11-06・9回目：補助なし→ありの2行、市の負担の説明、使える条件2行のぶん
     }

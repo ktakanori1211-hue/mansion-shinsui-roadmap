@@ -1,4 +1,4 @@
-/* マンション浸水ロードマップ。スマホの1列を基本にし、広い画面でも列の幅は変えない。
+/* マンション浸水チェック。スマホの1列を基本にし、広い画面でも列の幅は変えない。
    色：赤＝止まるおそれ（確かめた）／橙＝未確認（危険という意味ではない）／緑＝問題なし／青＝水。 */
 :root {
   --ink: #1a1a1c;
@@ -55,10 +55,15 @@ body {
 .key-form .hint { flex-basis: 100%; }
 
 .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding-top: 6px; padding-bottom: 10px; }
-.steps button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; padding: 6px 0 4px; border-bottom: 3px solid var(--line); cursor: pointer; }
+.steps button { border: 2px solid var(--line); border-radius: 4px; background: #fff; color: var(--muted); font: inherit; font-size: 12px; padding: 5px 0 4px; cursor: pointer; position: relative; }
 .steps button b { display: block; font-size: 15px; }
-.steps button.current { color: var(--navy); border-bottom-color: var(--navy); font-weight: 700; }
-.steps button:disabled { opacity: .45; cursor: default; }
+.steps button.done { border-color: var(--navy); color: var(--navy); }
+.steps button.done b::after { content: " ✓"; font-size: 12px; }
+.steps button.current { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 800; }
+.steps button.next { border-style: dashed; border-color: var(--navy); color: var(--navy); }
+.steps button.next::before { content: "次へ →"; position: absolute; top: -2px; left: 6px; font-size: 10px; font-weight: 800; color: var(--navy); background: #fff; padding: 0 3px; transform: translateY(-50%); }
+.steps button:disabled { opacity: .55; cursor: default; }
+.steps button.next:disabled { opacity: .8; }
 
 .screen section { background: var(--card); border-radius: 2px; padding: 20px 16px 22px; display: flex; flex-direction: column; gap: 14px; }
 
@@ -258,9 +263,10 @@ details.facts[open] { display: flex; }
 .proposals { margin: 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
 
 /* 4 渡す */
-.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: #eef0f4; border-radius: 2px; padding: 4px; gap: 4px; }
-.tab { border: 0; background: transparent; border-radius: 2px; padding: 9px 4px; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
-.tab.current { background: #fff; color: var(--navy);  }
+/* 21回目（2026-11-07）：押せるタブだと一目で分かるように。選択中は紺地に白、それ以外は白地に紺の太い枠 */
+.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: transparent; border-radius: 0; padding: 0; gap: 6px; }
+.tab { border: 2px solid var(--navy); background: #fff; border-radius: 4px; padding: 10px 4px; font-size: 14px; font-weight: 800; color: var(--navy); cursor: pointer; }
+.tab.current { background: var(--navy); color: #fff; }
 .asks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .asks li { display: flex; gap: 10px; align-items: flex-start; }
 .asks .no { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--navy); color: #fff; font-weight: 800; text-align: center; line-height: 28px; font-size: 15px; }
@@ -757,3 +763,10 @@ details.facts[open] { display: flex; }
 .consult-part .own-head { color: var(--navy); }
 .report-fold textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; border: 1.5px solid var(--line); padding: 8px; margin: 6px 0; }
 .pref-note { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--rule); font-size: 12.5px; color: #33404f; line-height: 1.5; }
+
+.sim-tabs .tab { padding: 7px 4px; font-size: 13px; }
+/* 読み込み中の箱 */
+.busy-box { display: flex; align-items: center; gap: 10px; border: 2px solid var(--accent); background: #eef4fc; padding: 10px 12px; margin: 4px 0; border-radius: 4px; }
+.busy-box b { font-size: 16px; color: var(--navy); }
+.spinner { width: 20px; height: 20px; border: 3px solid #c7d6ee; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }

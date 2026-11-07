@@ -1,6 +1,6 @@
 "use strict";
 
-// マンション浸水ロードマップ（2026-11-05 一本化）。
+// マンション浸水チェック（2026-11-05 一本化）。
 // 4つの画面を順に進む：1 場所 → 2 確かめる → 3 止まるもの → 4 渡す。
 // 絵は構内平面図だけ。部屋の位置は /api/building の sample.views から描き、部屋の色はサーバーの判定（equipment の verdict）のまま塗る。
 // この画面では新しい判定を作らない。色は 赤＝確かめて止まるおそれ／橙＝未確認（危険という意味ではない）／緑＝問題なし。
@@ -98,9 +98,9 @@ const OPTION_WORDS = { basement: "地下", ground: "1階", upper: "2階以上", 
 // 進み具合の行に出す、問いの部屋の短い名前。
 const ROOM_ASK_SHORT = { pump: "給水ポンプ室", elec: "電気室", panel_room: "電気室", tr: "借室" };
 // 画面2（確かめる）の一文（2026-11-07・13回目：本人の指示で骨組みから作り直し）。
-const CHECK_LEAD = "機械の部屋が何階にあるかで、止まるものが決まります。図面で3つ確かめてください。";
+const CHECK_LEAD = "機械室の階によって、浸水時に止まる設備が決まります。竣工図で3項目を確認してください。";
 // 図面がない人向けの一文（見て分かる3つで建物の形を仮に決め、確認は管理会社に頼む）。
-const CHECK_LEAD_NO_DRAWING = "図面がなくても進めます。見て分かる3つで建物の形を仮に決め、確かめることは管理会社への依頼メモにします。";
+const CHECK_LEAD_NO_DRAWING = "竣工図がなくても進められます。外観から分かる3項目で建物の形を仮設定し、確認事項は管理会社への依頼メモにまとめます。";
 // 立地の行の短い名前。
 const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", ground: "土地の高さ", landform: "土地の成り立ち", rainband: "線状降水帯", record: "浸水の記録" };
 // 対策の短い名前（サーバーの measures の key ごと。くわしい文は折りたたみに入れる）。
@@ -124,11 +124,11 @@ const TIERS = ["今すぐ", "工事が要る", "更新と一緒"];
 // 補助の印。前の試算の画面と同じ言い方（言い切らない）。東京都と千葉市のほかは、制度を調べていないので出さない。
 const AID_WORDS = { yes: "補助の対象になりうる", with_plate: "止水板などと併せるときに限る", no: "対象外になりうる", unknown: "補助は未確認" };
 const TABS = [
-  ["memo", "依頼メモ", "依頼メモを印刷"],
-  ["a4", "理事会A4（1枚）", "理事会資料（A4・1枚）を印刷"],
-  ["cost", "費用・補助", "費用と補助を印刷"],
+  ["memo", "① 管理会社への依頼メモ", "依頼メモを印刷"],
+  ["a4", "② 理事会A4資料（1枚）", "理事会A4資料を印刷"],
+  ["cost", "③ 対策費用・補助金試算", "費用・補助金試算を印刷"],
 ];
-const BORROWED = "図は見本の形を借りた説明用です。あなたの建物の図面ではありません。";
+const BORROWED = "※表示している平面図・断面図は、入力された階数・設備位置をもとにした模式図です。実際の図面ではありません。";
 // 引込みが未確認のとき、図の HH・管路の絵は借りた見本の形（仮の表示）。前提文の「引込み方式は未確認」と食い違わないように添える（2026-11-07・13回目）。
 const FEED_UNKNOWN_NOTE = "引込み経路（HH・管路）は仮の表示で、単線結線図で未確認です。";
 function borrowedNote() {
@@ -708,7 +708,7 @@ function terrainLine() {
 function factsBox() {
   const name = S.query && !/[都道府県市区町村]\S*[0-9０-９一二三四五六七八九十]/.test(S.query) ? S.query : "";
   let result = "";
-  if (S.factsBusy) result = `<p class="hint">Web で探しています…</p>`;
+  if (S.factsBusy) result = busyBox(BUSY_WEB);
   else if (S.facts?.found) {
     const f = S.facts.found;
     const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below === null ? "地下は書かれていない" : f.floors_below ? `地下${f.floors_below}階` : "地下なし", unitsBuiltWords(f)].filter(Boolean).join("・");
@@ -755,6 +755,16 @@ async function findFacts(given) {
   // 建物名で見つからなかったときは、住所からの「この建物ですか？」に回す（画面1に何も出ないままにしない。2026-11-07・16回目）。
   if (!S.facts?.found && S.place && !S.sampleId && !S.at) await findBuildingAt();
 }
+
+// 読み込み中の表示：何をしている最中か一目で分かる青枠の箱（回るアイコンつき。2026-11-07・21回目）。
+function busyBox(text) {
+  return `<div class="busy-box" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><b>${esc(text)}</b></div>`;
+}
+const BUSY_WEB = "いまWebの公開情報から建物の階数・戸数・築年を探しています…";
+const BUSY_PLAN = "図面・写真から設備の位置と階数を読み取っています…";
+const BUSY_REPORT = "書類の文から設備の記載を読み取っています…";
+const BUSY_PLACE = "この場所のハザードマップと地形を調べています…";
+const BUSY_SEARCH = "住所と建物を調べています…";
 
 // Web で読めた総戸数・築年と、設備の手がかり（表示だけ。判定には使わない）。
 function unitsBuiltWords(f) {
@@ -827,7 +837,7 @@ function looksLikeName(q) {
 
 // 画面1：建物名で検索したとき、Web で見つけた階数を使っていることを1行で言う（取り消せる）。
 function factsLine() {
-  if (S.factsBusy) return `<p class="hint facts-line">建物名から、地上と地下の階数を Web で探しています…</p>`;
+  if (S.factsBusy) return busyBox(BUSY_WEB);
   const f = S.facts?.found;
   if (!f || S.floorsApplied?.source !== "web") return "";
   const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : "", unitsBuiltWords(f)].filter(Boolean).join("・");
@@ -878,7 +888,8 @@ function screenOne() {
         </details>
         ${placeAid()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
-        <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>うちのマンションで何が止まるか、確かめる</button>
+        ${S.busy ? busyBox("建物の判定を計算しています…") : ""}
+        <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>この建物の浸水リスクを確認する</button>
       </div>
     </section>`;
   }
@@ -889,6 +900,7 @@ function screenOne() {
       <input id="q" name="q" type="search" autocomplete="off" placeholder="住所かマンション名" aria-label="住所・マンション名・郵便番号">
       <button type="submit">探す</button>
     </form>
+    ${S.searching ? busyBox(BUSY_SEARCH) : S.busy ? busyBox(BUSY_PLACE) : ""}
     ${S.error ? `<p class="error" role="alert">${esc(S.error)}</p>` : ""}
     ${S.message ? `<p class="hint">${esc(S.message)}</p>` : ""}
     ${candidates ? `<div class="candidates">${candidates}</div>` : ""}
@@ -928,7 +940,7 @@ function answerBuilding(answer) {
 
 function buildingAsk() {
   if (S.sampleId || !S.at) return "";
-  if (S.at.busy) return `<p class="hint ask-bldg-wait">この住所にある建物の名前と階数を Web で探しています…</p>`;
+  if (S.at.busy) return busyBox("いまWebの公開情報から、この住所の建物名・階数・戸数を探しています…");
   if (S.at.answer === "yes") return "";
   const f = S.at.found;
   if (f && S.at.answer !== "no") {
@@ -937,6 +949,21 @@ function buildingAsk() {
       <div class="options"><button type="button" class="option" data-at="yes">はい</button><button type="button" class="option" data-at="no">違う</button></div></div>`;
   }
   return `<div class="ask-bldg none"><p class="hint">${esc(S.at.message || "この住所の建物名と階数は見つかりませんでした。")}</p>${ownQuestions(true)}</div>`;
+}
+
+// 場所が決まったあと：検索で一緒に読めた階数・戸数があればそれを使い、なければ建物名から1回だけ探す。住所だけなら「この建物ですか？」。
+function afterPlace(q) {
+  if (!S.place || S.sampleId) return;
+  if (S.searchFacts) {
+    S.facts = { found: S.searchFacts, message: "Webの公表情報から見つかった候補です。出典を見て、違えば取り消してください。" };
+    applyFloors(S.searchFacts.floors_above, S.searchFacts.floors_below, "web");
+    adoptUnits(S.searchFacts);
+    adoptHints(S.searchFacts);
+    render();
+    return;
+  }
+  if (looksLikeName(q)) findFacts(q);
+  else findBuildingAt();
 }
 
 // 選んだ場所の行に添える、建物名と階数（見本はその見本の名前と階数、自分の建物は分かっている階数だけ）。
@@ -1175,13 +1202,13 @@ function screenThree() {
     <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
     <h1 class="title">${hasDrawing() ? CHECK_LEAD : CHECK_LEAD_NO_DRAWING}</h1>
     ${hasDrawing() ? progressLine(b, count) : ""}
-    ${hasDrawing() ? `<p class="hint">未確認（危険という意味ではありません）は、図面で確かめた答えを入れると色が変わります。</p>` : ""}
+    ${hasDrawing() ? `<p class="hint">「未確認」は危険という意味ではありません。竣工図で確認した内容を反映すると判定が更新されます。</p>` : ""}
     ${drawingQuestion()}
     ${hasDrawing() ? readCard() + reportBox() + cards : observeCards()}
     ${figure}
     ${S.sampleId ? "" : hasDrawing() ? `<details class="more"><summary>建物のこと（階数・この辺りの経験）</summary>${ownQuestions(!hasDrawing())}${S.sampleId ? "" : experienceQuestion()}</details>` : `<div class="own-open">${ownQuestions(true)}${experienceQuestion()}</div>`}
     ${criticalPreview()}
-    <button type="button" class="primary" data-act="to3">水が入る順と、止まるものを見る</button>
+    <button type="button" class="primary" data-act="to3">浸水の経路と止まる設備を見る</button>
   </section>`;
 }
 
@@ -1215,7 +1242,7 @@ function observeCards() {
       .join("");
     return `<div class="qcard observe"><p class="qtitle">${esc(q.title)}</p><div class="options">${chips}</div></div>`;
   }).join("");
-  return `<p class="hint observe-note">図面がなくても進めます。見て分かることを入れると、管理会社への依頼メモに「住民が見たこと」として載ります。色は、図面で確かめるまで変えません。</p>${cards}`;
+  return `<p class="hint observe-note">竣工図がなくても進められます。外観から分かることを入力すると、管理会社への依頼メモに「住民が確認したこと」として載ります。色は、図面で確かめるまで変えません。</p>${cards}`;
 }
 
 // 住民が見たことを、サーバーの聞き取り（statements）の文にする。
@@ -1255,7 +1282,7 @@ function readCard() {
   // 選ぶ前は説明を1行だけ。読んだあとは候補と「すべて入れる」（2026-11-07・13回目）。
   const before = !S.read && !S.busy;
   return `<div class="qcard read">
-      <p class="qtitle">図面を入れると、候補が入ります</p>
+      <p class="qtitle">竣工図・写真からの自動読み取り</p>
       <div class="options big">
         <label class="option file">図面の写真・PDFを選ぶ<input type="file" id="plan-file" accept="image/*,application/pdf" multiple></label>
         ${S.sampleId ? `<button type="button" class="option" data-act="read-sample">見本の図面で試す</button>` : ""}
@@ -1319,18 +1346,18 @@ async function dropReport() {
 function reportBox() {
   const r = S.report;
   let result = "";
-  if (S.reportBusy) result = `<p class="hint">読んでいます…</p>`;
+  if (S.reportBusy) result = busyBox(BUSY_REPORT);
   else if (r) {
     const findings = (r.findings || []).map((f) => `<li><b>${esc(f.word)}</b> → ${esc(f.item)}：${esc(f.effect)}</li>`).join("");
     const answerWords = Object.entries(r.answers || {}).map(([key, value]) => REPORT_ANSWER_WORDS[key]?.[String(value)]).filter(Boolean);
     const applyable = answerWords.length || r.basement_power;
     const action = S.reportApplied
-      ? `<p class="auto-applied">書類の値を答えに入れました。<button type="button" class="option small" data-act="report-drop">取り消す</button></p>`
-      : applyable ? `<div class="options big"><button type="button" class="option chosen" data-act="report-apply">答えに入れる（${answerWords.length + (r.basement_power ? 1 : 0)}件）</button></div>` : "";
-    result = `<p class="hint">${esc(r.message || "")}</p>${findings ? `<ul class="proposals">${findings}</ul>` : ""}${answerWords.length ? `<p class="hint">答えに入れられるもの：${esc(answerWords.join("／"))}${r.basement_power ? "／受電設備は地下（書類で確認）" : ""}</p>` : ""}${action}`;
+      ? `<p class="auto-applied">書類の記載を反映しました。<button type="button" class="option small" data-act="report-drop">反映を取り消す</button></p>`
+      : applyable ? `<div class="options big"><button type="button" class="option chosen" data-act="report-apply">反映する（${answerWords.length + (r.basement_power ? 1 : 0)}件）</button></div>` : "";
+    result = `<p class="hint">${esc(r.message || "")}</p>${findings ? `<ul class="proposals">${findings}</ul>` : ""}${answerWords.length ? `<p class="hint">反映できる項目：${esc(answerWords.join("／"))}${r.basement_power ? "／受電設備は地下（書類で確認）" : ""}</p>` : ""}${action}`;
   }
   return `<details class="more report-fold"><summary>点検報告書・管理資料から読み取る</summary>
-    <p class="hint">点検報告書や管理会社の資料の文を貼り付けると、受電設備の階、引込み、盤の置き方、指摘事項などの記載を拾います。答えに入れるかは人が押して決めます。</p>
+    <p class="hint">点検報告書や管理会社の資料の文を貼り付けると、受電設備の階、引込み、盤の置き方、指摘事項などの記載を拾います。反映するかは利用者が決めます。</p>
     <textarea id="report-text" class="copy-area" rows="5" placeholder="例：受電設備：地下1階 受変電室。引込み：地中（高圧）。給水ポンプ制御盤は壁掛け。">${esc(S.reportText || "")}</textarea>
     <div class="options">
       <button type="button" class="option" data-act="report-read"${S.reportBusy ? " disabled" : ""}>文面から読み取る（※Anthropic API を使用します）</button>
@@ -1388,17 +1415,17 @@ function readProposals() {
 }
 
 function readResult() {
-  if (S.busy && !S.read) return `<p class="hint">読んでいます…</p>`;
+  if (S.busy && !S.read) return busyBox(BUSY_PLAN);
   if (!S.read) return "";
   const proposals = readProposals();
   const pending = proposals.filter((p) => p.applied === false && (p.choice || p.floors || p.answer));
   const line = (p) => {
     let action = "";
-    if (p.applied === true) action = `<span class="applied">✓ 入れた</span>`;
-    else if (p.applied === null) action = `<span class="hint">（答えには入れません）</span>`;
-    else if (p.choice) action = `<button type="button" class="option small" data-kind="${p.kind}" data-choice="${p.choice}">${ROOM_MARKS[p.kind]}に「${OPTION_WORDS[p.choice]}」を入れる</button>`;
-    else if (p.floors) action = `<button type="button" class="option small" data-act="apply-floors">階数を入れる</button>`;
-    else if (p.answer) action = `<button type="button" class="option small" data-fact="${p.answer[0]}" data-value="${esc(p.answer[1])}">入れる</button>`;
+    if (p.applied === true) action = `<span class="applied">✓ 反映済み</span>`;
+    else if (p.applied === null) action = `<span class="hint">（参考表示のみ）</span>`;
+    else if (p.choice) action = `<button type="button" class="option small" data-kind="${p.kind}" data-choice="${p.choice}">${ROOM_MARKS[p.kind]}に「${OPTION_WORDS[p.choice]}」を反映</button>`;
+    else if (p.floors) action = `<button type="button" class="option small" data-act="apply-floors">階数を反映</button>`;
+    else if (p.answer) action = `<button type="button" class="option small" data-fact="${p.answer[0]}" data-value="${esc(p.answer[1])}">反映</button>`;
     if (p.choice === null && !p.floors && !p.key) action = `<span class="hint">階が読めません</span>`;
     return `<li><b>${esc(p.name)}</b>：${esc(p.text)}　${action}</li>`;
   };
@@ -1406,10 +1433,10 @@ function readResult() {
   const others = (S.read.rooms || []).filter((room) => !ROOM_MARKS[room.kind]).map((room) => `<span>${esc(room.word || room.name)}${room.floor ? `（${esc(room.floor)}）` : ""}</span>`);
   const applied = proposals.filter((p) => p.applied === true).length;
   const buttons = pending.length
-    ? `<div class="options big"><button type="button" class="option chosen" data-act="apply-all">すべて入れる（${pending.length}件）</button></div>`
-    : applied ? `<p class="auto-applied">図面から読めた${applied}件を答えに入れました。違うところは下の問いで押して直せます。<button type="button" class="option small" data-act="drop-floors">全部取り消す</button></p>` : "";
+    ? `<div class="options big"><button type="button" class="option chosen" data-act="apply-all">すべて反映（${pending.length}件）</button></div>`
+    : applied ? `<p class="auto-applied">図面から読み取った${applied}件を反映しました。違う項目は下の設問で修正できます。<button type="button" class="option small" data-act="drop-floors">反映を取り消す</button></p>` : "";
   // 自動で入れたときは、サーバーの「ボタンで答えに入れます」の文は出さない。
-  const message = S.autoApplied ? String(S.read.message || "").replace(" 部屋は、合っていればボタンで答えに入れます。", "") : S.read.message || "";
+  const message = S.autoApplied ? String(S.read.message || "").replace(" 部屋は、合っていればボタンで反映します。", "") : S.read.message || "";
   return `<p class="hint">${esc(message)}</p>${proposals.length ? `<ul class="proposals">${proposals.map(line).join("")}</ul>` : ""}${buttons}${others.length ? `<details class="more read-more"><summary>ほかに読めた設備（${others.length}件）</summary><p class="read-others">${others.join("")}</p></details>` : ""}`;
 }
 
@@ -1879,7 +1906,7 @@ function screenFour() {
   const tabs = TABS.map(([key, word]) => `<button type="button" role="tab" class="tab${S.tab === key ? " current" : ""}" data-tab="${key}" aria-selected="${S.tab === key}">${word}</button>`).join("");
   let body = "";
   if (S.tab === "memo") {
-    body = `<h1 class="title">${list.length ? `残りの確認${list.length}つを、管理会社に頼む` : "主要な図面確認は完了しています"}</h1>
+    body = `<h1 class="title">${list.length ? `管理会社への確認依頼（残り${list.length}件）` : "主要な図面確認は完了しています"}</h1>
       <div class="plan">${plan({ pins: pinsOf(list) })}</div>
       ${list.length ? `<ol class="asks">${asksList(list)}</ol>` : ""}
       ${heardItems().length || experienceLine() ? `<div class="heard"><p class="hint"><b>住民の話・見たこと（依頼メモに載ります）</b></p><ul>${experienceLine() ? `<li>${esc(experienceLine())}</li>` : ""}${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul></div>` : ""}`;
@@ -1945,7 +1972,8 @@ function consultBox() {
   const note = c ? `<p class="hint">${esc(c.error || [c.source === "claude" ? "文面を自動で整えました（数字・留保・主語は検査済み）。" : "プログラムの定型の文面です。", c.notice].filter(Boolean).join("　"))}</p>` : "";
   return `<details class="more consult-fold"><summary>現地調査・見積もり仕様カルテと依頼文を作る</summary>
     <p class="hint">管理会社や工事業者に見積りを頼むときの下書きです。この画面からは送らず、コピーして手元で使います。</p>
-    <button type="button" class="option" data-act="consult"${S.consultBusy ? " disabled" : ""}>${S.consultBusy ? "整えています…" : "カルテと依頼文を整える（※Anthropic API を使用します）"}</button>
+    <button type="button" class="option" data-act="consult"${S.consultBusy ? " disabled" : ""}>カルテと依頼文を整える（※Anthropic API を使用します）</button>
+    ${S.consultBusy ? busyBox("現地調査カルテと依頼文を整えています…") : ""}
     ${note}${parts}
   </details>`;
 }
@@ -1955,7 +1983,7 @@ function consultBox() {
 // 住所は町丁まで。固定の免責は言い換えずに付ける。サーバーには何も送らない。
 function summaryText() {
   const b = S.building;
-  const lines = [`【マンション浸水ロードマップ】${where()}`, `・${titleLine()}`];
+  const lines = [`【マンション浸水チェック】${where()}`, `・${titleLine()}`];
   // 立地は札の値のまま（地図の想定）。深さを主役にしない。避難の判断は自治体の警戒レベルで。
   const rows = (S.place?.location?.rows || []).map((item) => `${PLACE_SHORT[item.key] || item.label} ${item.value || ""}`.trim());
   if (rows.length) lines.push(`・立地（地図の想定）：${rows.join("／")}`);
@@ -1970,7 +1998,7 @@ function summaryText() {
   const totals = costTotals();
   if (totals.total > 0) lines.push(`・対策の費用の目安：合計${man(totals.total)}（単価×個数。${COST_FIXED}）`);
   // 文には図がないので、「図は」ではなく、建物の形を確かめていないことを言う。
-  if (b.sample.custom) lines.push("・建物の形（階数・機械の部屋の位置）はまだ確かめておらず、見本の形を借りた説明です");
+  if (b.sample.custom) lines.push("・建物の形（階数・機械室の位置）は未確認で、模式図は入力をもとにした仮のものです");
   lines.push(`※${disclaimer() || ""}`);
   return lines.join("\n");
 }
@@ -1980,7 +2008,7 @@ async function sendSummary() {
   S.sendText = "";
   if (navigator.share) {
     try {
-      await navigator.share({ title: "マンション浸水ロードマップ", text });
+      await navigator.share({ title: "マンション浸水チェック", text });
       S.sendMsg = "共有の画面を開きました。";
       render();
       return;
@@ -2048,7 +2076,7 @@ function printSheet() {
       <p>図の番号の所を、竣工図と点検の記録で確かめてください。住民・理事・管理員は、電気やポンプの部屋に入りません。</p>
       <ol class="print-asks">${asks}</ol>
       ${heardItems().length || experienceLine() ? `<p><b>住民の話・見たこと</b></p><ul>${experienceLine() ? `<li>${esc(experienceLine())}</li>` : ""}${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul>` : ""}
-      <p>答えが分かったら、マンション浸水ロードマップの「2 確かめる」に入れると、図の色が変わります。</p>
+      <p>答えが分かったら、マンション浸水チェックの「2 確かめる」に入れると、図の色が変わります。</p>
       ${fixed}
     </div>`;
   } else if (S.tab === "a4") {
@@ -2080,6 +2108,8 @@ function render() {
     const n = Number(button.dataset.go);
     button.disabled = n > S.reached;
     button.classList.toggle("current", n === S.screen);
+    button.classList.toggle("done", n < S.screen);
+    button.classList.toggle("next", n === S.screen + 1);
     button.setAttribute("aria-current", n === S.screen ? "step" : "false");
   });
   const text = disclaimer();
@@ -2349,7 +2379,8 @@ async function readPlan(files) {
   const merged = { mode: "", rooms: [], unreadable: [], drawing: null, message: "", pins: [], facts: {} };
   const seen = new Set();
   try {
-    for (const file of list) {
+    // 何枚か入れたときは同時に送り、返ってきた順ではなく入れた順に合算する（2026-11-07・21回目）。
+    const results = await Promise.all(list.map(async (file) => {
       const body = { sample_id: S.sampleId };
       let dataUrl = "";
       if (file) {
@@ -2365,7 +2396,9 @@ async function readPlan(files) {
         body.data = dataUrl.split(",")[1] || "";
         body.media_type = shrunk ? "image/jpeg" : file.type;
       }
-      const got = await postJSON("/api/plan", body);
+      return { file, dataUrl, got: await postJSON("/api/plan", body) };
+    }));
+    for (const { file, dataUrl, got } of results) {
       merged.mode = got.mode || merged.mode;
       merged.pins = got.pins?.length ? got.pins : merged.pins;
       const isPhoto = got.drawing?.kind === "photo";
@@ -2446,23 +2479,28 @@ screen.addEventListener("submit", async (event) => {
   S.query = q;
   S.error = "";
   S.message = "";
+  S.searchFacts = null;
+  S.searching = true;
+  render();
   try {
     const body = await getJSON(`/api/search?${new URLSearchParams({ q })}`);
     S.candidates = body.candidates || [];
     S.message = body.message || (S.candidates.length ? "" : "場所が見つかりませんでした。");
+    // 所在地と一緒に階数・戸数などが読めていれば持っておき、2回目の Web 検索をしない（2026-11-07・21回目）。
+    S.searchFacts = body.facts || null;
+    S.searching = false;
     // 住所で探したときだけ、候補が1件なら押させずに選ぶ。建物名で探したときは住所の候補を見せて、押してから進む（2026-11-06 本人の指摘）。
     if (S.candidates.length === 1 && !looksLikeName(q)) {
       const c = S.candidates[0];
       await choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null);
-      // マンション名で探したときは、続けて階数を Web で探す（見つかれば建物の形に反映）。住所なら、その住所の建物名と階数を探して「この建物ですか？」と聞く。
-      if (looksLikeName(q) && S.place) findFacts(q);
-      else if (S.place && !S.sampleId) findBuildingAt();
+      afterPlace(q);
       return;
     }
   } catch (error) {
     S.candidates = [];
     S.error = error.message;
   }
+  S.searching = false;
   render();
 });
 
@@ -2475,10 +2513,7 @@ screen.addEventListener("click", (event) => {
   } else if (target.dataset.cand) {
     const c = S.candidates[Number(target.dataset.cand)];
     // 選んだ時点で建物の位置として読む（地図をもう一度押させない）。地図は位置を直したいときだけ押す。
-    if (c) choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null).then(() => {
-      if (looksLikeName(S.query) && S.place) findFacts(S.query);
-      else if (S.place && !S.sampleId) findBuildingAt();
-    });
+    if (c) choosePlace({ address: c.label, longitude: c.longitude, latitude: c.latitude, pin: "1" }, null, null).then(() => afterPlace(S.query));
   } else if (target.dataset.cnt) {
     const cnt = counts();
     cnt[target.dataset.cnt] = Math.max(0, Number(cnt[target.dataset.cnt] || 0) + Number(target.dataset.d));
@@ -2741,7 +2776,7 @@ async function saveAs(kind) {
       a.download = `shinsui-save-${today().replace(/\D/g, "")}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      S.saveMsg = `ファイルを保存しました。${untilWord} まで、この道具の「保存したものを開く」で開けます。`;
+      S.saveMsg = `ファイルを保存しました。${untilWord} まで、このツールの「保存したものを開く」で開けます。`;
     }
   } catch (error) {
     S.saveMsg = error.message || "保存できませんでした。";
@@ -2778,7 +2813,7 @@ async function openSaved() {
     } else {
       if (!S.openFile) throw new Error("保存したファイルを選んでください。");
       stored = JSON.parse(await S.openFile.text());
-      if (stored.kind !== "shinsui-roadmap-save") throw new Error("この道具で保存したファイルではありません。");
+      if (stored.kind !== "shinsui-roadmap-save") throw new Error("このツールで保存したファイルではありません。");
       if (!(stored.expires_at > Date.now())) throw new Error("このファイルは期限が過ぎています。");
       key = stored.key;
     }
