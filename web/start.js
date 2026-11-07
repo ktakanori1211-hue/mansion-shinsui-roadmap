@@ -1283,10 +1283,13 @@ function readResult() {
   };
   // 細かい設備（EPS・PS・MB・受水槽・階段など）は折りたたむ（表面に並べない。2026-11-07・13回目）。
   const others = (S.read.rooms || []).filter((room) => !ROOM_MARKS[room.kind]).map((room) => `<span>${esc(room.word || room.name)}${room.floor ? `（${esc(room.floor)}）` : ""}</span>`);
+  const applied = proposals.filter((p) => p.applied === true).length;
   const buttons = pending.length
     ? `<div class="options big"><button type="button" class="option chosen" data-act="apply-all">すべて入れる（${pending.length}件）</button></div>`
-    : proposals.some((p) => p.applied === true) ? `<p class="hint">読めた値は答えに入っています。<button type="button" class="option small" data-act="drop-floors">取り消す</button></p>` : "";
-  return `<p class="hint">${esc(S.read.message || "")}</p>${proposals.length ? `<ul class="proposals">${proposals.map(line).join("")}</ul>` : ""}${buttons}${others.length ? `<details class="more read-more"><summary>ほかに読めた設備（${others.length}件）</summary><p class="read-others">${others.join("")}</p></details>` : ""}`;
+    : applied ? `<p class="auto-applied">図面から読めた${applied}件を答えに入れました。違うところは下の問いで押して直せます。<button type="button" class="option small" data-act="drop-floors">全部取り消す</button></p>` : "";
+  // 自動で入れたときは、サーバーの「ボタンで答えに入れます」の文は出さない。
+  const message = S.autoApplied ? String(S.read.message || "").replace(" 部屋は、合っていればボタンで答えに入れます。", "") : S.read.message || "";
+  return `<p class="hint">${esc(message)}</p>${proposals.length ? `<ul class="proposals">${proposals.map(line).join("")}</ul>` : ""}${buttons}${others.length ? `<details class="more read-more"><summary>ほかに読めた設備（${others.length}件）</summary><p class="read-others">${others.join("")}</p></details>` : ""}`;
 }
 
 // 読めた候補をまとめて答えに入れる（人が押したときだけ。2026-11-07・13回目）。取り消すで全部戻る。
@@ -1957,6 +1960,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.floorsApplied = null;
     S.extra = {};
     S.read = null;
+    S.autoApplied = false;
     S.drawingImages = [];
     S.fig = "plan";
     S.reached = 1;
@@ -2193,6 +2197,14 @@ async function readPlan(files) {
     S.read = merged;
     const d = merged.drawing;
     if (d && d.floors_above) applyFloors(d.floors_above, d.floors_below, "drawing");
+    // 本当に読み取った（Claude か PDF の文字）ときは、人に「すべて入れる」を押させず、読めた値をそのまま答えに入れる（2026-11-07 本人の指示・16回目）。
+    // 見本の答え（読み取りではない）は自動で入れない。入れたあとは各行の「取り消す」と問いのボタンで直せる。
+    if (merged.mode === "claude" || merged.mode === "text") {
+      S.autoApplied = true;
+      await applyAllRead();
+      return;
+    }
+    S.autoApplied = false;
   } catch (error) {
     S.read = { message: error.message, rooms: [] };
   } finally {

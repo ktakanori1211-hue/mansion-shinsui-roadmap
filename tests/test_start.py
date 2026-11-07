@@ -579,6 +579,12 @@ class BuildingFactsTest(unittest.TestCase):
         self.assertIn("if (looksLikeName(q) && S.place) findFacts(q);", js)
         # 図面の断面図・立面図から階数が読めたときも同じ入口を通る。
         self.assertIn('applyFloors(d.floors_above, d.floors_below, "drawing")', block(js, "async function readPlan(", "\n}\n"))
+        # 2026-11-07・16回目：本当に読み取ったとき（Claude か PDF の文字）は自動で答えに入れる。見本の答え（mode sample）は入れない。取り消せる。
+        read_fn = block(js, "async function readPlan(", "\n}\n")
+        self.assertIn('if (merged.mode === "claude" || merged.mode === "text") {', read_fn)
+        self.assertIn("await applyAllRead();", read_fn)
+        self.assertNotIn('merged.mode === "sample"', read_fn)
+        self.assertIn("全部取り消す", block(js, "function readResult()", "\n}\n"))
 
 
 class SendTest(unittest.TestCase):

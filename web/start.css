@@ -587,7 +587,7 @@ details.facts[open] { display: flex; }
 .crit-table .c-cost { font-weight: 700; }
 .crit-table .c-dec { font-size: 12px; color: #333; }
 .c-facts { margin: 4px 0 6px; font-size: 12.5px; color: #333; background: #f4f6f9; padding: 5px 8px; border-radius: 2px; }
-.c-note { margin: -4px 0 0; }
+.c-note { margin: 6px 0 0; }
 
 /* === 理事会A4：縦1枚（左右2段組み）。紙は 794×1123px（A4・96dpi）で組み、画面では fitPapers() が幅に合わせて zoom、印刷では等倍で 210×297mm。2026-11-07 === */
 .paper.a4-single { width: 794px; height: 1123px; aspect-ratio: auto; padding: 36px 38px; box-sizing: border-box; margin: 0; overflow: hidden; font-size: 11px; line-height: 1.4; border: 1px solid var(--rule); }
@@ -744,3 +744,4 @@ details.facts[open] { display: flex; }
 .ask-bldg.none .hint { font-size: 14px; font-weight: 400; }
 .own-open { display: flex; flex-direction: column; gap: 8px; }
 .ask-bldg .option.chosen { background: var(--navy); color: #fff; }
+.auto-applied { margin: 0; padding: 8px 10px; background: var(--clear-bg); border-left: 5px solid var(--clear-line); font-size: 15px; font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
