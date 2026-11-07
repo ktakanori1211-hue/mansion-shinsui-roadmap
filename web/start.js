@@ -353,6 +353,8 @@ function roomStates(level) {
     if (level && isWet) {
       state = "wet";
       word = "浸水・停止";
+      out[key] = { state, word, depth: level >= 3 ? "deep" : "shallow" };
+      return;
     } else if (level && protectedNow && MACHINE_ROOMS.includes(key)) {
       state = "safe";
       word = "止水・稼働";
@@ -366,7 +368,7 @@ function roomStates(level) {
 function roomOverlay(key, box, st, big, place = "plan") {
   // 部屋の名前は cad.js が1回だけ描く（上寄せ）。ここでは色と札だけを重ね、文字を二重にしない（2026-11-07 本人の指摘・14回目）。
   const flash = S.flash.includes(key) ? " flash" : "";
-  const parts = [`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-over ${st.state}${flash}" data-room="${esc(key)}"/>`];
+  const parts = [`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-over ${st.state}${st.depth ? ` ${st.depth}` : ""}${flash}" data-room="${esc(key)}"/>`];
   const cx = box.x + box.w / 2;
   const fs = Math.min(fitText(st.word, box.w - 6, big ? 13 : 11, 7) || 0, box.h / (place === "section" ? 4 : 3.2));
   if (fs > 7) {
@@ -391,7 +393,7 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   Object.entries(cad.rooms).forEach(([key, box]) => {
     if (states[key]) parts.push(roomOverlay(key, box, states[key], !small));
     // 浸かる部屋には青い波の模様を重ねる（水が来ている見た目。2026-11-07・25回目）。
-    if (states[key]?.state === "wet") parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern"/>`);
+    if (states[key]?.state === "wet") parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern ${states[key].depth || ""}"/>`);
   });
   // 道路の冠水。
   const road = cad.marks.find((m) => m.kind === "road");
@@ -1202,6 +1204,7 @@ function simBox(playing, shown) {
     <div class="sim-step"><span class="step-no">2</span>${measureChips()}</div>
     <div class="sim-step"><span class="step-no">3</span><div class="fig-switch"><span class="sim-label">図を切り替える</span><div class="options big fig-options">${tabs}</div></div></div>
     <div class="plan sim-fig">${figure}</div>
+    ${fig === "drawing" ? "" : `<p class="fig-legend"><span class="lg water">青の面＝水が入る範囲（②床に20〜30cm、③床から50cm）</span><span class="lg arrow">矢印＝水の入り道</span><span class="lg badge">赤い札＝止まる設備</span></p>`}
     ${stopList()}
     ${S.building?.sample?.custom && fig !== "drawing" ? `<p class="hint fig-note">${borrowedNote()}</p>` : ""}
     ${lifeChips(S.play)}
@@ -2101,8 +2104,8 @@ function screenFour() {
     <button type="button" class="secondary" data-act="send">文面をコピーする（メール・LINE共有用）</button>
     ${S.sendMsg ? `<p class="hint" role="status">${esc(S.sendMsg)}</p>` : ""}
     ${S.sendText ? `<textarea class="copy-area" rows="6" readonly>${esc(S.sendText)}</textarea>` : ""}
-    <div class="save-row"><span class="save-title">🔒 入力した内容を保存・共有する</span><button type="button" class="option" data-act="save-open">保存・共有の窓を開く</button></div>
-    ${S.saveOpen ? `<div class="modal-back" data-act="save-close"><div class="modal save-modal" role="dialog" aria-modal="true" aria-label="入力した内容を保存・共有する"><div class="modal-head"><b>入力した内容を保存・共有する</b><button type="button" class="option small" data-act="save-close">閉じる</button></div>${saveBox()}</div></div>` : ""}
+    <h2 class="part save-head"><span>🔒</span>入力した内容を保存・共有する</h2>
+    ${saveBox()}
   </section>`;
 }
 
@@ -2646,10 +2649,7 @@ function startPlay() {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && S.at?.found && !S.at.answer) answerBuilding("no");
-  if (event.key === "Escape" && S.saveOpen) {
-    S.saveOpen = false;
-    render();
-  }
+
 });
 
 screen.addEventListener("submit", async (event) => {
@@ -2778,14 +2778,7 @@ screen.addEventListener("click", (event) => {
     if (act === "see") seeBuilding();
     if (act === "play") (S.timer ? stopPlay() : startPlay());
     if (act === "modal-no" && target.classList.contains("modal-back")) answerBuilding("no");
-    if (act === "save-open") {
-      S.saveOpen = true;
-      render();
-    }
-    if (act === "save-close" && (target.classList.contains("modal-back") || target.tagName === "BUTTON")) {
-      S.saveOpen = false;
-      render();
-    }
+
     if (act === "level-up" || act === "level-down") {
       clearInterval(S.timer);
       S.timer = 0;
@@ -2932,14 +2925,12 @@ function saveBox() {
   if (!S.savePass && typeof crypto !== "undefined") S.savePass = randomPassword();
   const chips = SAVE_DAYS.map(([d, word]) => `<button type="button" class="option${days === d ? " chosen" : ""}" data-save-days="${d}" aria-pressed="${days === d}">${word}</button>`).join("");
   return `<div class="save-box">
-    <p class="qsub">パスワードつきで保存し、次に開くとき続きから見られます（入れるのは場所・答え・階・対策・費用の個数。図面・チャット・APIキーは入れません）。</p>
+    <label class="save-pass">パスワード<input id="save-pass" type="text" autocomplete="off" spellcheck="false" value="${esc(S.savePass || "")}" placeholder="8文字以上"><button type="button" class="option small" data-act="pass-copy">コピー</button><button type="button" class="option small" data-act="pass-random">別のにする</button></label>
     <div class="own-row"><span>期限</span><div class="options">${chips}</div></div>
-    <label class="save-pass">パスワード<input id="save-pass" type="text" autocomplete="off" spellcheck="false" value="${esc(S.savePass || "")}" placeholder="8文字以上"></label>
-    <div class="options"><button type="button" class="option" data-act="pass-copy">パスワードをコピー</button><button type="button" class="option small" data-act="pass-random">別のパスワードにする</button></div>
     <div class="options"><button type="button" class="option" data-act="save-link">期限つきのリンクを作る</button><button type="button" class="option" data-act="save-file">暗号にしたファイルを保存する</button></div>
     ${S.saveLink ? `<p class="save-link"><input readonly value="${esc(S.saveLink)}"><button type="button" class="option small" data-act="link-copy">リンクをコピー</button></p>` : ""}
     ${S.saveMsg ? `<p class="hint" role="status">${esc(S.saveMsg)}</p>` : ""}
-    <p class="hint">ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。パスワードを忘れると戻せないので、リンクやファイルとは別の方法で伝えてください。リンクは今は同じパソコンでだけ開けます。</p>
+    <p class="hint">場所・答え・対策・費用の個数を、ブラウザの中で暗号にして保存します（図面・チャット・APIキーは入れません）。パスワードを忘れると戻せません。</p>
   </div>`;
 }
 

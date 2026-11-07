@@ -157,7 +157,8 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .p-badge.clear rect { fill: var(--clear-line); }
 .p-water { fill: var(--water); opacity: .5; }
 .p-arrow { fill: none; stroke: var(--water); stroke-width: 5; stroke-dasharray: 10 6; }
-.p-arrow.on { stroke-width: 8; stroke-dasharray: none; }
+.p-arrow.on { stroke-width: 8; stroke-dasharray: 16 10; animation: flow .9s linear infinite; }
+@keyframes flow { from { stroke-dashoffset: 26; } to { stroke-dashoffset: 0; } }
 .p-head { fill: var(--water); }
 .p-arrow.cut { stroke-width: 7; }
 .p-sealed circle { fill: var(--clear-line); stroke: #fff; stroke-width: 2; }
@@ -473,7 +474,8 @@ details.facts[open] { display: flex; }
 .p-over.risk { fill: rgba(179, 38, 30, .22); }
 .p-over.unconfirmed { fill: rgba(196, 128, 0, .22); }
 .p-over.clear { fill: rgba(27, 122, 61, .2); }
-.p-over.wet { fill: rgba(179, 38, 30, .4); }
+.p-over.wet { fill: rgba(31, 95, 153, .3); }
+.p-over.wet.deep { fill: rgba(31, 95, 153, .55); }
 .p-over.safe { fill: rgba(27, 122, 61, .35); }
 .p-over.flash { animation: flash 1.1s ease; }
 .p-name.wet { fill: var(--risk); }
@@ -485,7 +487,8 @@ details.facts[open] { display: flex; }
 .s-water.deep { fill: rgba(31, 95, 153, .6); }
 .s-wave { fill: none; stroke: #0b4fa8; stroke-width: 2.5; stroke-linecap: round; animation: wave 1.4s linear infinite; }
 @keyframes wave { from { transform: translateX(0); } to { transform: translateX(-14px); } }
-.p-water-pattern { fill: url(#p-waves); opacity: .9; }
+.p-water-pattern { fill: url(#p-waves); opacity: .55; }
+.p-water-pattern.deep { opacity: .95; }
 .p-wave-line { fill: none; stroke: #0b4fa8; stroke-width: 2; }
 .s-level { stroke: #1f5f99; stroke-width: 2.5; stroke-dasharray: 8 5; fill: none; }
 .s-level-label { font-size: 13px; font-weight: 800; fill: #1f5f99; }
@@ -914,3 +917,10 @@ details.facts[open] { display: flex; }
 .save-modal { max-width: 640px; max-height: 90vh; overflow: auto; }
 .save-modal .save-box { margin-top: 8px; border: 0; padding: 0; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 16px; }
+.fig-legend { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #333; }
+.fig-legend .lg::before { content: ""; display: inline-block; width: 14px; height: 10px; margin-right: 4px; vertical-align: -1px; }
+.fig-legend .lg.water::before { background: rgba(31, 95, 153, .55); }
+.fig-legend .lg.arrow::before { background: var(--water); height: 4px; vertical-align: 2px; }
+.fig-legend .lg.badge::before { background: var(--risk-line); }
+.save-pass .option.small { flex: none; }
+.save-head { margin-top: 18px; margin-bottom: 0; }

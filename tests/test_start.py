@@ -1015,7 +1015,7 @@ class SurfaceLengthTest(unittest.TestCase):
         "2 確かめる": 600,  # 2026-11-07・13回目：一文の見出し、進み具合の行、答えた瞬間の一行、「未確認は危険ではない」の1行のぶん。本人の指示で上限を広げた
         "3 止まるもの": 3000,  # 2026-11-06・8回目：提案を2段構え（内水〜1m／大洪水3〜5m）にし、各提案に深さと根拠1行、分かっていることの行を足したぶん
         "3 止まるもの（③）": 3000,
-        "4 渡す：memo": 250,  # 2026-11-07・21回目：タブの名前に番号と役割を足したぶん（本人の了承済み）
+        "4 渡す：memo": 380,  # 2026-11-07・27回目：保存・共有（パスワード・期限・2つのボタン）を折りたたまず表に出す本人の指示のぶん（21回目は 250）
         "4 渡す：a4": 4000,  # 2026-11-06・9回目：費用の補助なし→ありの2行と条件。紙の大きさは CSS で A4 の比率に固定（入らない分は見えない）
         "4 渡す：cost": 2000,  # 2026-11-06・9回目：補助なし→ありの2行、市の負担の説明、使える条件2行のぶん
     }
@@ -1041,8 +1041,9 @@ class SurfaceLengthTest(unittest.TestCase):
         four = block(js, "function screenFour()", "\n}\n")
         self.assertIn("${aidSource()}", four)
         # 2026-11-07・26回目：保存の箱は折りたたまず、見出しの下にそのまま出す（プルダウンが分かりにくいという指摘）。
-        self.assertIn('data-act="save-open"', four)
-        self.assertIn("S.saveOpen ?", four)
+        # 2026-11-07・27回目：パスワードと期限は表に出しておく（窓にも折りたたみにもしない）。
+        self.assertIn("${saveBox()}", four)
+        self.assertNotIn("save-open", four)
         self.assertNotIn("save-fold", four)
         self.assertIn("「2 確かめる」に入れると", js)
         self.assertNotIn("「3 確かめる」", js)
