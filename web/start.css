@@ -480,8 +480,13 @@ details.facts[open] { display: flex; }
 .p-name.safe { fill: var(--clear); }
 .p-badge.wet rect { fill: var(--risk-line); }
 .p-badge.safe rect { fill: var(--clear-line); }
-.p-flood-band { fill: rgba(31, 95, 153, .28); }
+.p-flood-band { fill: rgba(31, 95, 153, .4); }
 .s-water { fill: rgba(31, 95, 153, .32); }
+.s-water.deep { fill: rgba(31, 95, 153, .6); }
+.s-wave { fill: none; stroke: #0b4fa8; stroke-width: 2.5; stroke-linecap: round; animation: wave 1.4s linear infinite; }
+@keyframes wave { from { transform: translateX(0); } to { transform: translateX(-14px); } }
+.p-water-pattern { fill: url(#p-waves); opacity: .9; }
+.p-wave-line { fill: none; stroke: #0b4fa8; stroke-width: 2; }
 .s-level { stroke: #1f5f99; stroke-width: 2.5; stroke-dasharray: 8 5; fill: none; }
 .s-level-label { font-size: 13px; font-weight: 800; fill: #1f5f99; }
 .s-route { stroke-width: 3; stroke-dasharray: 8 5; }
@@ -869,3 +874,19 @@ details.facts[open] { display: flex; }
 .stop-list span { background: var(--clear-bg); border: 1px solid var(--clear-line); padding: 2px 8px; border-radius: 2px; color: #14532d; font-weight: 700; }
 .water-gauge .sim-label { align-self: center; }
 @media (max-width: 480px) { .water-gauge { flex-wrap: wrap; } .water-gauge .play { flex-basis: 100%; } }
+
+/* 25回目：図の切り替えと水位の棒 */
+.fig-switch { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.fig-switch .options.big { flex: 1; }
+.water-gauge .segs { align-items: end; }
+.water-gauge .seg { justify-content: flex-end; }
+.water-gauge .seg.s1 { min-height: 44px; }
+.water-gauge .seg.s2 { min-height: 58px; }
+.water-gauge .seg.s3 { min-height: 72px; }
+.water-gauge .seg .seg-no { font-size: 13px; }
+.water-gauge .seg .seg-name { font-size: 11px; font-weight: 600; opacity: .85; }
+.water-gauge .seg.now { animation: bump .6s ease; }
+.water-gauge .sim-label { line-height: 1.2; }
+.level-what { padding: 6px 10px; background: #e8f1fb; border-left: 4px solid #1f5f99; }
+.ask-bldg .ask-q { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: var(--navy); }
+.ask-bldg .ask-found { margin: 0 0 6px; font-size: 14px; }

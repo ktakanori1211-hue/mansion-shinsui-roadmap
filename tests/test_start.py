@@ -375,16 +375,18 @@ class PlanTest(unittest.TestCase):
         self.assertIn("hasBasement()", figure)  # 地下1階がある建物は、地面の下に箱を描く（2026-11-06・10回目）
         one = block(js, "function screenOne()", "\n}\n")
         self.assertIn("${terrainFigure(lines)}", one)
-        # 2026-11-07・22回目：住所で建物が見つかったら押させずに反映し、上の1行に建物名・階数・戸数・築年・出典。違うときは「修正」、見つからないときは「建物名・階数を入力」。
+        # 2026-11-07・22回目（25回目で確認を戻した）：住所で建物が見つかったら「この建物ですか？」のあと、上の1行に建物名・階数・戸数・築年・出典。違うときは「修正」、見つからないときは「建物名・階数を入力」。
         self.assertLess(one.index("${buildingAsk()}"), one.index("${terrainFigure(lines)}"))
         self.assertIn("${foundBuildingLine() || chosenFloors()}", one)
         ask = block(js, "function buildingAsk()", "\n}\n")
         self.assertIn('data-act="fix-building"', ask)
         self.assertIn("ownQuestions(true)", ask)
-        self.assertNotIn('data-at="yes"', ask)
         find = block(js, "async function findBuildingAt()", "\n}\n")
         self.assertIn('postJSON("/api/building-at"', find)
-        self.assertIn('if (S.at.found) answerBuilding("yes");', find)
+        # 2026-11-07・25回目：見つかっても勝手に使わず「この建物ですか？」で「はい」を押してから（22回目の自動反映を本人の指示で戻した）。
+        self.assertNotIn('answerBuilding("yes")', find)
+        self.assertIn('data-at="yes"', ask)
+        self.assertIn("この建物ですか？", ask)
         self.assertIn('applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web")', block(js, "function answerBuilding(", "\n}\n"))
         self.assertIn('data-act="fix-building"', block(js, "function foundBuildingLine()", "\n}\n"))
         # 見つけた建物名は画面3・4の見出しにも使う。

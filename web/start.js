@@ -390,10 +390,12 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   const parts = [];
   Object.entries(cad.rooms).forEach(([key, box]) => {
     if (states[key]) parts.push(roomOverlay(key, box, states[key], !small));
+    // 浸かる部屋には青い波の模様を重ねる（水が来ている見た目。2026-11-07・25回目）。
+    if (states[key]?.state === "wet") parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern"/>`);
   });
   // 道路の冠水。
   const road = cad.marks.find((m) => m.kind === "road");
-  if (road && level >= 1) parts.push(`<rect x="0" y="${road.y}" width="${cad.w}" height="${cad.h - road.y}" class="p-flood-band"/>`);
+  if (road && level >= 1) parts.push(`<rect x="0" y="${road.y}" width="${cad.w}" height="${cad.h - road.y}" class="p-flood-band"/>${wave(0, cad.w, road.y + 10, 3, 22)}`);
 
   // 水の入り道（青い矢印）。判定ではなく、入りうる所。対策①②を選ぶと、入口に青い止水ライン、壁の穴に塞いだ印が入り、矢印は止まる。
   const entries = [];
@@ -444,13 +446,22 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   });
   const label = level ? `もし水がここまで来たら：${CAPTIONS[level]}` : titleLine();
   return `<svg class="plan-svg cad${small ? " small" : ""}" viewBox="0 0 ${cad.w} ${cad.h}" role="img" aria-label="${esc(label)}">
-    <defs><marker id="p-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker></defs>
+    <defs><marker id="p-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker>
+      <pattern id="p-waves" width="24" height="12" patternUnits="userSpaceOnUse"><path d="M0 6 q6 -4 12 0 t12 0" class="p-wave-line"/></pattern></defs>
     ${cad.svg}${parts.join("")}
   </svg>`;
 }
 
 // 建物の断面図（web/cad.js）：前面道路のGL・歩道のハンドホール・地中の管と壁の穴・スロープ・機械室と盤の高さ・上の階。
 // 水位①②③で青い水位線と水の面が入り、対策①②で入り道に止水ガードが入る。部屋の色と札は平面図と同じ。
+// 水面の波（x0〜x1 の上端 y に、山と谷を繰り返す線）。
+function wave(x0, x1, y, amp = 2.5, step = 14) {
+  if (x1 - x0 < step) return "";
+  let d = `M${x0} ${y}`;
+  for (let x = x0; x < x1; x += step) d += ` q${step / 4} ${-amp} ${step / 2} 0 t${step / 2} 0`;
+  return `<path d="${d}" class="s-wave"/>`;
+}
+
 function sectionFigure(level = 0, small = false) {
   if (typeof CAD === "undefined" || !S.building) return "";
   const sample = S.building.sample;
@@ -475,23 +486,22 @@ function sectionFigure(level = 0, small = false) {
   const right = Math.max(...boxes.map((b) => b.x + b.w));
   const bottom = Math.max(...boxes.map((b) => b.y + b.h));
   // 水の面（道路の外は①の高さ、中は水位の段の高さ）。対策で守れたときは中に水を入れない。
-  if (level >= 1) {
-    const gl = sec.levels[1];
-    parts.push(`<rect x="0" y="${gl - 5}" width="${Math.max(0, left - 6)}" height="5" class="s-water"/>`);
-    const inside = sec.levels[level];
-    const wetKeys = Object.keys(states).filter((key) => states[key].state === "wet" && sec.rooms[key]);
-    if (!protectedNow && wetKeys.length) {
-      wetKeys.forEach((key) => {
-        const b = sec.rooms[key];
-        const top = Math.max(b.y, Math.min(inside, b.y + b.h));
-        parts.push(`<rect x="${b.x}" y="${top}" width="${b.w}" height="${b.y + b.h - top}" class="s-water"/>`);
-      });
-      parts.push(`<path d="M${left} ${inside} L${right} ${inside}" class="s-level"/><text x="${left + 4}" y="${inside - 4}" class="s-level-label" text-anchor="start">水位${["", "①", "②", "③"][level]}</text>`);
-    }
-  }
   Object.entries(sec.rooms).forEach(([key, box]) => {
     if (states[key]) parts.push(roomOverlay(key, box, states[key], !small, "section"));
   });
+  // 水は部屋の色の上に描く（濃い青の面＋動く波の線。2026-11-07・25回目：点線だけでは水に見えないという指摘）。
+  if (level >= 1) {
+    const gl = sec.levels[1];
+    parts.push(`<rect x="0" y="${gl - 7}" width="${Math.max(0, left - 6)}" height="7" class="s-water deep"/>${wave(0, Math.max(0, left - 6), gl - 7)}`);
+    const inside = sec.levels[level];
+    const wetKeys = Object.keys(states).filter((key) => states[key].state === "wet" && sec.rooms[key]);
+    if (!protectedNow && wetKeys.length) {
+      // 水面は地下の端から端まで一続きの帯（部屋ごとの切れ目を作らない）。部屋の下端は一番深い部屋に合わせる。
+      const top = Math.min(inside, bottom);
+      parts.push(`<rect x="${left}" y="${top}" width="${right - left}" height="${bottom - top}" class="s-water deep"/>${wave(left, right, top)}`);
+      parts.push(`<text x="${left + 4}" y="${top - 6}" class="s-level-label" text-anchor="start">水位${["", "①", "②", "③"][level]}</text>`);
+    }
+  }
   // 水の入り道と止水ガード。
   (sec.routes || []).forEach((route) => {
     // 対策のときは、止める位置までの道だけを描き、そこに立てた止水板（または埋めた穴）と赤い×を置く。
@@ -957,8 +967,7 @@ async function findBuildingAt() {
   try {
     const got = await postJSON("/api/building-at", { address: S.place.site.label });
     S.at = { busy: false, found: got.found || null, message: got.message || "", answer: "" };
-    // 見つかったら押させずに反映し、上の1行に建物名・階数・戸数・築年・出典を出す。違うときだけ「修正」（2026-11-07 本人の指示・22回目）。
-    if (S.at.found) answerBuilding("yes");
+    // 見つかっても勝手に使わず、「この建物ですか？」で「はい」を押してから反映する（2026-11-07・25回目。22回目の自動反映を本人の指示で戻した）。
   } catch (error) {
     S.at = { busy: false, found: null, message: error.message, answer: "" };
   }
@@ -985,6 +994,14 @@ function buildingAsk() {
   const applied = S.floorsApplied?.source === "web" && S.facts?.found;
   const panel = S.fixOpen ? `<div class="ask-bldg none">${applied ? `<p class="hint">Web の候補が違うときは、下に入れ直すか<button type="button" class="option small" data-act="drop-floors">候補を取り消す</button></p>` : ""}${ownQuestions(true)}</div>` : "";
   if (applied) return panel;
+  if (S.at?.found && S.at.answer !== "yes") {
+    const f = S.at.found;
+    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : "", unitsBuiltWords(f)].filter(Boolean).join("・");
+    const question = `<p class="ask-q">この建物ですか？</p>
+      <p class="ask-found"><b>${esc(f.building || "（名前なし）")}</b>${floors ? `　${esc(floors)}` : ""}　<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a></p>
+      <div class="options big"><button type="button" class="option chosen" data-at="yes">はい、この建物です</button><button type="button" class="option" data-at="no">違う</button></div>`;
+    return `<div class="ask-bldg">${S.at.answer === "no" ? `<p class="hint">候補は使いません。建物名と階数を入れてください。</p>${ownQuestions(true)}` : question}</div>`;
+  }
   if (S.at && !S.at.found) {
     return `<div class="ask-bldg none"><p class="hint">${esc(S.at.message || "この住所の建物名と階数は見つかりませんでした。")}${S.fixOpen ? "" : `<button type="button" class="option small" data-act="fix-building">建物名・階数を入力</button>`}</p>${S.fixOpen ? ownQuestions(true) : ""}</div>`;
   }
@@ -1146,15 +1163,16 @@ function measureHeadline() {
 const SIM_LEVELS = { 1: "① 道路", 2: "② 一番低い床", 3: "③ 機械の部屋" };
 // 水位ごとに何が起きるか（高さは一般的な目安。GAUGE と同じ文）。
 const LEVEL_WHAT = { 1: "道路が冠水。壁の穴・スロープ・扉から水が入り始める", 2: "一番低い床に20〜30cm。床置きの盤・EVピットが浸かる", 3: "床から50cm。盤・高圧受変電設備・借室の下端まで。水も電気も止まる" };
+const LEVEL_TINY = { 1: "道路が冠水", 2: "床に20〜30cm", 3: "床から50cm" };
 
 // 水位のゲージ（2026-11-07・24回目：①②③のボタンを、左から右へ水が上がるゲージと ◀ ▶ に置き換え）。
 function waterGauge(playing) {
   const lv = S.play;
-  const segs = [1, 2, 3].map((n) => `<button type="button" class="seg${lv >= n ? " filled" : ""}${lv === n ? " now" : ""}" data-level="${n}" aria-pressed="${lv === n}"><span class="seg-no">${LEVEL_MARK[n]}</span><span class="seg-name">${SIM_LEVELS[n].slice(2)}</span></button>`).join("");
+  const segs = [1, 2, 3].map((n) => `<button type="button" class="seg s${n}${lv >= n ? " filled" : ""}${lv === n ? " now" : ""}" data-level="${n}" aria-pressed="${lv === n}"><span class="seg-no">${LEVEL_MARK[n]} ${SIM_LEVELS[n].slice(2)}</span><span class="seg-name">${LEVEL_TINY[n]}</span></button>`).join("");
   const stopped = S.measure !== "none" && lv > 0;
   const what = lv ? `<p class="level-what${stopped ? " stopped" : ""}"><b>水位${LEVEL_MARK[lv]}</b>${esc(LEVEL_WHAT[lv])}${stopped ? "　→ <b>止水板と穴埋めで、中には入らない想定</b>" : ""}</p>` : "";
-  return `<div class="water-gauge" role="group" aria-label="水位">
-    <span class="sim-label">水位</span>
+  return `<div class="water-gauge" role="group" aria-label="水がどこまで来るか">
+    <span class="sim-label">水がどこまで<br>来るか</span>
     <button type="button" class="arrow" data-act="level-down" aria-label="水位を下げる"${lv <= 1 ? " disabled" : ""}>◀</button>
     <div class="segs">${segs}</div>
     <button type="button" class="arrow" data-act="level-up" aria-label="水位を上げる"${lv >= 3 ? " disabled" : ""}>▶</button>
@@ -1165,7 +1183,7 @@ function waterGauge(playing) {
 function simBox(playing, shown) {
   const figs = [["plan", "平面図"], ["section", "断面図"], ...(S.drawingImages?.length ? [["drawing", "アップロード図面"]] : [])];
   const fig = figs.some(([key]) => key === S.fig) ? S.fig : "plan";
-  const tabs = figs.map(([key, word]) => `<button type="button" role="tab" class="tab${fig === key ? " current" : ""}" data-fig="${key}" aria-selected="${fig === key}">${word}</button>`).join("");
+  const tabs = figs.map(([key, word]) => `<button type="button" class="option${fig === key ? " chosen" : ""}" data-fig="${key}" aria-pressed="${fig === key}">${word}</button>`).join("");
   const figure = fig === "section" ? sectionFigure(S.play) : fig === "drawing" ? drawingFigure(true) : plan({ level: S.play });
   const allSafe = TILES.every((tile) => serviceState(3, SERVICE_OF_TILE[tile.key]) !== "stopped");
   const impactLine = allSafe
@@ -1174,7 +1192,7 @@ function simBox(playing, shown) {
   return `<div class="sim">
     ${measureChips()}
     ${waterGauge(playing)}
-    <div class="fig-head"><div class="tabs sim-tabs" role="tablist">${tabs}</div></div>
+    <div class="fig-switch"><span class="sim-label">図を切り替える</span><div class="options big">${tabs}</div></div>
     <div class="plan sim-fig">${figure}</div>
     ${stopList()}
     ${S.building?.sample?.custom && fig !== "drawing" ? `<p class="hint fig-note">${borrowedNote()}</p>` : ""}
