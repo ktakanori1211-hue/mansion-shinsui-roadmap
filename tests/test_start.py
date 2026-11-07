@@ -388,7 +388,7 @@ class PlanTest(unittest.TestCase):
         self.assertIn('applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web")', block(js, "function answerBuilding(", "\n}\n"))
         self.assertIn('data-act="fix-building"', block(js, "function foundBuildingLine()", "\n}\n"))
         # 見つけた建物名は画面3・4の見出しにも使う。
-        self.assertIn('found || "（建物名）"', block(js, "function where()", "\n}\n"))
+        self.assertIn('foundName() || "（建物名）"', block(js, "function where()", "\n}\n"))
         # 図面がない人の3問は、図面の答えがないときだけ建物の形に使い、確かめた印（confirmed）には入れない。
         answers = block(js, "function answers()", "\n}\n")
         self.assertIn('S.drawing === "no" && !floors.length', answers)
@@ -400,7 +400,7 @@ class PlanTest(unittest.TestCase):
         head = block(js, "function riskHead(", "\n}\n")
         self.assertIn("by.rainband", head)
         self.assertIn("rain?.accent?.lines", head)
-        self.assertIn("国の地図に色はないが、線状降水帯で浸かる型の土地", head)  # 洗い出したい建物の結論
+        self.assertIn("国の地図に色はないが、線状降水帯で浸かる型の土地", head + block(js, "function riskWords(", "\n}\n"))  # 洗い出したい建物の結論（語は riskWords に集約。24回目）
         # 画面1に、私の言葉の推測を足さない（短時間の大雨で水が集まる／地図に色がなくても来る）。
         self.assertNotIn("短時間の大雨で水が集まる", js)
         self.assertNotIn("地図に色がなくても来る", js)
@@ -521,8 +521,10 @@ class BuildingPinTest(unittest.TestCase):
         box = block(js, "function criticalBox(", "\n}\n")
         for part in ("S.building?.critical", "item.cost", "item.decision", "COST_FIXED"):
             self.assertIn(part, box)
-        self.assertIn("${criticalBox(true)}", block(js, "function a4Front(", "\n}\n"))
-        # 画面2のボタンの上に提案の1行目。理事会A4は縦1枚の左右2段組みで、左に平面図と断面図、右に提案の表（2026-11-07）。
+        # 2026-11-07・24回目：A4 の対策は「本日決めること」の欄に集約（対策の表と単価の表は画面3・費用タブ）。
+        self.assertIn("${boardDecisions(true)}", block(js, "function a4Front(", "\n}\n"))
+        self.assertNotIn("${criticalBox(true)}", block(js, "function a4Front(", "\n}\n"))
+        # 画面2のボタンの上に提案の1行目。理事会A4は縦1枚の左右2段組みで、左に平面図と断面図、右に決めること（2026-11-07）。
         self.assertIn("${criticalPreview()}", block(js, "function screenThree()", "\n}\n"))
         self.assertIn("sectionFigure", block(js, "function a4Front(", "\n}\n"))
         
@@ -699,7 +701,7 @@ class WhyFirstTest(unittest.TestCase):
         self.assertIn("sectionFigure(S.play)", sim)
         self.assertIn("${measureChips()}", sim)
         self.assertIn("${lifeChips(S.play)}", sim)
-        self.assertIn('data-level="${n}"', sim)
+        self.assertIn('data-level="${n}"', block(js, "function waterGauge(", "\n}\n"))
         self.assertEqual(sim.count("plan("), 1)
 
     def test_play_holds_at_three_and_measures_compare_at_three(self):
@@ -907,7 +909,8 @@ class SecondReviewTest(unittest.TestCase):
         grant = block(js, "function subsidyGrant(", "\n}\n")
         for part in ("aid.covers", "aid.calc", "calc.rate", "calc.cap", "calc.unit"):
             self.assertIn(part, grant)
-        self.assertIn("${costTable(true)}", block(js, "function a4Front(", "\n}\n"))
+        self.assertIn("${costSummary(units)}", block(js, "function a4Front(", "\n}\n"))
+        self.assertIn("subsidyGrant(totals)", block(js, "function costSummary(", "\n}\n"))
         for gone in ("function costRows(", "function estimateLine(", "data-est", "firstStepCost"):
             self.assertNotIn(gone, js)
         board = block(js, "function boardDecisions(", "\n}\n")

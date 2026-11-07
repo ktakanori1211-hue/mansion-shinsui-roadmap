@@ -200,10 +200,19 @@ function townLabel(label) {
     .trim();
 }
 
+function foundName() {
+  return (!S.sampleId && S.facts?.found?.building) || "";
+}
+
 function where() {
   const b = S.building;
-  const found = S.floorsApplied?.source === "web" && S.facts?.found?.building;
-  return `${b.sample.custom ? found || "（建物名）" : b.sample.name}／${townLabel(S.place.site.label)}`;
+  return `${b.sample.custom ? foundName() || "（建物名）" : b.sample.name}／${townLabel(S.place.site.label)}`;
+}
+
+// 画面の上の小さな行：建物名が分かっていれば「建物名／町丁」、分からなければ町丁だけ。
+function kicker() {
+  if (!S.building || !S.place) return "";
+  return S.building.sample.custom && !foundName() ? townLabel(S.place.site.label) : where();
 }
 
 function joinJa(words) {
@@ -406,9 +415,18 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   });
   entries.forEach((entry) => {
     const blocked = protectedNow;
-    parts.push(`<path d="M${entry.x1} ${entry.y1} L${entry.x2} ${entry.y2}" class="p-arrow${blocked ? " blocked" : level >= 1 ? " on" : ""}"${blocked ? "" : ' marker-end="url(#p-head)"'}/>`);
-    if (entry.hole) parts.push(blocked ? `<g class="p-sealed"><circle cx="${entry.x1}" cy="${entry.wallY}" r="10"/><path d="M${entry.x1 - 5} ${entry.wallY - 5} L${entry.x1 + 5} ${entry.wallY + 5} M${entry.x1 + 5} ${entry.wallY - 5} L${entry.x1 - 5} ${entry.wallY + 5}"/></g>` : `<circle cx="${entry.x1}" cy="${entry.wallY}" r="7" class="p-hole"/>`);
-    parts.push(`<text x="${entry.lx}" y="${entry.ly}" class="p-entry${blocked ? " sealed" : ""}" text-anchor="${entry.anchor}">${esc(blocked ? (entry.hole ? "壁の穴を塞いだ" : "止水板") : entry.label)}</text>`);
+    // 止める位置：スロープ・雨水ますは建物の縁（矢印の向きで y1 と y2 の間の縁）、壁の穴・扉は壁の位置。
+    const down = entry.y2 > entry.y1;
+    const stopY = entry.wallY ?? (down ? entry.y1 + 34 : entry.y1 - 46);
+    const endY = blocked ? (down ? stopY - 8 : stopY + 8) : entry.y2;
+    parts.push(`<path d="M${entry.x1} ${entry.y1} L${entry.x2} ${endY}" class="p-arrow${level >= 1 ? " on" : ""}${blocked ? " cut" : ""}" marker-end="url(#p-head)"/>`);
+    if (blocked) {
+      // 水が止まった印：赤い×と、壁の穴は埋めた印、それ以外は横一文字の止水板。
+      if (entry.hole) parts.push(`<g class="p-sealed"><circle cx="${entry.x1}" cy="${entry.wallY}" r="11"/><path d="M${entry.x1 - 5} ${entry.wallY - 5} L${entry.x1 + 5} ${entry.wallY + 5} M${entry.x1 + 5} ${entry.wallY - 5} L${entry.x1 - 5} ${entry.wallY + 5}"/></g>`);
+      else parts.push(`<path d="M${entry.x1 - 26} ${stopY} L${entry.x1 + 26} ${stopY}" class="p-plate big"/>`);
+      parts.push(`<g class="p-stop"><circle cx="${entry.x1 + (down ? 18 : -18)}" cy="${endY}" r="9"/><path d="M${entry.x1 + (down ? 18 : -18) - 4} ${endY - 4} l8 8 m0 -8 l-8 8"/></g>`);
+    } else if (entry.hole) parts.push(`<circle cx="${entry.x1}" cy="${entry.wallY}" r="7" class="p-hole"/>`);
+    parts.push(`<text x="${entry.lx}" y="${entry.ly}" class="p-entry${blocked ? " sealed" : ""}" text-anchor="${entry.anchor}">${esc(blocked ? (entry.hole ? "穴を埋めて止める" : "止水板で止める") : entry.label)}</text>`);
   });
   // 外壁の扉に止水ガード（対策①②）。
   if (protectedNow) {
@@ -476,13 +494,28 @@ function sectionFigure(level = 0, small = false) {
   });
   // 水の入り道と止水ガード。
   (sec.routes || []).forEach((route) => {
-    const d = route.points.map((pt, i) => `${i ? "L" : "M"}${pt[0]} ${pt[1]}`).join(" ");
-    parts.push(`<path d="${d}" class="p-arrow s-route${protectedNow ? " blocked" : level >= 1 ? " on" : ""}"${protectedNow ? "" : ' marker-end="url(#s-head)"'}/>`);
+    // 対策のときは、止める位置までの道だけを描き、そこに立てた止水板（または埋めた穴）と赤い×を置く。
+    let pts = route.points;
+    if (protectedNow && route.block) {
+      const [bx, by] = route.block;
+      const near = pts.reduce((best, pt, i) => (Math.hypot(pt[0] - bx, pt[1] - by) < Math.hypot(pts[best][0] - bx, pts[best][1] - by) ? i : best), 0);
+      pts = [...pts.slice(0, Math.max(1, near)), [bx, by]];
+    }
+    const d = pts.map((pt, i) => `${i ? "L" : "M"}${pt[0]} ${pt[1]}`).join(" ");
+    parts.push(`<path d="${d}" class="p-arrow s-route${level >= 1 ? " on" : ""}${protectedNow ? " cut" : ""}"${protectedNow ? "" : ' marker-end="url(#s-head)"'}/>`);
     if (protectedNow && route.block) {
       const [x, y] = route.block;
-      parts.push(route.key === "hole" ? `<g class="p-sealed"><circle cx="${x}" cy="${y}" r="9"/><path d="M${x - 4} ${y - 4} L${x + 4} ${y + 4} M${x + 4} ${y - 4} L${x - 4} ${y + 4}"/></g>` : `<path d="M${x - 16} ${y} L${x + 16} ${y}" class="p-plate"/><text x="${x}" y="${y - 10}" class="p-entry sealed s-small" text-anchor="middle">止水板</text>`);
+      if (route.key === "hole") parts.push(`<g class="p-sealed"><circle cx="${x}" cy="${y}" r="9"/><path d="M${x - 4} ${y - 4} L${x + 4} ${y + 4} M${x + 4} ${y - 4} L${x - 4} ${y + 4}"/></g><text x="${x}" y="${y + 20}" class="p-entry sealed s-small" text-anchor="middle">穴を埋める</text>`);
+      else parts.push(`<path d="M${x} ${y + 3} L${x} ${y - 24}" class="p-plate big"/><g class="p-stop"><circle cx="${x - 12}" cy="${y - 10}" r="7"/><path d="M${x - 15} ${y - 13} l6 6 m0 -6 l-6 6"/></g><text x="${x}" y="${y - 29}" class="p-entry sealed s-small" text-anchor="middle">止水板で止める</text>`);
     }
   });
+  if (protectedNow && S.measure === "full") {
+    // 対策②：床置きの盤を高くした印（給水ポンプ室・電気室の上の端）。
+    ["pump", "elec"].forEach((key) => {
+      const b = sec.rooms[key];
+      if (b) parts.push(`<g class="s-raise"><rect x="${b.x + 3}" y="${b.y + 3}" width="44" height="14"/><text x="${b.x + 25}" y="${b.y + 14}">盤↑高く</text></g>`);
+    });
+  }
   return `<svg class="plan-svg cad section${small ? " small" : ""}" viewBox="0 0 ${sec.w} ${sec.h}" role="img" aria-label="建物の断面図（水の入り道と盤の高さ）">
     <defs><marker id="s-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker></defs>
     ${sec.svg}${parts.join("")}
@@ -585,7 +618,7 @@ const EVAC_LINE = "避難するかどうかは、自治体のハザードマッ�
 
 
 // 対策の切り替え（what-019）。名前はサーバーの model_measures のまま。選んだ対策の固定の文（what-026）を言い換えずに添える。
-const MEASURE_GAIN = { none: "出入口・壁の穴・床から水が入り、機械の部屋が浸かる", basic: "出入口と壁の穴からの浸水を防げる（電気室・ポンプ室・借室が浸からない）", full: "さらに、水が止水板を越えても床置きの盤は浸からない" };
+const MEASURE_GAIN = { none: "出入口・壁の穴・床から水が入り、機械の部屋が浸かる", basic: "出入口の止水板と壁の穴埋めで、水は建物の縁で止まる（電気室・ポンプ室・借室が浸からない）", full: "さらに盤を高くして、止水板を越える水でも床置きの盤は浸からない" };
 // 段階ごとの費用の目安（単価の表と同じ数字）。
 const MEASURE_COST = { basic: "約40万円〜（通用口の止水板35万円＋穴埋め5万円）", full: "＋35万円（盤の壁掛け・かさ上げ。ケーブル延長ありは120万円）" };
 
@@ -721,7 +754,7 @@ function factsBox() {
     result = `<div class="facts-found"><p><b>${esc(floors)}</b>${f.building ? `（${esc(f.building)}）` : ""}</p>
       <p class="hint">出典：<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || f.source_url)}</a>${f.quote ? `「${esc(f.quote)}」` : ""}</p>
       <p class="hint">${esc(S.facts.message)}</p>
-      ${S.floorsApplied?.source === "web" ? `<p class="hint">この値を使っています。<button type="button" class="option small" data-act="drop-floors">取り消す</button></p>` : `<button type="button" class="option" data-act="use-facts">この値を使う</button>`}</div>`;
+      ${S.floorsApplied?.source === "web" ? `<p class="hint">この値を使っています。<button type="button" class="option small" data-act="drop-floors">取り消す</button></p>` : S.floorsApplied ? `<p class="hint">建物名・戸数・築年はこの値を使っています。階数は図面の読み取り（地上${esc(S.own.floors || "?")}階）を優先しています。</p>` : `<button type="button" class="option" data-act="use-facts">この値を使う</button>`}</div>`;
   } else if (S.facts) result = `<p class="hint">${esc(S.facts.message)}</p>`;
   // 住所から建物が見つからなかったときは、建物名の欄を最初から開いておく（折りたたみに気づかれないため。2026-11-07・16回目）。
   const openNow = S.facts || S.factsBusy || (S.at && !S.at.busy && (!S.at.found || S.at.answer === "no"));
@@ -961,8 +994,12 @@ function buildingAsk() {
 // 上の1行に添える、Web で見つけた建物の名前・階数・戸数・築年・出典（自動で反映したもの。「修正」で入れ直せる）。
 function foundBuildingLine() {
   const f = S.facts?.found;
-  if (S.sampleId || !f || S.floorsApplied?.source !== "web") return "";
-  const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : "", unitsBuiltWords(f)].filter(Boolean).join("・");
+  if (S.sampleId || !f || !S.floorsApplied) return "";
+  // 階数は図面の読み取りが入ればそちら（S.own）を優先して見せる。戸数・築年は Web の値のまま。
+  const fromDrawing = S.floorsApplied.source !== "web";
+  const above = fromDrawing ? Number(S.own.floors) || f.floors_above : f.floors_above;
+  const below = fromDrawing ? (S.own.basement === "yes" ? "地下あり" : S.own.basement === "no" ? "地下なし" : "") : f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : "";
+  const floors = [above ? `地上${above}階${fromDrawing ? "（図面）" : ""}` : "", below, unitsBuiltWords(f)].filter(Boolean).join("・");
   return `<span class="found-bldg"><b>${esc(f.building || "")}</b>${floors ? `・${esc(floors)}` : ""}（<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a>）<button type="button" class="option small" data-act="fix-building">修正</button></span>`;
 }
 
@@ -991,7 +1028,7 @@ function chosenFloors() {
   }
   const above = Number(S.own.floors);
   if (!above) return "";
-  const name = S.floorsApplied?.source === "web" && S.facts?.found?.building ? `${esc(S.facts.found.building)}・` : "";
+  const name = foundName() ? `${esc(foundName())}・` : "";
   return `<span>${name}地上${above}階${S.own.basement === "yes" ? "・地下あり" : S.own.basement === "no" ? "・地下なし" : ""}</span>`;
 }
 
@@ -1107,8 +1144,25 @@ function measureHeadline() {
 
 // 浸水の模式：操作（再生・水位・対策）＋図（平面図／断面図／あなたの図面のタブ）＋暮らしの3札を1画面に収める（2026-11-06 本人の指示・8回目）。
 const SIM_LEVELS = { 1: "① 道路", 2: "② 一番低い床", 3: "③ 機械の部屋" };
+// 水位ごとに何が起きるか（高さは一般的な目安。GAUGE と同じ文）。
+const LEVEL_WHAT = { 1: "道路が冠水。壁の穴・スロープ・扉から水が入り始める", 2: "一番低い床に20〜30cm。床置きの盤・EVピットが浸かる", 3: "床から50cm。盤・高圧受変電設備・借室の下端まで。水も電気も止まる" };
+
+// 水位のゲージ（2026-11-07・24回目：①②③のボタンを、左から右へ水が上がるゲージと ◀ ▶ に置き換え）。
+function waterGauge(playing) {
+  const lv = S.play;
+  const segs = [1, 2, 3].map((n) => `<button type="button" class="seg${lv >= n ? " filled" : ""}${lv === n ? " now" : ""}" data-level="${n}" aria-pressed="${lv === n}"><span class="seg-no">${LEVEL_MARK[n]}</span><span class="seg-name">${SIM_LEVELS[n].slice(2)}</span></button>`).join("");
+  const stopped = S.measure !== "none" && lv > 0;
+  const what = lv ? `<p class="level-what${stopped ? " stopped" : ""}"><b>水位${LEVEL_MARK[lv]}</b>${esc(LEVEL_WHAT[lv])}${stopped ? "　→ <b>止水板と穴埋めで、中には入らない想定</b>" : ""}</p>` : "";
+  return `<div class="water-gauge" role="group" aria-label="水位">
+    <span class="sim-label">水位</span>
+    <button type="button" class="arrow" data-act="level-down" aria-label="水位を下げる"${lv <= 1 ? " disabled" : ""}>◀</button>
+    <div class="segs">${segs}</div>
+    <button type="button" class="arrow" data-act="level-up" aria-label="水位を上げる"${lv >= 3 ? " disabled" : ""}>▶</button>
+    <button type="button" class="play small" data-act="play">${playing ? "❚❚ 止める" : "▶ 自動で進める"}</button>
+  </div>${what}`;
+}
+
 function simBox(playing, shown) {
-  const levels = [1, 2, 3].map((n) => `<button type="button" class="option${S.play === n ? " chosen" : ""}" data-level="${n}" aria-pressed="${S.play === n}">${SIM_LEVELS[n]}</button>`).join("");
   const figs = [["plan", "平面図"], ["section", "断面図"], ...(S.drawingImages?.length ? [["drawing", "アップロード図面"]] : [])];
   const fig = figs.some(([key]) => key === S.fig) ? S.fig : "plan";
   const tabs = figs.map(([key, word]) => `<button type="button" role="tab" class="tab${fig === key ? " current" : ""}" data-fig="${key}" aria-selected="${fig === key}">${word}</button>`).join("");
@@ -1119,12 +1173,10 @@ function simBox(playing, shown) {
     : `<p class="impact-banner risk">⚠ ${esc(S.building?.damage_line || "")}</p>`;
   return `<div class="sim">
     ${measureChips()}
-    <div class="sim-controls small">
-      <span class="sim-label">水位</span><div class="options">${levels}</div>
-      <button type="button" class="play small" data-act="play">${playing ? "❚❚ 止める" : "▶ 水が入る順に再生"}</button>
-    </div>
+    ${waterGauge(playing)}
     <div class="fig-head"><div class="tabs sim-tabs" role="tablist">${tabs}</div></div>
     <div class="plan sim-fig">${figure}</div>
+    ${stopList()}
     ${S.building?.sample?.custom && fig !== "drawing" ? `<p class="hint fig-note">${borrowedNote()}</p>` : ""}
     ${lifeChips(S.play)}
     ${impactLine}
@@ -1132,12 +1184,23 @@ function simBox(playing, shown) {
   </div>`;
 }
 
+// 対策で水を止めた場所を、図の印と同じ言葉で1行に（2026-11-07・24回目：対策後にどこで防いでいるかが分からないという指摘）。
+function stopList() {
+  if (S.measure === "none" || !S.play) return "";
+  const shape = planShape(S.building.sample);
+  const spots = [];
+  if (shape.slope) spots.push("地下スロープの入口に止水板");
+  spots.push("出入口・通用口に止水板", "ケーブル・配管の壁の穴を埋める");
+  if (S.measure === "full") spots.push("床置きの盤を高くする");
+  return `<p class="stop-list"><b>✔ 止めた所：</b>${spots.map((s) => `<span>${esc(s)}</span>`).join("")}</p>`;
+}
+
 function screenTwo() {
   const b = S.building;
   const playing = Boolean(S.timer);
   const shown = S.play > 0;
   return `<section class="s2">
-    <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
+    <p class="kicker">${esc(kicker())}</p>
     <h1 class="title">${esc(measureHeadline())}</h1>
     <p class="lead-why">${esc(S.measure === "none" ? titleLine() : MEASURE_GAIN[S.measure] || "")}</p>
     ${simBox(playing, shown)}
@@ -1215,10 +1278,10 @@ function screenThree() {
   const samplePlan = hasDrawing() ? `<div class="plan check-plan">${plan({ pins: pinsOf(steps()), small: true })}</div>${b.sample.custom ? `<p class="hint">${borrowedNote()}</p>` : ""}` : "";
   const figure = own ? (hasPlanImage ? drawingFigure() : drawingFigure(true) + samplePlan) : samplePlan;
   return `<section class="s3">
-    <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
+    <p class="kicker">${esc(kicker())}</p>
     <h1 class="title">${hasDrawing() ? CHECK_LEAD : CHECK_LEAD_NO_DRAWING}</h1>
     ${hasDrawing() ? progressLine(b, count) : ""}
-    ${hasDrawing() ? `<p class="hint">「未確認」は危険という意味ではありません。竣工図で確認した内容を反映すると判定が更新されます。</p>` : ""}
+    ${hasDrawing() && count ? `<p class="hint">「未確認」は危険という意味ではありません。竣工図で確認した内容を反映すると判定が更新されます。</p>` : ""}
     ${drawingQuestion()}
     ${hasDrawing() ? readCard() + reportBox() + cards : observeCards()}
     ${figure}
@@ -1453,7 +1516,11 @@ function readResult() {
     : applied ? `<p class="auto-applied">図面から読み取った${applied}件を反映しました。違う項目は下の設問で修正できます。<button type="button" class="option small" data-act="drop-floors">反映を取り消す</button></p>` : "";
   // 自動で入れたときは、サーバーの「ボタンで答えに入れます」の文は出さない。
   const message = S.autoApplied ? String(S.read.message || "").replace(" 部屋は、合っていればボタンで反映します。", "") : S.read.message || "";
-  return `<p class="hint">${esc(message)}</p>${proposals.length ? `<ul class="proposals">${proposals.map(line).join("")}</ul>` : ""}${buttons}${others.length ? `<details class="more read-more"><summary>ほかに読めた設備（${others.length}件）</summary><p class="read-others">${others.join("")}</p></details>` : ""}`;
+  const list = proposals.length ? `<ul class="proposals">${proposals.map(line).join("")}</ul>` : "";
+  const othersFold = others.length ? `<details class="more read-more"><summary>ほかに読めた設備（${others.length}件）</summary><p class="read-others">${others.join("")}</p></details>` : "";
+  // 全部入ったら、一覧は折りたたみ、緑の1行だけ表に残す（2026-11-07・24回目：文字量の指摘）。
+  if (!pending.length && applied) return `${buttons}<details class="more read-more"><summary>読み取った内容を見る（${applied}件）</summary><p class="hint">${esc(message)}</p>${list}</details>${othersFold}`;
+  return `<p class="hint">${esc(message)}</p>${list}${buttons}${othersFold}`;
 }
 
 // 読めた候補をまとめて答えに入れる（人が押したときだけ。2026-11-07・13回目）。取り消すで全部戻る。
@@ -1494,6 +1561,30 @@ async function setFact(key, value) {
 // 地図に重ねる層（上の深さの札と同じ想定。洪水は想定最大を先に）。なければ色のある層。
 
 // 画面1の①：結論1行＋国の地図2項目＋地形1行（判定表の行から。判定は変えない。2026-11-06 本人の指示・10回目：重複を1か所に）。
+function riskWords(mapHit, mapClear, rainHit, rainClear) {
+  if (mapHit && rainHit) return [["risk", "浸水リスクあり"], "国の地図の想定にも、線状降水帯で浸かる型にも当たる場所"];
+  if (mapHit) return [["risk", "浸水リスクあり"], "国の地図の想定に当たる場所"];
+  // 国の地図が「色なし」か「データなし」かで言い分ける（データなしを色なしと言わない。2026-11-07・15回目）。
+  if (rainHit) return [["risk", "浸水リスクあり"], mapClear ? "国の地図に色はないが、線状降水帯で浸かる型の土地" : "国の地図では色を確かめられないが、線状降水帯で浸かる型の土地"];
+  if (mapClear && rainClear) return [["clear", "国の地図にも、線状降水帯で浸かる型にも当たらない"], "今の根拠では色のない場所（現地は見ていません）"];
+  return [["unconfirmed", "浸水リスクは、まだ確かめられていない"], "データの取れていない項目があります"];
+}
+
+// A4 の立地は2行だけ（結論と、国の地図×地形の内訳。2026-11-07・24回目）。
+function placeTwoLines(lines) {
+  const by = Object.fromEntries(lines.map((line) => [line.key, line]));
+  const mapRows = ["flood", "surge", "inland"].map((key) => by[key]).filter(Boolean);
+  const mapHit = mapRows.some((line) => line.verdict === "risk");
+  const mapClear = mapRows.length && mapRows.every((line) => line.verdict === "clear");
+  const rain = by.rainband;
+  const [head, sub] = riskWords(mapHit, mapClear, rain?.verdict === "risk", rain?.verdict === "clear");
+  const word = (line) => !line ? "データなし" : line.verdict === "risk" ? (line.value || "色あり") : line.verdict === "clear" ? "色なし" : "データなし";
+  const map = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]].map(([name, line]) => `${name}：${word(line)}`).join("／");
+  const hits = (rain?.accent?.lines || []).filter((line) => line.hit === true).map((line) => line.name).join("・");
+  return `<p class="a4-place-head ${head[0]}"><b>${esc(head[1])}</b>${esc(sub)}</p>
+  <p class="a4-place-sub">国の地図：${esc(map)}　×　線状降水帯で浸かる型：${hits ? `当たる（${esc(hits)}）` : rain?.verdict === "clear" ? "当たらない" : "データなし"}</p>`;
+}
+
 function riskHead(lines, compact = false) {
   // 画面1の結論は「ハザードマップ（国の地図）× 線状降水帯で浸かる型」の掛け算（2026-11-07 本人の指示）。
   // どちらも事実（国の地図の色・国土地理院の数値・報道の実数）で、当たるかはサーバーの規則（rainband の行）。この画面では言葉を足さない。
@@ -1504,13 +1595,7 @@ function riskHead(lines, compact = false) {
   const rain = by.rainband;
   const rainHit = rain?.verdict === "risk";
   const rainClear = rain?.verdict === "clear";
-  let head, sub;
-  if (mapHit && rainHit) [head, sub] = [["risk", "浸水リスクあり"], "国の地図の想定にも、線状降水帯で浸かる型にも当たる場所"];
-  else if (mapHit) [head, sub] = [["risk", "浸水リスクあり"], "国の地図の想定に当たる場所"];
-  // 国の地図が「色なし」か「データなし」かで言い分ける（データなしを色なしと言わない。2026-11-07・15回目）。
-  else if (rainHit) [head, sub] = [["risk", "浸水リスクあり"], mapClear ? "国の地図に色はないが、線状降水帯で浸かる型の土地" : "国の地図では色を確かめられないが、線状降水帯で浸かる型の土地"];
-  else if (mapClear && rainClear) [head, sub] = [["clear", "国の地図にも、線状降水帯で浸かる型にも当たらない"], "今の根拠では色のない場所（現地は見ていません）"];
-  else [head, sub] = [["unconfirmed", "浸水リスクは、まだ確かめられていない"], "データの取れていない項目があります"];
+  const [head, sub] = riskWords(mapHit, mapClear, rainHit, rainClear);
   const mapWord = (line) => {
     if (!line) return "データなし";
     if (line.verdict === "risk") return line.value || line.conclusion || "色あり";
@@ -1700,7 +1785,7 @@ function drawingFigure(small = false) {
   if (!images.length) return "";
   const marks = ROOM_MARKS;
   const names = DRAWING_NAMES;
-  return images.map((image) => {
+  const one = (image) => {
     // ピンは①②③の部屋だけ（EPS・PS・MB などの細かい設備は立てない。図が読めなくなるため。2026-11-07・14回目）。
     const pins = (image.rooms || [])
       .filter((room) => marks[room.kind] && typeof room.x === "number" && typeof room.y === "number")
@@ -1708,7 +1793,10 @@ function drawingFigure(small = false) {
       .join("");
     // ピンがない画像（外観写真・系統図など）は「あなたの外観写真」のように名前だけ（2026-11-07・20回目）。
     return `<figure class="drawing${small ? " small" : ""}"><div class="d-box"><img src="${image.dataUrl}" alt="あなたの${esc(names[image.kind] || "図面")}"><div class="d-pins">${pins}</div></div><figcaption>あなたの${names[image.kind] || "図面"}${pins ? "（読めた部屋の位置にピン）" : ""}</figcaption></figure>`;
-  }).join("");
+  };
+  const figs = images.map(one).join("");
+  // 2枚以上は横に並べて縦の長さを抑える（2026-11-07・24回目）。
+  return images.length > 1 ? `<div class="drawings-row n${Math.min(images.length, 3)}">${figs}</div>` : figs;
 }
 
 // ---- 4 渡す ----
@@ -1865,10 +1953,9 @@ function boardDecisions(print = false) {
 }
 
 function a4Front(date) {
-  // 理事会に出すA4縦1枚（左右2段組み）。2026-11-07・22回目：文字を減らし、「無対策の復旧費」と「事前対策の費用（1戸あたり）」の比較を主役にする。
-  // 左：1 立地 → 2 図と止まる設備 → 3 費用の比較。右：4 クリティカル対策（0円の項目と理由は省く）→ 5 費用と補助 → 6 今日決めること。数字はサーバーの文のまま。
+  // 理事会に出すA4縦1枚。2026-11-07・24回目：やる気のない理事でも「何を判断するか」が一目で分かるように、
+  // 上に3つの数字（今のまま／事前対策／決めること）、左に図と止まる3札、右に「本日決めること」と費用の3行、立地は2行。対策の表と単価の表は画面3・費用タブに置く。
   const b = S.building;
-  const lines = placeLines();
   const units = Number(S.units) || 50;
   const fixed = [disclaimer() || "", ...SHEET_FIXED, ...(b.sample.custom ? [borrowedNote()] : [])];
   return `<div class="sheet a4-onepage">
@@ -1879,37 +1966,30 @@ function a4Front(date) {
       </div>
       <div class="a4-meta">作成日：${esc(date)}<br>戸数：${esc(units)}戸</div>
     </header>
+    ${a4Strip(units)}
     <div class="a4-grid">
       <div class="a4-col">
         <div class="a4-box">
-          <h2>1. 立地の浸水リスク（国の地図 × 地形）</h2>
-          ${riskHead(lines, true)}
-        </div>
-        <div class="a4-box">
-          <h2>2. 水の入り道と、止まる設備</h2>
+          <h2>どこから水が入り、何が止まるか（水位③：機械の部屋）</h2>
           <div class="a4-figs">
-            <div class="sheet-plan">${plan({ pins: pinsOf(steps()), small: true })}</div>
+            <div class="sheet-plan">${plan({ level: 3, small: true })}</div>
             <div class="sheet-plan">${sectionFigure(3, true)}</div>
           </div>
           ${lifeChips(3)}
         </div>
       </div>
       <div class="a4-col">
-        <div class="a4-box a4-compare-box">
-          <h2>3. 無対策と事前対策の費用の比較</h2>
-          ${a4Compare(units)}
-        </div>
-        <div class="a4-box">
-          <h2>4. この建物のクリティカル対策（優先順）</h2>
-          ${criticalBox(true)}
-        </div>
-        <div class="a4-box">
-          <h2>5. 対策の費用と補助の試算（組合の実質負担）</h2>
-          ${costTable(true)}
-        </div>
         <div class="a4-box a4-decide-box">
-          <h2>6. 本日の理事会で決めること</h2>
+          <h2>本日の理事会で決めること</h2>
           ${boardDecisions(true)}
+        </div>
+        <div class="a4-box">
+          <h2>費用と補助（組合の実質負担）</h2>
+          ${costSummary(units)}
+        </div>
+        <div class="a4-box a4-place-box">
+          <h2>立地（国の地図 × 地形）</h2>
+          ${placeTwoLines(placeLines())}
         </div>
       </div>
     </div>
@@ -1920,6 +2000,7 @@ function a4Front(date) {
 // 2026年8月の千葉豪雨の松戸市のマンションの例（復旧費・断水の期間）。出典を原文で確かめられるまで null（数字は裏取りのあるものだけ）。
 const MATSUDO_CASE = {
   text: "2026年8月の千葉豪雨で地下の電気室・受水槽が浸水した松戸市の10階建て・90戸のマンション（2003年分譲）では、修繕の見積もりが1億5000万〜2億円、共用部の電気の復旧に約2か月、断水とエレベーターの停止は10月下旬時点でも続いていました",
+  short: "2026年8月の千葉豪雨で地下の電気室・受水槽が浸水した松戸市の10階建て・90戸のマンションは、修繕の見積もり1億5000万〜2億円、断水とエレベーターの停止が10月下旬時点でも継続",
   source: "朝日れすかPLUS 2026/10/26・管理組合の発表 2026/10/13",
   url: "https://resuka.co.jp/townnews/2026/10/8491/",
 };
@@ -1927,23 +2008,37 @@ const MATSUDO_CASE = {
 // 松戸市の例を1行で（画面3の目安の下と、費用の欄に添える）。
 function matsudoLine(cls = "hint") {
   if (!MATSUDO_CASE) return "";
-  return `<p class="${cls}">${esc(MATSUDO_CASE.text)}（<a href="${esc(MATSUDO_CASE.url)}" target="_blank" rel="noopener">${esc(MATSUDO_CASE.source)}</a>）。</p>`;
+  return `<p class="${cls}">${esc(MATSUDO_CASE.short)}（<a href="${esc(MATSUDO_CASE.url)}" target="_blank" rel="noopener">${esc(MATSUDO_CASE.source)}</a>）。</p>`;
 }
 
-// A4 の主役：無対策で浸水したときの復旧費と、事前対策の費用（1戸あたり）を並べる。数字はサーバーの目安と費用の表のまま。
-function a4Compare(units) {
+// A4 の主役：今のまま浸水したときの復旧費／事前対策の費用（1戸あたり）／本日決める件数の3つの数字。数字はサーバーの目安と費用の表のまま。
+function a4Strip(units) {
   const b = S.building;
   const [lo, hi] = b.recovery_cost_yen || [];
   const totals = costTotals();
   const aid = subsidyGrant(totals);
   const net = Math.max(0, totals.total - (aid.grant || 0));
-  const per = units ? man(totals.total / units) : "";
-  const perNet = units && aid.grant ? man(net / units) : "";
-  const example = MATSUDO_CASE ? `<p class="cmp-sub">${esc(MATSUDO_CASE.text)}（<a href="${esc(MATSUDO_CASE.url)}" target="_blank" rel="noopener">${esc(MATSUDO_CASE.source)}</a>）</p>` : "";
-  return `<div class="a4-compare">
-    <div class="cmp no"><p class="cmp-head">無対策で機械室が浸水したとき</p><p class="cmp-big">${lo && hi ? `約${man(lo)}〜${man(hi)}` : "—"}</p><p class="cmp-sub">設備全損時の復旧費（一般的な目安）。${units && lo && hi ? `${units}戸なら1戸あたり約${man(lo / units)}〜${man(hi / units)}。` : ""}断水8日・トイレ11日の例（2019年・川崎市、建築設備技術者協会の調査）</p>${example}</div>
-    <div class="cmp yes"><p class="cmp-head">事前に対策したとき</p><p class="cmp-big">${man(totals.total)}${per ? `<small>（1戸あたり約${per}）</small>` : ""}</p><p class="cmp-sub">止水板・穴埋めなど、単価×個数の目安。${aid.grant ? `補助を使うと組合の負担は${man(net)}${perNet ? `（1戸あたり約${perNet}）` : ""}。` : ""}見積りに置き換えます。</p></div>
-  </div>`;
+  const per = units ? man(net / units) : "";
+  const items = boardItems();
+  const example = MATSUDO_CASE ? `<p class="a4-case">例：${esc(MATSUDO_CASE.short)}（<a href="${esc(MATSUDO_CASE.url)}" target="_blank" rel="noopener">${esc(MATSUDO_CASE.source)}</a>）</p>` : "";
+  return `<div class="a4-strip">
+    <div class="cmp no"><p class="cmp-head">今のまま浸水したら</p><p class="cmp-big">${lo && hi ? `約${man(lo)}〜${man(hi)}` : "—"}</p><p class="cmp-sub">設備全損時の復旧費の目安。断水8日・トイレ11日の例（2019年・川崎市）</p></div>
+    <div class="cmp yes"><p class="cmp-head">事前に対策したら</p><p class="cmp-big">${man(net)}<small>${per ? `1戸あたり約${per}` : ""}${aid.grant ? "（補助後）" : ""}</small></p><p class="cmp-sub">止水板と穴埋め。単価×個数の目安で、見積りに置き換えます</p></div>
+    <div class="cmp act"><p class="cmp-head">本日決めること</p><p class="cmp-big">${items.length}件<small>右の欄にチェック</small></p><p class="cmp-sub">理事会で決められる範囲の対策から</p></div>
+  </div>${example}`;
+}
+
+// A4 の費用は3行だけ（単価×個数の表は費用タブ）。
+function costSummary(units) {
+  const totals = costTotals();
+  const aid = subsidyGrant(totals);
+  const own = totals.total - aid.grant;
+  const label = aid.label ? aid.label.replace(/（.*$/, "") : "未調査";
+  return `<table class="a4-cost">
+    <tr><th>工事の目安（止水板・穴埋めなど ${totals.items.filter((i) => i.n > 0).length}項目、単価×個数）</th><td>${man(totals.total)}</td></tr>
+    <tr><th>補助：${esc(label)}${aid.known ? "（計算例）" : "（0円で計算）"}</th><td>− ${man(aid.grant)}</td></tr>
+    <tr class="sum"><th>組合の実質負担</th><td><b>${man(own)}</b>${units ? `<small>${units}戸で1戸あたり約${yen(own / units)}</small>` : ""}</td></tr>
+  </table>`;
 }
 
 function screenFour() {
@@ -2646,6 +2741,12 @@ screen.addEventListener("click", (event) => {
     const act = target.dataset.act;
     if (act === "see") seeBuilding();
     if (act === "play") (S.timer ? stopPlay() : startPlay());
+    if (act === "level-up" || act === "level-down") {
+      clearInterval(S.timer);
+      S.timer = 0;
+      S.play = Math.min(3, Math.max(1, (S.play || 0) + (act === "level-up" ? 1 : -1)));
+      render();
+    }
     if (act === "to3") go(3);
     if (act === "to4") go(4);
     if (act === "read-sample") readPlan(null);
