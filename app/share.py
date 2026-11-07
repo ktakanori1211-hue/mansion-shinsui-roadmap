@@ -15,6 +15,7 @@ from typing import Optional
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "shares")
 ALLOWED_DAYS = (7, 30, 90)
 MAX_CIPHERTEXT_CHARS = 4 * 1024 * 1024
+MAX_SHARES = 500  # 手元のサーバーの置き場。これを超えたら古い期限切れを消しても足りないので断る
 _ID = re.compile(r"^[0-9a-f]{32}$")
 _BASE64 = re.compile(r"^[A-Za-z0-9+/=]+$")
 
@@ -40,6 +41,8 @@ def create(body: dict, base: str = DATA_DIR, now: Optional[float] = None) -> dic
         raise ShareError("共有する内容が大きすぎます。")
     sweep(base, now)
     os.makedirs(base, exist_ok=True)
+    if len(os.listdir(base)) >= MAX_SHARES:
+        raise ShareError("共有の置き場がいっぱいです。期限の切れたものが消えるまでお待ちください。")
     share_id = secrets.token_hex(16)
     expires_at = now + days * 86400
     with open(_path(share_id, base), "w", encoding="utf-8") as handle:

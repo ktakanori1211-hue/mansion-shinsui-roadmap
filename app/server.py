@@ -50,6 +50,20 @@ def key_request_allowed(client_host: str, headers) -> bool:
     return (headers.get("Content-Type") or "").split(";")[0].strip() == "application/json"
 
 
+def post_allowed(headers) -> bool:
+    """すべての POST に、ほかのサイトから出せない形（application/json）を求め、Origin があれば localhost だけを受ける。
+
+    text/plain の単純な送信（他サイトの fetch）は Content-Type で断れ、application/json はブラウザが先に確認を求めるので届かない。
+    """
+    if (headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+        return False
+    origin = headers.get("Origin")
+    if origin is None:
+        return True
+    host = urllib.parse.urlparse(origin).hostname or ""
+    return urllib.parse.urlparse(origin).scheme == "http" and host in LOCAL_HOSTNAMES
+
+
 def build_state(label: str, longitude: float, latitude: float, basis: str, is_demo: bool) -> dict:
     reading = location.read_location(longitude, latitude)
     rows = judge.judge_location(reading, basis, records.find(label))
@@ -67,18 +81,29 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format, *args):
-        # 共有の番号・検索の言葉・住所と位置を記録に残さない（/api/location の問い合わせには住所が入る）。
-        if args and re.search(r"/api/(share|search|reverse|location)", str(args[0])):
+        # 共有の番号・検索の言葉・住所と位置を記録に残さない（/api/location の問い合わせには住所が入る。/?open= は共有の番号）。
+        if args and re.search(r"/api/(share|search|reverse|location)|[?&]open=", str(args[0])):
             return
         super().log_message(format, *args)
 
+    def list_directory(self, path):
+        # フォルダの一覧は出さない（公開前の点検 2026-11-07）。
+        self.send_error(404, "Not Found")
+        return None
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/start.html":
+        if parsed.path.startswith("/api/"):
+            self._guarded(parsed.path, lambda: self._get_api(parsed))
+        elif parsed.path == "/start.html":
             # 画面は index.html の1本（2026-11-05 一本化）。前のかんたん版の入口も同じ画面を出す。
             self.path = "/index.html" + (f"?{parsed.query}" if parsed.query else "")
             super().do_GET()
-        elif parsed.path == "/api/location":
+        else:
+            super().do_GET()
+
+    def _get_api(self, parsed):
+        if parsed.path == "/api/location":
             self._location(urllib.parse.parse_qs(parsed.query))
         elif parsed.path == "/api/demo-points":
             self._send_json(
@@ -101,7 +126,18 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self._send_json(410, {"error": "このリンクは期限が過ぎたか、見つかりません。"})
         else:
-            super().do_GET()
+            self._send_json(404, {"error": "見つかりません。"})
+
+    def _guarded(self, path: str, handler) -> None:
+        """形の違う入力や想定外の失敗を、値や行番号を出さない短い JSON で返す（公開前の点検 2026-11-07）。"""
+        try:
+            handler()
+        except (TypeError, ValueError, KeyError, AttributeError, IndexError) as error:
+            self.log_message("input error on %s: %s", path, type(error).__name__)
+            self._send_json(400, {"error": "送られた内容の形が違います。"})
+        except Exception as error:  # noqa: BLE001 - 画面には理由を出さず、種類だけを記録する
+            self.log_message("server error on %s: %s", path, type(error).__name__)
+            self._send_json(500, {"error": "処理できませんでした。時間をおいてもう一度お試しください。"})
 
     def _location(self, query: dict):
         demo = DEMO_POINTS.get(query.get("demo", [""])[0])
@@ -142,7 +178,16 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/key" and not key_request_allowed(self.client_address[0], self.headers):
             self._send_json(403, {"error": "キーは、このパソコンで localhost の画面からだけ保存できます。"})
             return
-        length = int(self.headers.get("Content-Length") or 0)
+        if not post_allowed(self.headers):
+            self._send_json(403, {"error": "この画面からの送信だけを受けます。"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0:
+            self._send_json(400, {"error": "送られた内容の長さを読めませんでした。"})
+            return
         if length > MAX_BODY_BYTES:
             self._send_json(413, {"error": "ファイルが大きすぎます。32MB 以下にしてください。"})
             return
@@ -151,6 +196,12 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"error": "送られた内容を読めませんでした。"})
             return
+        if not isinstance(body, dict):
+            self._send_json(400, {"error": "送られた内容の形が違います。"})
+            return
+        self._guarded(path, lambda: self._post_api(path, body))
+
+    def _post_api(self, path: str, body: dict) -> None:
         if path == "/api/key":
             try:
                 claude.save_key(body.get("key"))

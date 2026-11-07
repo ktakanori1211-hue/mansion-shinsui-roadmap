@@ -592,7 +592,7 @@ class BuildingFactsTest(unittest.TestCase):
         from app import claude, search
 
         with mock.patch.object(claude, "available", return_value=available), mock.patch.object(claude, "create", return_value=self.answer(data)) as create:
-            return search.building_facts("みどりハイツ", "千葉県千葉市美浜区"), create
+            return search.building_facts("みどりハイツ", "千葉県市川市八幡"), create
 
     def test_only_matched_pages_with_a_source_are_used(self):
         good = {"building": "みどりハイツ", "floors_above": 11, "floors_below": 1, "source_url": "https://example.com/a", "source_title": "物件の案内", "quote": "地上11階地下1階", "matched": True}

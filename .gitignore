@@ -4,3 +4,8 @@ __pycache__/
 .claude/
 data/
 data/cache/
+# ローカルの秘密設定は追跡しない（値が空の .env.example だけ共有する）
+.env
+.env.*
+!.env.example
+.anthropic_api_key*
