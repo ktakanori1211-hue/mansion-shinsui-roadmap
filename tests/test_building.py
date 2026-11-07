@@ -1169,7 +1169,8 @@ class TokenBudgetTest(unittest.TestCase):
         self.assertEqual(self.budget(lambda: assistant.rephrase_pins([{"key": "ア", "how_water": "穴"}], {})), (1024, "low"))
 
     def test_document_uses(self):
-        self.assertEqual(self.budget(lambda: assistant.read_plan({"data": "eA==", "media_type": "image/png"})), (3000, "medium"))
+        # 図面の読み取りだけ effort high（古い図面の小さい字のため。2026-11-07・20回目）。
+        self.assertEqual(self.budget(lambda: assistant.read_plan({"data": "eA==", "media_type": "image/png"})), (3000, "high"))
         self.assertEqual(self.budget(lambda: assistant.read_report("点検は済みました。")), (3000, "medium"))
         self.assertEqual(self.budget(lambda: assistant.polish([{"key": "a", "text": "文です。"}], {})), (3000, "medium"))
         self.assertEqual(self.budget(lambda: assistant.consult({"sample_id": "a", "label": "x"})), (3000, "medium"))

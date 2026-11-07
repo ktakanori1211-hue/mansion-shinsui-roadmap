@@ -183,6 +183,22 @@ class ChatTest(unittest.TestCase):
             body = block(js, name, "\n}\n")
             self.assertEqual(body.count("<details"), 1, name)
 
+    def test_photo_and_web_hints_do_not_decide_the_building(self):
+        # 2026-11-07・20回目：外観写真から自動で入れるのは地上階数と（図面がないときの）スロープだけ。Web の地下駐車場は見たことの手がかりだけ。貼り付けは文字の欄を邪魔しない。
+        js = read("start.js")
+        self.assertIn('photo: "外観写真"', js)
+        read_fn = block(js, "async function readPlan(", "\n}\n")
+        self.assertIn('const isPhoto = got.drawing?.kind === "photo";', read_fn)
+        self.assertIn('if (isPhoto && !["slope", "vent"].includes(key)) return;', read_fn)
+        self.assertIn('auto: !isPhoto || (key === "slope" && S.drawing === "no")', read_fn)
+        self.assertIn("floors_below: null, pit: null", read_fn)
+        hints = block(js, "function adoptHints(", "\n}\n")
+        self.assertIn("f?.basement_parking !== true || S.obs.slope", hints)
+        self.assertNotIn("S.choices", hints)
+        self.assertIn('target.tagName === "TEXTAREA" || target.tagName === "INPUT"', js)
+        self.assertIn('document.addEventListener("paste"', js)
+        self.assertIn('${pins ? "（読めた部屋の位置にピン）" : ""}', block(js, "function drawingFigure(", "\n}\n"))
+
     def test_screen_does_not_block_questions(self):
         # 原則4：遮断はサーバーの固定の文だけ。画面の側で質問を塞がない。
         js = read("start.js")
@@ -427,8 +443,9 @@ class NoDrawingTest(unittest.TestCase):
         self.assertIn("${drawingQuestion()}", three)
         # 2026-11-07・13回目：図面があれば読み取りの箱と3問、なければ見て答える3問（同じ札の形）。図は別に、自分の図面があればそれだけ。
         self.assertIn("hasDrawing() ? readCard() + reportBox() + cards : observeCards()", three)
-        self.assertIn('const own = (S.drawingImages || []).length > 0;', three)
-        self.assertIn('own ? drawingFigure() : hasDrawing() ?', three)
+        self.assertIn('const own = images.length > 0;', three)
+        # 平面図以外の画像だけのときは、小さく出して見本の平面図も残す（2026-11-07・20回目）。
+        self.assertIn('const figure = own ? (hasPlanImage ? drawingFigure() : drawingFigure(true) + samplePlan) : samplePlan;', three)
         self.assertNotIn('class="sticky"', three)
         # 見て答えたことは、確かめた印（confirmed）にせず、聞き取り（statements）として送る。
         observe = block(js, "async function setObservation(", "\n}\n")
@@ -762,8 +779,10 @@ class ShrinkPhotoTest(unittest.TestCase):
 
     def test_shrink_keeps_text_readable_and_falls_back(self):
         js = read("start.js")
-        self.assertIn("const SHRINK_EDGE = 2000;", js)
-        self.assertIn("const SHRINK_QUALITIES = [0.85, 0.75, 0.65];", js)
+        # 2026-11-07・20回目：古い紙の図面・スマホ写真の小さい字のため、長辺 2,560px・3.5MB・高めの品質。
+        self.assertIn("const SHRINK_EDGE = 2560;", js)
+        self.assertIn("const SHRINK_QUALITIES = [0.92, 0.85, 0.78];", js)
+        self.assertIn("const SHRINK_TARGET_BYTES = Math.round(3.5 * 1024 * 1024);", js)
         shrink = block(js, "async function shrinkImage(file)", "\n}\n")
         self.assertIn("Math.min(1, SHRINK_EDGE / Math.max(bitmap.width, bitmap.height))", shrink)
         self.assertIn('imageOrientation: "from-image"', shrink)
@@ -905,7 +924,20 @@ class SecondReviewTest(unittest.TestCase):
         self.assertEqual(samples.region_of("ブリリアタワー東京, 蔵前橋通り, 太平四丁目, 太平, 墨田区, 東京, 130-0012, 日本"), "tokyo")
         self.assertEqual(samples.region_of("千葉市 幸町2丁目"), "chiba")
         self.assertEqual(samples.region_of("千葉県市川市八幡一丁目"), "ichikawa")
-        self.assertEqual(samples.region_of("千葉県船橋市本町"), "searched")
+        # 2026-11-07・20回目：千葉県は制度を確かめた6市以外の48市町村を全部「探した範囲では見つからなかった」に入れ、県の動きを添える。
+        self.assertEqual(samples.region_of("千葉県船橋市本町"), "searched_chiba")
+        for city in ("四街道市", "香取市", "東金市", "長生村", "鋸南町", "大網白里市"):
+            self.assertEqual(samples.region_of(f"千葉県{city}"), "searched_chiba", city)
+        self.assertEqual(len([c for p, cities in samples.SEARCHED_NOT_FOUND if p == "千葉県" for c in cities]), 48)
+        self.assertEqual(samples.region_of("千葉県我孫子市"), "abiko")
+        self.assertIn("pref_note", samples.SUBSIDIES["searched_chiba"])
+        self.assertIn("2026年9月24日", samples.CHIBA_PREF_NOTE["text"])
+        self.assertIn("9月11日", samples.CHIBA_PREF_NOTE["text"])
+        self.assertTrue(all(u["url"].startswith("https://www.pref.chiba.lg.jp/") for u in samples.CHIBA_PREF_NOTE["urls"]))
+        abiko = next(item for _p, _c, key, item in samples.MUNICIPAL_SUBSIDIES if key == "abiko")
+        self.assertEqual(abiko["url"], "https://www.city.abiko.chiba.jp/anshin/bousai/bousaijyoseikin/shinsuiboushi.html")
+        self.assertTrue(any("配管のコーキング及びモルタル充填工事" in line for line in abiko["cautions"]))
+        self.assertIn("${prefNote(aid)}", block(read("start.js"), "function placeAid()", "\n}\n"))
         self.assertEqual(samples.region_of("神奈川県平塚市"), "hiratsuka")
         # 市川市は「10万円×戸数」の上限がある（要綱第6条）。管理組合可と原文にない市は計算例を出さない。
         self.assertEqual(samples.SUBSIDIES["ichikawa"]["covers"]["plate"]["per_unit"], 100000)
@@ -918,7 +950,7 @@ class SecondReviewTest(unittest.TestCase):
         self.assertIn("補助がないという意味ではありません", samples.SUBSIDIES["none"]["rate_label"])
         for _pref, _city, key, item in samples.MUNICIPAL_SUBSIDIES:
             self.assertTrue(item["url"].startswith("https://"), key)
-            self.assertEqual(item["checked"], "2026-11-06", key)
+            self.assertIn(item["checked"], ("2026-11-06", "2026-11-07"), key)  # 我孫子市は 11/7 に公式ページで確かめ直した
         # 簡易型を対象外とする宇都宮市は、置くだけの止水板に計算例を出さない。
         self.assertNotIn("plate", samples.SUBSIDIES["utsunomiya"]["covers"])
         js = read("start.js")

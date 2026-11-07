@@ -743,6 +743,7 @@ async function findFacts(given) {
     if (S.facts?.found) {
       applyFloors(S.facts.found.floors_above, S.facts.found.floors_below, "web");
       adoptUnits(S.facts.found);
+      adoptHints(S.facts.found);
     }
   } catch (error) {
     S.facts = { found: null, message: error.message };
@@ -755,9 +756,19 @@ async function findFacts(given) {
   if (!S.facts?.found && S.place && !S.sampleId && !S.at) await findBuildingAt();
 }
 
-// Web で読めた総戸数・築年の文（表示だけ。判定には使わない）。
+// Web で読めた総戸数・築年と、設備の手がかり（表示だけ。判定には使わない）。
 function unitsBuiltWords(f) {
-  return [f?.units ? `${f.units}戸` : "", f?.built_year ? `${f.built_year}年築` : ""].filter(Boolean).join("・");
+  const parking = f?.parking ? `駐車場 ${f.parking}` : "";
+  const basementParking = f?.basement_parking === true ? "地下駐車場あり" : f?.basement_parking === false ? "地下駐車場なし" : "";
+  const water = f?.water_supply ? `給水 ${f.water_supply}` : "";
+  return [f?.units ? `${f.units}戸` : "", f?.built_year ? `${f.built_year}年築` : "", parking, basementParking, water].filter(Boolean).join("・");
+}
+
+// 物件概要に「地下駐車場」などの明記があるときだけ、図面がない人の「地下スロープがあるか」の手がかりに入れる（見たことと同じ扱い。確定にはしない。取り消すで戻る）。
+function adoptHints(f) {
+  if (f?.basement_parking !== true || S.obs.slope) return;
+  S.obs.slope = "yes";
+  S.hintsFrom = "web";
 }
 
 // Web で読めた総戸数を、費用の1戸あたりに使う（手で入れた戸数は上書きしない。取り消すで戻る。2026-11-07・19回目）。
@@ -783,6 +794,7 @@ function useFacts() {
   if (!f) return;
   applyFloors(f.floors_above, f.floors_below, "web");
   adoptUnits(f);
+  adoptHints(f);
   render();
 }
 
@@ -798,6 +810,10 @@ function dropFloors() {
   if (S.unitsFrom === "web") {
     S.units = "";
     S.unitsFrom = "";
+  }
+  if (S.hintsFrom === "web") {
+    delete S.obs.slope;
+    S.hintsFrom = "";
   }
   S.floorsApplied = null;
   if (S.building) loadBuilding().then(render);
@@ -905,6 +921,7 @@ function answerBuilding(answer) {
     S.query = S.at.found.building || S.query;
     applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web");
     adoptUnits(S.at.found);
+    adoptHints(S.at.found);
   }
   render();
 }
@@ -1148,8 +1165,12 @@ function screenThree() {
     </div>`;
   }).join("");
   // 自分の図面があれば見本の平面図は出さない。見本を出すときも貼りつけず（sticky なし）、高さを抑える。
-  const own = (S.drawingImages || []).length > 0;
-  const figure = own ? drawingFigure() : hasDrawing() ? `<div class="plan check-plan">${plan({ pins: pinsOf(steps()), small: true })}</div>${b.sample.custom ? `<p class="hint">${borrowedNote()}</p>` : ""}` : "";
+  // 平面図を入れたときはその画像だけ。断面図・系統図・外観写真だけのときは、小さく出して見本の平面図も残す（部屋のイメージのため。2026-11-07・20回目）。
+  const images = S.drawingImages || [];
+  const own = images.length > 0;
+  const hasPlanImage = images.some((img) => img.kind === "plan" || img.kind === "site_plan");
+  const samplePlan = hasDrawing() ? `<div class="plan check-plan">${plan({ pins: pinsOf(steps()), small: true })}</div>${b.sample.custom ? `<p class="hint">${borrowedNote()}</p>` : ""}` : "";
+  const figure = own ? (hasPlanImage ? drawingFigure() : drawingFigure(true) + samplePlan) : samplePlan;
   return `<section class="s3">
     <p class="kicker">${esc(b.sample.custom ? townLabel(S.place.site.label) : where())}</p>
     <h1 class="title">${hasDrawing() ? CHECK_LEAD : CHECK_LEAD_NO_DRAWING}</h1>
@@ -1239,7 +1260,7 @@ function readCard() {
         <label class="option file">図面の写真・PDFを選ぶ<input type="file" id="plan-file" accept="image/*,application/pdf" multiple></label>
         ${S.sampleId ? `<button type="button" class="option" data-act="read-sample">見本の図面で試す</button>` : ""}
       </div>
-      ${before ? `<p class="hint">平面図・断面図・配置図・電気設備図（単線結線図）・給排水設備図・外構図。複数可、1枚32MBまで。${READ_NOTICE}</p>` : ""}
+      ${before ? `<p class="hint">平面図・断面図・配置図・設備図・外構図・外観写真。複数可。Cmd+V の貼り付けでも読めます。${READ_NOTICE}</p>` : ""}
       ${readResult()}
     </div>`;
 }
@@ -1332,7 +1353,7 @@ const FACT_WORDS = {
   vent: { name: "足元の換気口", words: { true: "あり", false: "なし" }, answer: (v) => ["vent", v ? "yes" : "no"] },
   pipe_opening: { name: "管路口（壁の貫通穴）", words: { true: "あり", false: "なし" }, answer: (v) => ["pipe_opening", v ? "yes" : "no"] },
 };
-const DRAWING_NAMES = { plan: "平面図", site_plan: "配置図", section: "断面図", elevation: "立面図", electrical: "電気設備図・単線結線図", plumbing: "給排水設備図", exterior: "外構図", other: "図面" };
+const DRAWING_NAMES = { plan: "平面図", site_plan: "配置図", section: "断面図", elevation: "立面図", electrical: "電気設備図・単線結線図", plumbing: "給排水設備図", exterior: "外構図", photo: "外観写真", other: "図面" };
 const ROOM_MARKS = { pump: "①", elec: "②", panel_room: "②", tr: "③" };
 
 // 読めた候補の一覧（部屋の階 → 階数 → そのほかの項目）。applied は、今の答えに入っているか。
@@ -1360,7 +1381,7 @@ function readProposals() {
   Object.entries(read.facts || {}).forEach(([key, fact]) => {
     const spec = FACT_WORDS[key];
     if (!spec) return;
-    const answer = spec.answer(fact.value);
+    const answer = fact.auto === false ? null : spec.answer(fact.value);
     list.push({ id: `fact:${key}`, key, value: fact.value, answer, name: spec.name, text: `${spec.words[String(fact.value)] || ""}（${DRAWING_NAMES[fact.kind] || "図面"}）`, applied: answer ? S.extra[answer[0]] === answer[1] : null });
   });
   return list;
@@ -1642,7 +1663,8 @@ function drawingFigure(small = false) {
       .filter((room) => marks[room.kind] && typeof room.x === "number" && typeof room.y === "number")
       .map((room) => `<span class="d-pin${marks[room.kind] ? " main" : ""}" style="left:${(room.x * 100).toFixed(1)}%;top:${(room.y * 100).toFixed(1)}%" title="${esc(room.word || room.name || "")}">${marks[room.kind] || esc((room.word || "").slice(0, 3))}</span>`)
       .join("");
-    return `<figure class="drawing${small ? " small" : ""}"><div class="d-box"><img src="${image.dataUrl}" alt="あなたの図面"><div class="d-pins">${pins}</div></div><figcaption>あなたの${names[image.kind] || "図面"}（読めた部屋の位置にピン）</figcaption></figure>`;
+    // ピンがない画像（外観写真・系統図など）は「あなたの外観写真」のように名前だけ（2026-11-07・20回目）。
+    return `<figure class="drawing${small ? " small" : ""}"><div class="d-box"><img src="${image.dataUrl}" alt="あなたの${esc(names[image.kind] || "図面")}"><div class="d-pins">${pins}</div></div><figcaption>あなたの${names[image.kind] || "図面"}${pins ? "（読めた部屋の位置にピン）" : ""}</figcaption></figure>`;
   }).join("");
 }
 
@@ -1732,9 +1754,17 @@ function costTable(print = false) {
 // 補助の出典の1行（表の中に補助の額が入っているので、説明の箱は出さない。2026-11-06 本人の指示）。
 function aidSource() {
   const aid = subsidy();
-  if (!aid.url) return `<p class="hint">${esc(aid.label || "")}。${esc(aid.rate_label || "")}</p>`;
+  if (!aid.url) return `<p class="hint">${esc(aid.label || "")}。${esc(aid.rate_label || "")}</p>${prefNote(aid)}`;
   const cautions = (aid.cautions || []).slice(0, 2).map((line) => `<li>${esc(line)}</li>`).join("");
   return `<p class="hint">使える条件は市に確かめます${cautions ? `：<ul class="aid-cautions">${cautions}</ul>` : "。"}出典：<a href="${esc(aid.url)}" target="_blank" rel="noopener">${esc(aid.label.replace(/（.*$/, ""))}の公式の案内</a>（${esc(aid.checked || "")} 確認）。計算例で、交付を約束するものではありません。</p>`;
+}
+
+// 県の動き（千葉県内で補助が見つかっていない市町村に添える。サーバーの文と出典のまま）。
+function prefNote(aid) {
+  const note = aid?.pref_note;
+  if (!note) return "";
+  const links = (note.urls || []).map((u) => `<a href="${esc(u.url)}" target="_blank" rel="noopener">${esc(u.title)}</a>`).join("／");
+  return `<small class="pref-note">${esc(note.text)}${links ? `（${links}）` : ""}</small>`;
 }
 
 // 画面1：場所を選んだらすぐ、この市区町村の補助を出す（2026-11-06 本人の指摘「マンション名から即座に」）。
@@ -1762,7 +1792,7 @@ function placeAid() {
   if (!aid) return "";
   const town = (aid.label || "").replace(/（.*$/, "");
   const rule = aidRule(aid);
-  if (!rule) return `<div class="place-aid"><p><b>補助</b>${esc(aid.label)}</p><small>${esc(aid.rate_label)}</small></div>`;
+  if (!rule) return `<div class="place-aid"><p><b>補助</b>${esc(aid.label)}</p><small>${esc(aid.rate_label)}</small>${prefNote(aid)}</div>`;
   const example = aidExample(aid, 3000000);
   // 「300万円の1/2なのに225万円？」とならないよう、上限額を率のすぐ後ろに入れる（2026-11-06 本人の指示）。
   return `<div class="place-aid win"><p class="win-head">対策するなら</p>
@@ -2123,6 +2153,7 @@ async function choosePlace(params, sampleId, demoId) {
     S.documentRead = false;
     S.consult = null;
     S.unitsFrom = "";
+    S.hintsFrom = "";
     S.drawingImages = [];
     S.fig = "plan";
     S.reached = 1;
@@ -2266,9 +2297,10 @@ function fileProblem(file) {
 // 長辺を 2000px 以下にし（それ以下なら等倍のまま）、JPEG（品質0.85）にする。部屋の名前の字が読める解像度は保つ。
 // 1MB を超えたら、品質だけを少しずつ下げる（0.75 → 0.65）。寸法は下げない。
 // API の画像の上限は1枚 10MB（base64）で、モデルの元の解像度は長辺 2,576px（Claude の Vision の資料、2026-11-05 に確認）。
-const SHRINK_EDGE = 2000;
-const SHRINK_QUALITIES = [0.85, 0.75, 0.65];
-const SHRINK_TARGET_BYTES = 1024 * 1024;
+// 2026-11-07・20回目：古い紙の図面やスマホ写真の小さい字が潰れないよう、長辺 2,560px・3.5MB まで、品質も高めに。
+const SHRINK_EDGE = 2560;
+const SHRINK_QUALITIES = [0.92, 0.85, 0.78];
+const SHRINK_TARGET_BYTES = Math.round(3.5 * 1024 * 1024);
 
 async function shrinkImage(file) {
   try {
@@ -2336,7 +2368,8 @@ async function readPlan(files) {
       const got = await postJSON("/api/plan", body);
       merged.mode = got.mode || merged.mode;
       merged.pins = got.pins?.length ? got.pins : merged.pins;
-      (got.rooms || []).forEach((room) => {
+      const isPhoto = got.drawing?.kind === "photo";
+      (isPhoto ? [] : got.rooms || []).forEach((room) => {
         const key = `${room.kind}:${room.floor}:${room.word}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -2345,12 +2378,17 @@ async function readPlan(files) {
       });
       merged.unreadable.push(...(got.unreadable || []));
       // 階数は断面図・立面図から読めた1枚を採る（平面図からは読めない）。
-      if (got.drawing?.floors_above && !merged.drawing?.floors_above) merged.drawing = got.drawing;
+      // 外観写真の階数は、図面から読めていないときだけ使う（地下の階数は外からは分からないので使わない）。
+      if (isPhoto && got.drawing?.floors_above && !merged.drawing?.floors_above) merged.drawing = { ...got.drawing, floors_below: null, pit: null };
+      else if (!isPhoto && got.drawing?.floors_above && !merged.drawing?.floors_above) merged.drawing = got.drawing;
       else if (!merged.drawing) merged.drawing = got.drawing || null;
       // 引込み・受電・盤・放流先などは、図面に明記があった最初の1枚の値を採る（どの図面から読めたかを添える）。
+      // 外観写真からは、スロープ（図面がないときだけ）と換気口・階段の段数を見せるが、自動で答えに入れるのはスロープだけ。
       Object.keys(FACT_WORDS).forEach((key) => {
         const value = got.drawing?.[key];
-        if (value !== null && value !== undefined && !(key in merged.facts)) merged.facts[key] = { value, kind: got.drawing.kind };
+        if (value === null || value === undefined || key in merged.facts) return;
+        if (isPhoto && !["slope", "vent"].includes(key)) return;
+        merged.facts[key] = { value, kind: got.drawing.kind, auto: !isPhoto || (key === "slope" && S.drawing === "no") };
       });
       // 写真はブラウザの中にだけ残し、画面2・3とA4に「あなたの図面」として出す（サーバーには保存しない）。
       if (file && file.type.startsWith("image/")) S.drawingImages.push({ dataUrl, kind: got.drawing?.kind || "other", rooms: got.rooms || [] });
@@ -2913,6 +2951,17 @@ document.getElementById("chat-toggle").addEventListener("click", () => {
 document.getElementById("chat-close").addEventListener("click", () => {
   document.getElementById("chat").hidden = true;
   document.getElementById("chat-toggle").hidden = false;
+});
+
+// 画面2では、図面や写真を Cmd+V で貼り付けても読める（2026-11-07・20回目）。文字の貼り付け（報告書の欄・入力欄）は邪魔しない。
+document.addEventListener("paste", (event) => {
+  if (S.screen !== 2 || !S.building || !hasDrawing()) return;
+  const target = event.target;
+  if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable)) return;
+  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+  if (!files.length) return;
+  event.preventDefault();
+  readPlan(files);
 });
 
 // ワンクリックの質問（2026-11-07・19回目）。押すと入力欄に入れて、そのまま送る。3つ目は AI を通さず安全基準の案内になる。

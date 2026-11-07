@@ -514,7 +514,7 @@ class DrawingReadTest(unittest.TestCase):
             set(props["drawing"]["required"]),
             {"kind", "floors_above", "floors_below", "pit", "entrance_steps", "floor_shown", "feed", "hv", "panel_mount", "drain_outlet", "check_valve", "rain_basin", "slope", "vent", "pipe_opening"},
         )
-        self.assertEqual(set(props["drawing"]["properties"]["kind"]["enum"]), {"plan", "site_plan", "section", "elevation", "electrical", "plumbing", "exterior", "other"})
+        self.assertEqual(set(props["drawing"]["properties"]["kind"]["enum"]), {"plan", "site_plan", "section", "elevation", "electrical", "plumbing", "exterior", "photo", "other"})
         for word in ("EPS", "PS", "MB", "断面図", "Z1", "通り芯", "屋上", "単線結線図", "給排水衛生設備図", "外構図", "逆止弁", "合流式", "ハンドホール", "架空", "床置き", "壁掛け", "管路口"):
             self.assertIn(word, assistant.SYSTEM_PLAN)
         # 明記のないものは null のまま（false にしない）。
@@ -603,6 +603,12 @@ class DrawingReadTest(unittest.TestCase):
         self.assertIn("applied.extra = applied.extra || [];", js)
         from app import assistant
         self.assertIn("東京電力の借室（tr）ではありません", assistant.SYSTEM_PLAN)
+        # 2026-11-07・20回目：外観写真の種類と、古い図面の部屋の名前。読み取りは effort high。
+        self.assertEqual(assistant.DRAWING_KINDS["photo"], "外観写真")
+        self.assertIn("外観からは決めず null", assistant.SYSTEM_PLAN)
+        self.assertIn('effort="high"', (ROOT / "app" / "assistant.py").read_text(encoding="utf-8"))
+        for word, kind in (("強電室", "elec"), ("特高電気室", "elec"), ("電気機械室", "elec"), ("東電室", "tr"), ("トランス室", "tr"), ("供給用変圧器室", "tr"), ("分電盤室", "panel_room"), ("主幹盤室", "panel_room"), ("低圧盤室", "panel_room"), ("給水機械室", "pump"), ("加圧ポンプ室", "pump"), ("自家発室", "gen"), ("非常電源室", "gen")):
+            self.assertEqual(samples.room_kind(word), kind, word)
         self.assertIn('"HH（未確認）"', (ROOT / "web" / "cad.js").read_text(encoding="utf-8"))
 
     def test_slope_answer_switches_the_plate_measure(self):
@@ -633,6 +639,11 @@ class DrawingReadTest(unittest.TestCase):
         for prompt in (search.SYSTEM_FACTS, search.SYSTEM_AT):
             self.assertIn('"units"', prompt)
             self.assertIn("推測しません", prompt)
+            self.assertIn("地下駐車場", prompt)
+        hinted = search._valid_facts({"building": "X", "floors_above": 10, "parking": "地下", "basement_parking": True, "water_supply": "受水槽", "matched": True, "source_url": "https://e.x/"})
+        self.assertEqual((hinted["parking"], hinted["basement_parking"], hinted["water_supply"]), ("地下", True, "受水槽"))
+        loose = search._valid_facts({"building": "X", "floors_above": 10, "parking": "屋上", "basement_parking": "yes", "water_supply": "井戸", "matched": True, "source_url": "https://e.x/"})
+        self.assertEqual((loose["parking"], loose["basement_parking"], loose["water_supply"]), (None, None, None))
         for word in ("分譲マンション", "番地まで", "記憶だけで答えません", "matched"):
             self.assertIn(word, search.SYSTEM_AT)
         server = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
