@@ -722,7 +722,7 @@ function factsBox() {
   return `<details class="facts"${openNow ? " open" : ""}><summary>建物名から階数を探す</summary>
     <label class="facts-name">建物名<input id="facts-name" type="text" autocomplete="off" value="${esc(name)}" placeholder="〇〇マンション"></label>
     <button type="button" class="option" data-act="facts"${S.factsBusy ? " disabled" : ""}>Web で階数を探す</button>
-    <p class="hint">押すと、建物名と所在地を Anthropic の API に送り、Web を検索します。</p>
+    <p class="hint">押すと、建物名と所在地から階数の公表情報を検索します（※検索には Anthropic API を使用します）。</p>
     ${result}
   </details>`;
 }
@@ -1207,7 +1207,7 @@ async function setObservation(key, value) {
 }
 
 // 図面を読むときの、送る前の明示（what-063）。
-const READ_NOTICE = "選んだ図面は、Anthropic の API に送って読みます（APIキーがないときは送らず、見本の答えを出します）。";
+const READ_NOTICE = "選んだ図面から部屋や設備の候補を読み取ります（※解析には Anthropic API を使用します。キーがないときは送らず、見本の答えを出します）。";
 
 function readCard() {
   // 選ぶ前は説明を1行だけ。読んだあとは候補と「すべて入れる」（2026-11-07・13回目）。
@@ -2679,10 +2679,10 @@ document.getElementById("key-form").addEventListener("submit", async (event) => 
 
 // 送る前に、Anthropic の API を通るかを出す（F-038）。表示を替えるだけで API は呼ばない。
 const CHAT_ROUTE_TEXT = {
-  claude: "送った質問と、この画面の住所・答え・判定は Anthropic の API を通ります。図面と書類の中身は送りません。",
-  none: "AI を通さず、説明カードで答えます",
+  claude: "※この画面の建物の状況と裏取り済みの事実をもとに答えます（送った質問と住所・答え・判定は Anthropic API を通ります。図面と書類の中身は送りません）。",
+  none: "AI を通さず、解説カードで答えます",
 };
-const SOURCE_NAMES = { claude: "Claude", fixed: "固定の文（AIを通していません）", fallback: "説明カード（AIを通していません）" };
+const SOURCE_NAMES = { claude: "自動応答（Claude）", fixed: "安全基準に基づく案内（即時回答）", fallback: "解説カードの案内" };
 const chatHistory = [];
 let chatWaiting = null;
 

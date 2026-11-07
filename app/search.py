@@ -331,7 +331,7 @@ def search(query: str) -> dict:
         hints = {key: inferred[key] for key in ("floors", "built_year") if inferred.get(key)}
         found = _gsi(inferred["address"])
         if found:
-            source = "入力の文と国土地理院" if inferred.get("from_input") else "Claude の Web 検索と国土地理院"
+            source = "入力の文と国土地理院" if inferred.get("from_input") else "Web公表情報と国土地理院"
             return {"query": query, "candidates": [{**c, "source": source} for c in found], "message": _inferred_message(query, inferred), "hints": hints}
 
     if inferred and inferred.get("source_url") and inferred.get("address") and not inferred.get("confident"):
@@ -401,7 +401,7 @@ def building_at(address: str) -> dict:
     found = _valid_facts(_last_json(claude.text_of(response)))
     if not found or not found.get("building"):
         return {"found": None, "message": "この住所で、建物名と階数を確かめられるページは見つかりませんでした。分かれば、建物名か階数を入れてください。"}
-    return {"found": found, "message": "Claude が Web で見つけた候補です。合っていれば「はい」を押してください。"}
+    return {"found": found, "message": "Webの公表情報から見つかった候補です。合っていれば「はい」を押してください。"}
 
 
 def _valid_facts(found: Optional[dict]) -> Optional[dict]:
@@ -446,4 +446,4 @@ def building_facts(name: str, address: str) -> dict:
     found = _valid_facts(_last_json(claude.text_of(response)))
     if not found:
         return {"found": None, "message": "建物名と所在地が一致するページで、階数を確かめられませんでした。分かれば、階数と地下の有無を入れてください。"}
-    return {"found": found, "message": "Claude が Web で見つけた候補です。出典を見て、合っていれば「この値を使う」を押してください。"}
+    return {"found": found, "message": "Webの公表情報から見つかった候補です。出典を見て、合っていれば「この値を使う」を押してください。"}

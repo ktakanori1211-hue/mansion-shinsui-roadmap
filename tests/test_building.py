@@ -801,7 +801,7 @@ class SearchTest(unittest.TestCase):
         with mock.patch.object(search, "_osm", return_value=[]), mock.patch.object(search, "_claude_infer", return_value=guess) as infer, mock.patch.object(search, "_gsi", return_value=found):
             result = search.search("みどりハイツ幸町")
         infer.assert_called_once_with("みどりハイツ幸町")
-        self.assertEqual(result["candidates"][0]["source"], "Claude の Web 検索と国土地理院")
+        self.assertEqual(result["candidates"][0]["source"], "Web公表情報と国土地理院")
 
     def test_roadside_stations_are_not_town_candidates(self):
         raw = [
@@ -846,7 +846,7 @@ class SearchTest(unittest.TestCase):
         ):
             result = search.search("見本タワー")
         self.assertIn("example.com", result["message"])
-        self.assertEqual(result["candidates"][0]["source"], "Claude の Web 検索と国土地理院")
+        self.assertEqual(result["candidates"][0]["source"], "Web公表情報と国土地理院")
 
     def test_unconfirmed_guess_is_not_shown(self):
         guesses = [

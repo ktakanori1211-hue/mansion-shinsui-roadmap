@@ -140,20 +140,22 @@ class ChatTest(unittest.TestCase):
         self.assertLess(chat.index('class="chat-fixed"'), chat.index('id="chat-route"'))
         self.assertLess(chat.index('id="chat-route"'), chat.index('id="chat-log"'))
         # 押したときだけ開く。
-        self.assertIn('aria-label="AI相談チャット" hidden>', chat)
+        self.assertIn('aria-label="浸水対策チャット相談" hidden>', chat)
 
     def test_route_is_said_before_sending(self):
         # F-038：送る前に、Anthropic の API を通るかを出す。表示を替えるだけで API は呼ばない。
         js = read("start.js")
-        self.assertIn("送った質問と、この画面の住所・答え・判定は Anthropic の API を通ります。図面と書類の中身は送りません。", js)
-        self.assertIn("AI を通さず、説明カードで答えます", js)
+        # 2026-11-07・18回目：主文は実務の言葉、外へ送る明示（what-063）は括弧書きの補足にとどめる。
+        self.assertIn("※この画面の建物の状況と裏取り済みの事実をもとに答えます（送った質問と住所・答え・判定は Anthropic API を通ります。図面と書類の中身は送りません）。", js)
+        self.assertIn("AI を通さず、解説カードで答えます", js)
         self.assertIn("renderChatRoute();", block(js, "function renderKey()", "\n}\n"))
 
     def test_every_answer_says_where_it_came_from(self):
         js = read("start.js")
         names = js_object(js, "SOURCE_NAMES")
-        self.assertEqual(names["fixed"], "固定の文（AIを通していません）")
-        self.assertEqual(names["fallback"], "説明カード（AIを通していません）")
+        self.assertEqual(names["fixed"], "安全基準に基づく案内（即時回答）")
+        self.assertEqual(names["fallback"], "解説カードの案内")
+        self.assertEqual(names["claude"], "自動応答（Claude）")
 
     def test_screen_does_not_block_questions(self):
         # 原則4：遮断はサーバーの固定の文だけ。画面の側で質問を塞がない。

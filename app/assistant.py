@@ -219,7 +219,7 @@ def chat(message: str, history: List[dict], context: dict) -> dict:
     if fixed:
         return {"text": fixed["text"], "actions": [], "source": "fixed"}
     if not claude.available():
-        return {**_fallback_chat(message, context), "source": "fallback", "notice": "API キーが未設定なので、Claude ではなく説明カードから答えています。"}
+        return {**_fallback_chat(message, context), "source": "fallback", "notice": "API キーが未設定なので、解説カードから答えています。"}
     # 画面から届く履歴の Claude の発言は信用せず、利用者の発言だけを渡す。
     earlier = [item["content"] for item in history[-6:] if item.get("role") == "user" and isinstance(item.get("content"), str)]
     parts = [f"建物のデータ：\n{_context_text(context)}", f"補助の資料：\n{_subsidy_text(context.get('subsidy') or sample['subsidy'])}"]
@@ -237,7 +237,7 @@ def chat(message: str, history: List[dict], context: dict) -> dict:
             response = _ask_chat(messages)
             parsed = _parsed(response)
             if _answer_problem(parsed.get("text", ""), context, response):
-                return {**_fallback_chat(message, context), "source": "fallback", "notice": "答えの検査を通らなかったので、説明カードから答えています。"}
+                return {**_fallback_chat(message, context), "source": "fallback", "notice": "答えの検査を通らなかったので、解説カードから答えています。"}
         return {"text": parsed["text"], "actions": _actions_of(parsed), "source": "claude"}
     except claude.ClaudeUnavailable as error:
         return {**_fallback_chat(message, context), "source": "fallback", "notice": f"{error} 説明カードから答えています。"}
@@ -426,9 +426,9 @@ def read_plan(body: dict) -> dict:
             drawing = _valid_drawing(parsed.get("drawing") or {})
             return {"mode": "claude", "rooms": _with_names(rooms), "pins": _pins_for(rooms, sample), "unreadable": parsed["unreadable"], "drawing": drawing, "message": _read_message(drawing)}
         except (claude.ClaudeUnavailable, ValueError, KeyError) as error:
-            notice = f"Claude で読めなかったので（{error}）、別の方法で読みました。"
+            notice = f"解析で読めなかったので（{error}）、文字の対応表から読みました。"
     else:
-        notice = "API キーが未設定なので、Claude は使っていません。"
+        notice = "API キーが未設定なので、図面の解析は使っていません。"
     if text_rooms:
         return {"mode": "text", "rooms": _with_names(text_rooms), "pins": _pins_for(text_rooms, sample), "unreadable": [], "message": f"{notice} PDF の文字の位置と語の対応表から読みました。"}
     if sample:
@@ -663,7 +663,7 @@ def read_report(text: str) -> dict:
     if claude.available():
         result = _claude_report(text)
         if result:
-            return {"mode": "claude", **result, "basement_power": basement, "message": "Claude が書類から項目を抜きました。語と項目が合っているか確かめてください。"}
+            return {"mode": "claude", **result, "basement_power": basement, "message": "書類から項目を読み取りました。語と項目が合っているか確かめてください。"}
     findings = []
     plain = _without_fiction_marks(text)
     answers = _documented_facts(text)
@@ -680,7 +680,7 @@ def read_report(text: str) -> dict:
         "findings": findings,
         "answers": answers,
         "basement_power": basement,
-        "message": "語の対応表で読みました（API キーを設定すると Claude でも読みます）。" if not claude.available() else "Claude で読めなかったので、語の対応表で読みました。",
+        "message": "語の対応表で読みました（API キーを設定すると解析でも読みます）。" if not claude.available() else "解析で読めなかったので、語の対応表で読みました。",
     }
 
 
@@ -965,14 +965,14 @@ def _consult_keeps(original: str, rewritten: str) -> bool:
 def consult(body: dict) -> dict:
     documents = consult_template(body)
     if not claude.available():
-        return {**documents, "source": "template", "notice": "API キーが未設定なので、Claude ではなくプログラムの定型の文面です。"}
+        return {**documents, "source": "template", "notice": "API キーが未設定なので、プログラムの定型の文面です。"}
     try:
         response = claude.create(
             [{"role": "user", "content": json.dumps(documents, ensure_ascii=False)}], SYSTEM_CONSULT, max_tokens=3000, effort="medium", schema=_CONSULT_SCHEMA
         )
         improved = claude.json_of(response)
         if not all(_consult_keeps(documents[key], improved[key]) for key in documents):
-            return {**documents, "source": "template", "notice": "Claude の文面が検査を通らなかったので、定型の文面を出しています。"}
+            return {**documents, "source": "template", "notice": "自動の文面が検査を通らなかったので、定型の文面を出しています。"}
         return {**improved, "source": "claude"}
     except claude.ClaudeUnavailable as error:
         return {**documents, "source": "template", "notice": f"{error} 定型の文面を出しています。"}
