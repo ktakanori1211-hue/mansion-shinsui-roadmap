@@ -402,7 +402,8 @@ class PlanTest(unittest.TestCase):
         head = block(js, "function riskHead(", "\n}\n")
         self.assertIn("by.rainband", head)
         self.assertIn("rain?.accent?.lines", head)
-        self.assertIn("国の地図に色はないが、線状降水帯で浸かる型の土地", head + block(js, "function riskWords(", "\n}\n"))  # 洗い出したい建物の結論（語は riskWords に集約。24回目）
+        self.assertIn("国の浸水想定に色はありませんが、台風・大雨で浸かりやすい地形です", head + block(js, "function riskWords(", "\n}\n"))  # 洗い出したい建物の結論（語は riskWords に集約。28回目で素人の言葉に）
+        self.assertNotIn("当たる</i>", head)  # 「当たる」は素人に通じなかった（28回目）→「該当」
         # 画面1に、私の言葉の推測を足さない（短時間の大雨で水が集まる／地図に色がなくても来る）。
         self.assertNotIn("短時間の大雨で水が集まる", js)
         self.assertNotIn("地図に色がなくても来る", js)

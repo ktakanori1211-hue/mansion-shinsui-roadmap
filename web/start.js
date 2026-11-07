@@ -1070,7 +1070,7 @@ function resetPlace() {
 function rainFactLine(lines) {
   const rain = (lines || []).find((line) => line.key === "rainband");
   if (!rain?.accent) return "";
-  return `<p class="hint rain-fact">線状降水帯の事実：${esc(rain.accent.fact)}（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>`;
+  return `<p class="hint rain-fact">台風・大雨（線状降水帯）の事実：${esc(rain.accent.fact)}（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>`;
 }
 
 // 地図。地理院タイルとハザードマップの色を重ね、東西南北50mの標高を置く。高い方から建物へ水の矢印を引く。
@@ -1592,11 +1592,11 @@ async function setFact(key, value) {
 
 // 画面1の①：結論1行＋国の地図2項目＋地形1行（判定表の行から。判定は変えない。2026-11-06 本人の指示・10回目：重複を1か所に）。
 function riskWords(mapHit, mapClear, rainHit, rainClear) {
-  if (mapHit && rainHit) return [["risk", "浸水リスクあり"], "国の地図の想定にも、線状降水帯で浸かる型にも当たる場所"];
-  if (mapHit) return [["risk", "浸水リスクあり"], "国の地図の想定に当たる場所"];
+  if (mapHit && rainHit) return [["risk", "浸水リスクあり"], "国が公表する浸水の想定に入り、地形も台風・大雨で浸かりやすい場所です"];
+  if (mapHit) return [["risk", "浸水リスクあり"], "国が公表する浸水の想定に入る場所です"];
   // 国の地図が「色なし」か「データなし」かで言い分ける（データなしを色なしと言わない。2026-11-07・15回目）。
-  if (rainHit) return [["risk", "浸水リスクあり"], mapClear ? "国の地図に色はないが、線状降水帯で浸かる型の土地" : "国の地図では色を確かめられないが、線状降水帯で浸かる型の土地"];
-  if (mapClear && rainClear) return [["clear", "国の地図にも、線状降水帯で浸かる型にも当たらない"], "今の根拠では色のない場所（現地は見ていません）"];
+  if (rainHit) return [["risk", "浸水リスクあり"], mapClear ? "国の浸水想定に色はありませんが、台風・大雨で浸かりやすい地形です" : "国の浸水想定は確かめられませんが、台風・大雨で浸かりやすい地形です"];
+  if (mapClear && rainClear) return [["clear", "国の浸水想定にも、浸かりやすい地形にも該当しません"], "今の根拠では色のない場所（現地は見ていません）"];
   return [["unconfirmed", "浸水リスクは、まだ確かめられていない"], "データの取れていない項目があります"];
 }
 
@@ -1612,7 +1612,7 @@ function placeTwoLines(lines) {
   const map = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]].map(([name, line]) => `${name}：${word(line)}`).join("／");
   const hits = (rain?.accent?.lines || []).filter((line) => line.hit === true).map((line) => line.name).join("・");
   return `<p class="a4-place-head ${head[0]}"><b>${esc(head[1])}</b>${esc(sub)}</p>
-  <p class="a4-place-sub">国の地図：${esc(map)}　×　線状降水帯で浸かる型：${hits ? `当たる（${esc(hits)}）` : rain?.verdict === "clear" ? "当たらない" : "データなし"}</p>`;
+  <p class="a4-place-sub">国の浸水想定：${esc(map)}　×　台風・大雨で浸かりやすい地形：${hits ? `該当（${esc(hits)}）` : rain?.verdict === "clear" ? "該当なし" : "データなし"}</p>`;
 }
 
 function riskHead(lines, compact = false) {
@@ -1633,7 +1633,7 @@ function riskHead(lines, compact = false) {
     if (line.verdict === "clear") return "色なし";
     return "データなし";
   };
-  const mark = (hit) => hit === true ? `<i class="hit">当たる</i>` : hit === false ? `<i class="miss">当たらない</i>` : `<i class="none">データなし</i>`;
+  const mark = (hit) => hit === true ? `<i class="hit">該当</i>` : hit === false ? `<i class="miss">該当なし</i>` : `<i class="none">データなし</i>`;
   // カードの中は1行ずつ短く（2026-11-07・14回目）。内水の理由・4方向の標高・記事の全文は、折りたたみの表に置く。
   const mapLines = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]]
     .map(([name, line]) => {
@@ -1642,11 +1642,13 @@ function riskHead(lines, compact = false) {
     }).join("");
   const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${esc(line.name)}：${esc(shortRainText(line))} ${mark(line.hit)}</li>`).join("");
   const fact = rain?.accent ? `<p class="mul-fact">台風25号（2026年9月・千葉県）の浸水447件のうち、洪水の地図に色のない場所が足すと64%（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>` : "";
-  return `<div class="risk-head ${head[0]}"><p class="rh-title">${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p></div>
+  // 結論の下に「浸かると止まるもの」を添える（画面1の時点で何が止まるか分かるように。建物の階で変わるので、断定せず「浸かると」）。
+  const consequence = !compact && head[0] === "risk" ? `<p class="rh-stop"><b>機械室（給水ポンプ室・電気室・借室）が浸かると、全戸で止まるもの：</b><span>水・トイレ</span><span>エレベーター</span><span>各戸の電気</span><small>何階にあるかで変わります。次の画面で竣工図から確かめます。</small></p>` : "";
+  return `<div class="risk-head ${head[0]}"><p class="rh-title">${head[0] === "risk" ? "⚠ " : ""}${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p>${consequence}</div>
   <div class="mul">
-    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-head">ハザードマップ（国の地図）${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
+    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-head">国が公表する浸水の想定（ハザードマップ）${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
     <div class="mul-x">×</div>
-    <div class="mul-card${rainHit ? " hit" : ""}"><p class="mul-head">線状降水帯で浸かる型 ${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul>${fact}</div>
+    <div class="mul-card${rainHit ? " hit" : ""}"><p class="mul-head">地形から見た浸かりやすさ（台風・大雨・線状降水帯）${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul>${fact}</div>
   </div>`;
 }
 
