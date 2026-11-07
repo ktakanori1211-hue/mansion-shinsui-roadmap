@@ -350,17 +350,14 @@ function roomStates(level) {
 
 // 部屋の色と札を、CAD の線の上に半透明で重ねる（平面図・断面図で共通）。
 function roomOverlay(key, box, st, big) {
+  // 部屋の名前は cad.js が1回だけ描く（上寄せ）。ここでは色と札だけを重ね、文字を二重にしない（2026-11-07 本人の指摘・14回目）。
   const flash = S.flash.includes(key) ? " flash" : "";
   const parts = [`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-over ${st.state}${flash}" data-room="${esc(key)}"/>`];
   const cx = box.x + box.w / 2;
-  const name = ROOM_SHORT[key] || key;
-  const size = fitText(name, box.w - 4, big ? 22 : 16, 10);
-  const fs = Math.min(fitText(st.word, box.w - 6, 12, 7) || 0, box.h / 4);
-  const nameY = box.y + box.h / 2 - (fs > 7 ? fs * 0.6 : -size / 3);
-  if (size) parts.push(`<text x="${cx}" y="${nameY}" class="p-name ${st.state}" style="font-size:${size}px">${esc(name)}</text>`);
+  const fs = Math.min(fitText(st.word, box.w - 6, big ? 13 : 11, 7) || 0, box.h / 3.2);
   if (fs > 7) {
     const bw = st.word.length * fs * 1.05 + 8;
-    const by = nameY + fs + 6;
+    const by = box.y + box.h * 0.62;
     parts.push(`<g class="p-badge ${st.state}"><rect x="${cx - bw / 2}" y="${by - fs * 0.8}" width="${bw}" height="${fs * 1.6}"/><text x="${cx}" y="${by + fs * 0.38}" style="font-size:${fs}px">${esc(st.word)}</text></g>`);
   }
   return parts.join("");
@@ -606,11 +603,12 @@ function criticalBox(print = false) {
   if (!c) return "";
   const shortDec = (d) => String(d || "").replace(/（.*?）/g, "");
   const shortBasis = (b) => String(b || "").split("。")[0];
+  // 表の中は対策名と金額を大きく、理由は最初の文だけ、決議は括弧を外す。全文は下の折りたたみ（2026-11-07・14回目）。
   const rows = (items) => items.map((item) => `<tr>
     <td class="c-no"><b>${item.no === 1 ? "最優先" : `優先${item.no}`}</b></td>
-    <td class="c-main"><b>${esc(item.title)}</b><span class="c-depth">${esc(item.depth || "")}</span><small class="c-basis">理由：${esc(print ? shortBasis(item.basis || item.why) : (item.basis || item.why || ""))}</small></td>
+    <td class="c-main"><b>${esc(item.title)}</b><span class="c-depth">${esc(item.depth || "")}</span><small class="c-basis">${esc(shortBasis(item.basis || item.why))}</small></td>
     <td class="c-cost">${esc(item.cost.replace(/（.*?）/g, ""))}</td>
-    <td class="c-dec">${esc(print ? shortDec(item.decision) : item.decision)}</td>
+    <td class="c-dec">${esc(shortDec(item.decision))}</td>
   </tr>`).join("");
   const tiers = (c.tiers || [{ title: "", items: c.items }]).map((tier) => `
     <p class="tier-head">${esc(tier.title)}</p>
@@ -620,7 +618,9 @@ function criticalBox(print = false) {
       <tbody>${rows(tier.items)}</tbody>
     </table>`).join("");
   const facts = c.facts?.length ? `<p class="c-facts"><b>前提：</b>${esc(c.facts.join("／"))}</p>` : "";
-  return `<div class="critical${print ? " print" : ""}"><p class="own-head">この建物のクリティカル対策（${esc(c.shape_name)}）</p>${facts}${tiers}${print ? "" : `<p class="hint c-note">※${COST_FIXED}</p>`}</div>`;
+  // 画面では前提と理由・決議の全文を折りたたみに置く。A4（print）は今までどおり前提を表の上に出す。
+  const detail = print ? "" : `<details class="more c-more"><summary>前提と、理由・決議のくわしい文</summary>${facts}<ul class="c-detail">${c.items.map((item) => `<li><b>${esc(item.title)}</b>：${esc(item.basis || item.why || "")}　決議：${esc(item.decision || "")}　${esc(item.cost)}</li>`).join("")}</ul></details>`;
+  return `<div class="critical${print ? " print" : ""}"><p class="own-head">この建物のクリティカル対策（${esc(c.shape_name)}）</p>${print ? facts : ""}${tiers}${detail}${print ? "" : `<p class="hint c-note">※${COST_FIXED}</p>`}</div>`;
 }
 
 // 画面2：答えを入れた瞬間に、提案の1行目（最優先）が変わるのを見せる（入力→提案を一息に。2026-11-06 本人の指示）。
@@ -657,9 +657,15 @@ function hazardPlain(item) {
   if (parseBand(item.value)) return esc(`${item.value}の想定`);
   if (item.value === "色なし") return esc("色なし");
   // 内水は国の地図にない市区町村が多い。市区町村の地図の案内を短く添える。
-  // 理由の文は上のカード（riskHead）に出ているので、表では市の地図への案内だけ。
-  if (item.key === "inland") return `国のデータなし（<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ</a>で市の地図を確認）`;
+  // 内水のデータなしの理由は、カードでは「国のデータなし」だけにして、ここに全文を置く（2026-11-07・14回目）。
+  if (item.key === "inland") return `${esc(item.conclusion || "データなし")}（<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ</a>）`;
   return esc("データなし");
+}
+
+// 線状降水帯の行の理由（折りたたみ）：結論と、3つの型の全文（4方向の標高の数値を含む）。
+function rainbandPlain(item) {
+  const lines = (item.accent?.lines || []).map((line) => `${line.name}：${line.text}`).join("／");
+  return esc(`${item.conclusion || ""}${lines ? `。${lines}` : ""}`);
 }
 
 function recordPlain(item) {
@@ -678,7 +684,7 @@ function placeLines() {
     key: item.key,
     value: item.value || "",
     accent: item.accent || null,
-    html: item.key === "record" ? recordPlain(item) : PLACE_PLAIN[item.key] ? hazardPlain(item) : esc(item.conclusion || item.value || ""),
+    html: item.key === "record" ? recordPlain(item) : PLACE_PLAIN[item.key] ? hazardPlain(item) : item.key === "rainband" ? rainbandPlain(item) : esc(item.conclusion || item.value || ""),
   }));
 }
 
@@ -809,23 +815,26 @@ function screenOne() {
   const candidates = S.candidates
     .map((c, i) => `<button type="button" class="candidate" data-cand="${i}">${esc(c.label)}<small>${esc(c.source || "")}</small></button>`)
     .join("");
-  let picked = "";
+  // 場所が決まったら、見出し・検索窓・見本・保存の入口は消し、一番上に「選んだ場所と階数」と「別の場所を探す」だけを1行で出す（2026-11-07 本人の指示・14回目）。
   if (S.place) {
     const lines = placeLines();
     const representative = S.place.site.basis === "representative";
-    picked = `<div class="picked">
-        <p class="place"><b>${esc(S.place.site.label)}</b></p>
+    return `<section class="s1">
+      <div class="chosen-bar"><p class="place"><b>${esc(S.place.site.label)}</b>${chosenFloors()}</p><button type="button" class="option small" data-act="re-search">別の場所を探す</button></div>
+      <div class="picked">
         ${riskHead(lines)}
         ${factsLine()}
         ${terrainFigure(lines)}
         <details class="more"><summary>根拠の数値（判定と出典）</summary>
           <table class="place"><thead><tr><th>項目</th><th>判定</th><th>理由</th></tr></thead><tbody>${lines.map((line) => `<tr class="${line.verdict}"><td>${esc(line.name)}</td><td><i>${line.word}</i></td><td>${line.html}</td></tr>`).join("")}</tbody></table>
+          ${rainFactLine(lines)}
           <p class="hint">出典：ハザードマップポータルサイト、国土地理院（標高API・地形分類）を加工。${representative ? "町丁の代表点の値です。" : ""}高さと色は地図のデータの値で、敷地を測ったものではありません。国の地図そのものは <a href="https://disaportal.gsi.go.jp/" target="_blank" rel="noopener">ハザードマップポータルサイト</a> で。</p>
         </details>
         ${placeAid()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
         <button type="button" class="primary" data-act="see"${S.busy ? " disabled" : ""}>うちのマンションで何が止まるか、確かめる</button>
-      </div>`;
+      </div>
+    </section>`;
   }
   return `<section class="s1">
     ${S.openId ? openBox() : ""}
@@ -840,8 +849,40 @@ function screenOne() {
     <p class="or">または、見本（架空の建物）で試す</p>
     <div class="samples">${samples}</div>
     ${S.openId ? "" : openBox()}
-    ${picked}
   </section>`;
+}
+
+// 選んだ場所の行に添える、建物名と階数（見本はその見本の名前と階数、自分の建物は分かっている階数だけ）。
+function chosenFloors() {
+  if (S.sampleId) {
+    const point = S.points.find((pt) => pt.sample === S.sampleId);
+    if (!point) return "";
+    const name = point.label.replace(/^見本/, "").split("／")[0].replace("（架空）", "").trim();
+    return `<span>見本${esc(name)}${point.floors ? `・地上${esc(point.floors)}階` : ""}</span>`;
+  }
+  const above = Number(S.own.floors);
+  if (!above) return "";
+  return `<span>地上${above}階${S.own.basement === "yes" ? "・地下あり" : S.own.basement === "no" ? "・地下なし" : ""}</span>`;
+}
+
+// 「別の場所を探す」：場所と、それに結びついた答え・図面・候補を全部戻して画面1の入力に戻る。
+function resetPlace() {
+  stopPlay(false);
+  Object.assign(S, {
+    place: null, building: null, sampleId: null, demoId: null, candidates: [], message: "", error: "",
+    facts: null, factsBusy: false, query: "", floorsApplied: null, own: { floors: "", basement: "unknown" },
+    choices: {}, extra: {}, read: null, drawingImages: [], obs: {}, drawing: null, exp: "", statements: [], hvSaid: "",
+    reached: 1, screen: 1, measure: "none", play: 0, sendMsg: "", sendText: "",
+  });
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+// 折りたたみの中に置く、線状降水帯の事実の全文（カードには短い1行だけ）。
+function rainFactLine(lines) {
+  const rain = (lines || []).find((line) => line.key === "rainband");
+  if (!rain?.accent) return "";
+  return `<p class="hint rain-fact">線状降水帯の事実：${esc(rain.accent.fact)}（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>`;
 }
 
 // 地図。地理院タイルとハザードマップの色を重ね、東西南北50mの標高を置く。高い方から建物へ水の矢印を引く。
@@ -1261,15 +1302,14 @@ function riskHead(lines, compact = false) {
     return "データなし";
   };
   const mark = (hit) => hit === true ? `<i class="hit">当たる</i>` : hit === false ? `<i class="miss">当たらない</i>` : `<i class="none">データなし</i>`;
+  // カードの中は1行ずつ短く（2026-11-07・14回目）。内水の理由・4方向の標高・記事の全文は、折りたたみの表に置く。
   const mapLines = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]]
     .map(([name, line]) => {
-      // 内水の国のデータがないときは理由を添える（サーバーの文のまま。A4 では短く）。
       const inlandNone = line?.key === "inland" && line.verdict !== "risk" && line.verdict !== "clear";
-      if (inlandNone) return `<li>${name}：${compact ? "国のデータなし（市の地図と下水道の整備状況を確認）" : esc(line.conclusion || mapWord(line))}</li>`;
-      return `<li>${name}：${esc(mapWord(line))}</li>`;
+      return `<li>${name}：${inlandNone ? "国のデータなし" : esc(mapWord(line))}</li>`;
     }).join("");
-  const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${esc(line.name)}：${esc(line.text)} ${mark(line.hit)}</li>`).join("");
-  const fact = rain?.accent ? `<p class="mul-fact">${esc(rain.accent.fact)}（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>` : "";
+  const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${esc(line.name)}：${esc(shortRainText(line))} ${mark(line.hit)}</li>`).join("");
+  const fact = rain?.accent ? `<p class="mul-fact">台風25号（2026年9月・千葉県）の浸水447件のうち、洪水の地図に色のない場所が足すと64%（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>` : "";
   return `<div class="risk-head ${head[0]}"><p class="rh-title">${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p></div>
   <div class="mul">
     <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-head">ハザードマップ（国の地図）${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
@@ -1278,7 +1318,12 @@ function riskHead(lines, compact = false) {
   </div>`;
 }
 
-// 地図に色がなくても冠水は起きる（WHY の数字。出典つき）。
+// 線状降水帯のカードの1行（サーバーの文の最初の句だけ。数値の内訳は折りたたみへ）。
+function shortRainText(line) {
+  const text = String(line.text || "");
+  if (line.name === "内水の地図") return text.startsWith("国の") ? "国のデータなし" : text;
+  return text.split("。")[0].replace("（くぼ地の型）", "（くぼ地）");
+}
 
 
 
@@ -1291,7 +1336,7 @@ function terrainFigure(lines) {
   if (pts.length < 3) return "";
   const by = Object.fromEntries((lines || []).map((line) => [line.key, line]));
   const basement = hasBasement();
-  const W = 700, H = basement ? 360 : 320, y0 = 230, cx = 350;
+  const W = 700, H = basement ? 380 : 330, y0 = 230, cx = 350;
   const center = (pts.find((pt) => pt[0] === 0) || pts[Math.floor(pts.length / 2)])[1];
   const relief = Math.max(0.6, ...pts.map((pt) => Math.abs(pt[1] - center)));
   const vs = Math.min(22, 60 / relief);
@@ -1323,32 +1368,62 @@ function terrainFigure(lines) {
   // 地面。
   parts.push(`<polygon points="${X(pts[0][0])},${H} ${ground} ${X(pts[pts.length - 1][0])},${H}" class="t-ground"/>`);
   parts.push(`<polyline points="${ground}" class="t-ground-line"/>`);
-  // 建物：1階だけは実線（入口の高さと帯を比べる）。階数が分かっていれば上の階を描き（4階以上は「〜N階」にまとめる）、分からなければ点線で「階数 未確認」。
-  const bw = 72, floorH = 2.9 * vs;
+  // 建物：建築の断面として描く（2026-11-07・14回目）。各階のスラブ（太線）・黒塗りの柱・間仕切り・窓・バルコニーの手すり、
+  // 地下があれば地下階と基礎ピット、下に黒塗りの基礎フーチング。1階の床の高さと帯を比べる絵は変えない。
+  const bw = 110, floorH = 2.9 * vs, colW = 6, wall = 2.5;
   // 階数：本人の答え・Web・図面（S.own.floors）か、見本の建物の階数。どちらもなければ描かない。
   const known = Number(S.own.floors) || (S.sampleId ? Number(S.points.find((pt) => pt.sample === S.sampleId)?.floors) : 0) || 0;
   const shown = known ? Math.min(known, 3) : 1;
   const top = y0 - floorH * (known ? shown : 2);
-  parts.push(`<rect x="${cx - bw / 2}" y="${(y0 - floorH * shown).toFixed(1)}" width="${bw}" height="${(floorH * shown).toFixed(1)}" class="t-bldg"/>`);
+  const L = cx - bw / 2, R = cx + bw / 2;
+  const slab = (yy, x1 = L - 6, x2 = R + 6) => parts.push(`<path d="M${x1} ${yy.toFixed(1)} L${x2} ${yy.toFixed(1)}" class="t-slab"/>`);
+  const columns = (yTop, yBottom) => {
+    parts.push(`<rect x="${L + 3}" y="${yTop.toFixed(1)}" width="${colW}" height="${(yBottom - yTop).toFixed(1)}" class="t-col"/>`);
+    parts.push(`<rect x="${R - 3 - colW}" y="${yTop.toFixed(1)}" width="${colW}" height="${(yBottom - yTop).toFixed(1)}" class="t-col"/>`);
+    parts.push(`<rect x="${(L + bw * 0.36 - colW / 2).toFixed(1)}" y="${yTop.toFixed(1)}" width="${colW}" height="${(yBottom - yTop).toFixed(1)}" class="t-col"/>`);
+  };
+  // 地上の階：下から順に。
+  parts.push(`<rect x="${L}" y="${(y0 - floorH * shown).toFixed(1)}" width="${bw}" height="${(floorH * shown).toFixed(1)}" class="t-bldg"/>`);
   for (let n = 1; n <= shown; n += 1) {
-    const fy = y0 - floorH * (n - 1);
-    if (n > 1) parts.push(`<path d="M${cx - bw / 2} ${fy.toFixed(1)} L${cx + bw / 2} ${fy.toFixed(1)}" class="t-floor"/>`);
+    const fy = y0 - floorH * (n - 1), ceil = fy - floorH;
+    columns(ceil + wall, fy - wall);
+    slab(fy, n === 1 ? L : L - 6, n === 1 ? R : R + 6);
+    // 間仕切り（細線）と、窓（外壁の中の二重線）、バルコニーの手すり（右側）。
+    parts.push(`<path d="M${(L + bw * 0.18).toFixed(1)} ${(ceil + wall).toFixed(1)} L${(L + bw * 0.18).toFixed(1)} ${(fy - wall).toFixed(1)}" class="t-part"/>`);
+    parts.push(`<path d="M${L + 1} ${(fy - floorH * 0.72).toFixed(1)} L${L + 1} ${(fy - floorH * 0.3).toFixed(1)}" class="t-win"/>`);
+    if (n >= 2 || !basement) {
+      parts.push(`<path d="M${R + 6} ${(fy - floorH * 0.42).toFixed(1)} L${R + 6} ${fy.toFixed(1)} M${R - 2} ${(fy - floorH * 0.42).toFixed(1)} L${R + 6} ${(fy - floorH * 0.42).toFixed(1)}" class="t-rail"/>`);
+    }
     const name = n === shown && known > shown ? `〜${known}階` : `${n}階`;
-    parts.push(`<text x="${cx}" y="${(fy - floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">${name}</text>`);
+    parts.push(`<text x="${(L + bw * 0.66).toFixed(1)}" y="${(fy - floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">${name}</text>`);
   }
+  // 屋上のパラペットと、階段室・EV機械室の塔屋。
+  const roofY = y0 - floorH * shown;
+  slab(roofY);
+  parts.push(`<rect x="${(L + bw * 0.4).toFixed(1)}" y="${(roofY - floorH * 0.45).toFixed(1)}" width="${(bw * 0.3).toFixed(1)}" height="${(floorH * 0.45).toFixed(1)}" class="t-ph"/>`);
   if (!known) {
-    parts.push(`<rect x="${cx - bw / 2}" y="${top.toFixed(1)}" width="${bw}" height="${floorH.toFixed(1)}" class="t-bldg unknown"/>`);
+    parts.push(`<rect x="${L}" y="${top.toFixed(1)}" width="${bw}" height="${floorH.toFixed(1)}" class="t-bldg unknown"/>`);
     parts.push(`<text x="${cx}" y="${(top + floorH / 2 + 4).toFixed(1)}" class="t-floor-label muted" text-anchor="middle">階数 未確認</text>`);
   }
+  // 地下階とピット、基礎。地下は土の中（地面の線の下）に描く。
+  const pitH = Math.max(10, floorH * 0.3);
+  let baseY = y0;
   if (basement) {
-    // 地下1階：地面の線の下の箱。浅い水でも入口から地下へ流れ込むことを、矢印で見せる。
     const by1 = y0 + floorH;
-    parts.push(`<rect x="${cx - bw / 2}" y="${y0}" width="${bw}" height="${floorH.toFixed(1)}" class="t-bldg basement"/>`);
-    parts.push(`<text x="${cx}" y="${(y0 + floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">地下1階</text>`);
-    parts.push(`<path d="M${cx + bw / 2 + 26} ${(y0 - 8).toFixed(1)} L${cx + bw / 2 + 8} ${(y0 - 8).toFixed(1)} L${cx + bw / 2 + 8} ${(by1 - 10).toFixed(1)}" class="t-flow thin" marker-end="url(#t-head)"/>`);
+    parts.push(`<rect x="${L}" y="${y0}" width="${bw}" height="${floorH.toFixed(1)}" class="t-bldg basement"/>`);
+    columns(y0 + wall, by1 - wall);
+    slab(by1, L, R);
+    parts.push(`<text x="${(L + bw * 0.66).toFixed(1)}" y="${(y0 + floorH / 2 + 4).toFixed(1)}" class="t-floor-label" text-anchor="middle">地下1階</text>`);
+    // 浅い水でも入口から地下へ流れ込むことを、矢印で見せる。
+    parts.push(`<path d="M${R + 26} ${(y0 - 8).toFixed(1)} L${R + 8} ${(y0 - 8).toFixed(1)} L${R + 8} ${(by1 - 10).toFixed(1)}" class="t-flow thin" marker-end="url(#t-head)"/>`);
+    baseY = by1;
   }
+  // 基礎ピット（斜線）と、柱の下の黒塗りのフーチング。
+  parts.push(`<rect x="${L}" y="${baseY.toFixed(1)}" width="${bw}" height="${pitH.toFixed(1)}" class="t-pit"/>`);
+  [L + 3 + colW / 2, L + bw * 0.36, R - 3 - colW / 2].forEach((x) => parts.push(`<rect x="${(x - 9).toFixed(1)}" y="${(baseY + pitH - 5).toFixed(1)}" width="18" height="7" class="t-footing"/>`));
+  parts.push(`<text x="${L - 4}" y="${(baseY + pitH / 2 + 3).toFixed(1)}" class="t-pit-label" text-anchor="end">ピット</text>`);
   // 建物の位置の標高（国土地理院の値）。建物の高さではない。
-  parts.push(`<text x="${cx}" y="${(y0 + (basement ? floorH : 0) + 16).toFixed(1)}" class="t-elev" text-anchor="middle">標高 ${center}m</text>`);
+  parts.push(`<text x="${cx}" y="${(baseY + pitH + 16).toFixed(1)}" class="t-elev" text-anchor="middle">標高 ${center}m</text>`);
   // 標高の札と、高い側からの矢印（建物の枠の手前で止める）。
   pts.forEach((pt) => {
     if (pt[0] === 0) return;
@@ -1363,9 +1438,9 @@ function terrainFigure(lines) {
     parts.push(`<path d="M${x1} ${(Y(side.elevation_m) - 14).toFixed(1)} L${x2} ${(y0 - 14).toFixed(1)}" class="t-flow" marker-end="url(#t-head)"/>`);
   });
   return `<figure class="terrain"><svg class="terrain-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="土地を横から見た図">
-    <defs><marker id="t-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker></defs>
+    <defs><marker id="t-head" markerWidth="5" markerHeight="5" refX="2.6" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" class="p-head"/></marker><pattern id="t-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0 L0 6" stroke="#6b5a3e" stroke-width="1"/></pattern></defs>
     ${parts.join("")}
-  </svg><figcaption>東西200mの断面（国土地理院の標高）。帯＝国の地図の深さ。</figcaption></figure>`;
+  </svg><figcaption>東西200mの断面（国土地理院の標高）。帯＝国の地図の深さ。建物は階数以外は模式です。</figcaption></figure>`;
 }
 
 // 地下があるか（画面1の図のため）：見本の形か、Web・図面で分かった地下か、本人の答え。
@@ -1393,8 +1468,9 @@ function drawingFigure(small = false) {
   const marks = ROOM_MARKS;
   const names = DRAWING_NAMES;
   return images.map((image) => {
+    // ピンは①②③の部屋だけ（EPS・PS・MB などの細かい設備は立てない。図が読めなくなるため。2026-11-07・14回目）。
     const pins = (image.rooms || [])
-      .filter((room) => typeof room.x === "number" && typeof room.y === "number")
+      .filter((room) => marks[room.kind] && typeof room.x === "number" && typeof room.y === "number")
       .map((room) => `<span class="d-pin${marks[room.kind] ? " main" : ""}" style="left:${(room.x * 100).toFixed(1)}%;top:${(room.y * 100).toFixed(1)}%" title="${esc(room.word || room.name || "")}">${marks[room.kind] || esc((room.word || "").slice(0, 3))}</span>`)
       .join("");
     return `<figure class="drawing${small ? " small" : ""}"><div class="d-box"><img src="${image.dataUrl}" alt="あなたの図面"><div class="d-pins">${pins}</div></div><figcaption>あなたの${names[image.kind] || "図面"}（読めた部屋の位置にピン）</figcaption></figure>`;
@@ -2166,6 +2242,8 @@ screen.addEventListener("click", (event) => {
     setFact(target.dataset.fact, target.dataset.value);
   } else if (target.dataset.act === "apply-all") {
     applyAllRead();
+  } else if (target.dataset.act === "re-search") {
+    resetPlace();
   } else if (target.dataset.act === "apply-floors") {
     const d = S.read?.drawing;
     if (d) applyFloors(d.floors_above, d.floors_below, "drawing");

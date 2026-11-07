@@ -578,7 +578,7 @@ details.facts[open] { display: flex; }
 .crit-table th, .crit-table td { border: 1px solid #cfd5e0; padding: 6px 8px; vertical-align: top; text-align: left; word-break: break-word; }
 .crit-table th { background: #f0f3f8; color: #13294b; font-weight: 800; font-size: 12px; }
 .crit-table col.col-no { width: 64px; }
-.crit-table col.col-cost { width: 110px; }
+.crit-table col.col-cost { width: 140px; }
 .crit-table col.col-dec { width: 150px; }
 .crit-table .c-no { white-space: nowrap; font-weight: 800; color: #b3261e; text-align: center; background: #fff9f8; }
 .crit-table .c-main b { display: inline; font-size: 13.5px; color: #13294b; }
@@ -696,3 +696,41 @@ details.facts[open] { display: flex; }
 .a4-onepage .mul-x { font-size: 14px; }
 .a4-onepage .mul-fact { font-size: 8.8px; line-height: 1.3; margin: 2px 0 0; }
 .s3 .option[data-choice="none"].chosen { background: #e6ebf3; color: var(--navy); border-color: #b9c3d3; }
+
+/* 14回目（2026-11-07）：画面1は場所が決まったら1行の見出し。カードと表は短く大きく。部屋の札は色と札だけ。建物断面の部材 */
+.chosen-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 0 10px; border-bottom: 1px solid var(--line); }
+.chosen-bar .place { font-size: 17px; font-weight: 800; margin: 0; }
+.chosen-bar .place span { display: inline-block; margin-left: 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.chosen-bar .option.small { min-height: 36px; font-size: 14px; border: 1.5px solid var(--navy); color: var(--navy); }
+.picked { border-top: 0; padding-top: 4px; gap: 12px; }
+.risk-head .rh-title { font-size: 22px; }
+.rh-sub { font-size: 15px; }
+.mul-head { font-size: 15.5px; }
+.mul-card ul { font-size: 15.5px; line-height: 1.65; }
+.mul-card i { font-size: 12px; }
+.mul-fact { font-size: 13px; line-height: 1.5; margin-top: 6px; }
+.rain-fact { margin-top: 6px; line-height: 1.6; }
+.crit-table .c-main b { font-size: 16px; }
+.crit-table .c-cost { font-size: 16px; font-weight: 800; white-space: nowrap; }
+.crit-table .c-basis { font-size: 12px; color: var(--muted) !important; }
+.crit-table .c-dec { font-size: 12.5px; }
+.c-more summary { font-size: 13px; }
+.c-detail { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--ink); }
+.c-detail li { margin-bottom: 4px; }
+.a4-onepage .crit-table .c-main b { font-size: 10.2px; }
+.a4-onepage .crit-table .c-cost { font-size: 9.8px; font-weight: 700; white-space: normal; }
+.a4-onepage .crit-table .c-basis { font-size: 8.8px; }
+.a4-onepage .mul-card ul { font-size: 9.2px; line-height: 1.35; }
+.a4-onepage .mul-head { font-size: 10px; }
+.a4-onepage .mul-fact { font-size: 8.8px; }
+.a4-onepage .risk-head .rh-title { font-size: 13px; }
+.a4-onepage .rh-sub { font-size: 10.5px; }
+.t-slab { stroke: var(--ink); stroke-width: 3; fill: none; }
+.t-col { fill: var(--ink); }
+.t-part { stroke: #555; stroke-width: 1; fill: none; }
+.t-win { stroke: #1f5f99; stroke-width: 3; fill: none; }
+.t-rail { stroke: #333; stroke-width: 1.2; fill: none; }
+.t-ph { fill: #fff; stroke: var(--ink); stroke-width: 2; }
+.t-pit { fill: url(#t-hatch); stroke: var(--ink); stroke-width: 1.5; }
+.t-footing { fill: var(--ink); }
+.t-pit-label { font-size: 10px; font-weight: 700; fill: #4a3b24; }

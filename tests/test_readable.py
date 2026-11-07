@@ -40,11 +40,13 @@ class LandformNameTest(unittest.TestCase):
 
 class DrawingTest(unittest.TestCase):
     def test_plan_picture_has_no_dimension_lines_but_cad_keeps_them(self):
+        # 部屋を横切る長い通り芯の線は DXF だけ。通り芯の丸と寸法の数は、竣工図らしく絵にも出す（2026-11-07 本人の指示）。
         for sample in samples.SAMPLES.values():
             sheet = draw_plans.plan_sheet(sample)
             drawn = {item["layer"] for item in sheet.items if not item.get("cad_only")}
             self.assertNotIn("通り芯", drawn, sample["id"])
-            self.assertNotIn("寸法", {item["layer"] for item in sheet.items if not item.get("cad_only") and item["t"] == "text" and re.fullmatch(r"[\d,]+", item.get("s", ""))})
+            numbers = [item["s"] for item in sheet.items if not item.get("cad_only") and item["t"] == "text" and re.fullmatch(r"[\d,]+", item.get("s", ""))]
+            self.assertIn(f"{sample['plan_size'][0]:,}", numbers, sample["id"])
             self.assertIn("部屋の色", drawn, sample["id"])
             svg = draw_plans.svg(sheet)
             self.assertNotIn("#c0392b", svg, sample["id"])

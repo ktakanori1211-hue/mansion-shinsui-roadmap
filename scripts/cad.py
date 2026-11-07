@@ -29,6 +29,9 @@ LAYERS = {
     "水の入り道": (4, "CONTINUOUS", "#0277bd", 1.8, ""),
     "水の位置": (4, "DASHED", "#0277bd", 1.2, "8 4"),
     "文字": (7, "CONTINUOUS", "#111111", 0.5, ""),
+    # 家具・機器・仕上げの細い線と、上部にあるものの破線（2026-11-07 竣工図らしい密度にするために追加）。
+    "細線": (8, "CONTINUOUS", "#3a3a3a", 0.4, ""),
+    "破線": (8, "DASHED", "#3a3a3a", 0.45, "3 2"),
     # 画面で部屋の種類を見分けるための薄い塗り。CAD の線の図には要らないので DXF には書き出さない。
     "部屋の色": (9, "CONTINUOUS", "#f3f3f3", 0.0, ""),
 }
@@ -110,6 +113,26 @@ class Sheet:
             x2, y2 = (x, y + offset) if offset <= h else (x + offset - h, y + h)
             self.line(x1, y1, x2, y2, layer)
             offset += gap
+
+    def hatch_poly(self, points, layer="地盤", gap=10.0):
+        """多角形の中に 45 度の線を引く（土の断面など）。線そのものを持つので DXF でも同じになる。"""
+        points = list(points)
+        if len(points) < 3:
+            return
+        sums = [x + y for x, y in points]
+        value = min(sums) + gap
+        while value < max(sums):
+            hits = []
+            for i, (x1, y1) in enumerate(points):
+                x2, y2 = points[(i + 1) % len(points)]
+                f1, f2 = x1 + y1 - value, x2 + y2 - value
+                if (f1 <= 0 < f2) or (f2 <= 0 < f1):
+                    t = f1 / (f1 - f2)
+                    hits.append((x1 + (x2 - x1) * t, y1 + (y2 - y1) * t))
+            hits.sort()
+            for (ax, ay), (bx, by) in zip(hits[0::2], hits[1::2]):
+                self.line(ax, ay, bx, by, layer)
+            value += gap
 
     # 書き出し
 
