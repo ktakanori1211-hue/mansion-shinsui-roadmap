@@ -156,6 +156,32 @@ class ChatTest(unittest.TestCase):
         self.assertEqual(names["fixed"], "安全基準に基づく案内（即時回答）")
         self.assertEqual(names["fallback"], "解説カードの案内")
         self.assertEqual(names["claude"], "自動応答（Claude）")
+        # 2026-11-07・19回目：ワンクリックの質問チップは #chat-log と #chat-form の間。3つ目は安全基準の案内になる質問。
+        html = read("index.html")
+        self.assertLess(html.index('id="chat-log"'), html.index('id="chat-chips"'))
+        self.assertLess(html.index('id="chat-chips"'), html.index('id="chat-form"'))
+        self.assertEqual(html.count('data-chip="'), 3)
+        self.assertIn('data-chip="水が引いたら電気室に入ってブレーカーを上げていい？"', html)
+        self.assertIn('document.getElementById("chat-form").requestSubmit();', js)
+
+    def test_backend_apis_are_wired_without_touching_the_verdict(self):
+        # 2026-11-07・19回目：戸数・築年は表示と1戸あたりだけ（判定に使わない）。カルテと依頼文は折りたたみで、送らず手元で使う。報告書は人が押したときだけ答えに入る。
+        js = read("start.js")
+        adopt = block(js, "function adoptUnits(", "\n}\n")
+        self.assertIn('S.unitsFrom === "user"', adopt)
+        self.assertNotIn("built_year", block(js, "function answers()", "\n}\n"))
+        self.assertNotIn("units", block(js, "function answers()", "\n}\n"))
+        self.assertIn("${consultBox()}", block(js, "function screenFour()", "\n}\n"))
+        self.assertIn('postJSON("/api/consult"', block(js, "async function askConsult()", "\n}\n"))
+        self.assertIn("この画面からは送らず、コピーして手元で使います", js)
+        self.assertIn('postJSON("/api/report"', block(js, "async function readReport(", "\n}\n"))
+        self.assertIn('data-act="report-apply"', js)
+        self.assertIn("S.documentRead = Boolean(r.basement_power);", block(js, "async function applyReport()", "\n}\n"))
+        self.assertIn("document_read: Boolean(S.documentRead),", block(js, "async function loadBuilding()", "\n}\n"))
+        # 折りたたみは入れ子にしない（tests/surface.py の数え方のため）。
+        for name in ("function consultBox()", "function reportBox()"):
+            body = block(js, name, "\n}\n")
+            self.assertEqual(body.count("<details"), 1, name)
 
     def test_screen_does_not_block_questions(self):
         # 原則4：遮断はサーバーの固定の文だけ。画面の側で質問を塞がない。
@@ -400,7 +426,7 @@ class NoDrawingTest(unittest.TestCase):
         three = block(js, "function screenThree()", "\n}\n")
         self.assertIn("${drawingQuestion()}", three)
         # 2026-11-07・13回目：図面があれば読み取りの箱と3問、なければ見て答える3問（同じ札の形）。図は別に、自分の図面があればそれだけ。
-        self.assertIn("hasDrawing() ? readCard() + cards : observeCards()", three)
+        self.assertIn("hasDrawing() ? readCard() + reportBox() + cards : observeCards()", three)
         self.assertIn('const own = (S.drawingImages || []).length > 0;', three)
         self.assertIn('own ? drawingFigure() : hasDrawing() ?', three)
         self.assertNotIn('class="sticky"', three)
@@ -959,7 +985,7 @@ class SurfaceLengthTest(unittest.TestCase):
         # 画面2：写真の読み取りは質問より上。画面3：「止まらない（稼働）」、凡例なし。画面4：補助は出典の1行、保存は折りたたみ。依頼メモは「2 確かめる」。
         js = read("start.js")
         three = block(js, "function screenThree()", "\n}\n")
-        self.assertIn("readCard() + cards", three)
+        self.assertIn("readCard() + reportBox() + cards", three)
         self.assertIn("ownQuestions(!hasDrawing())", three)
         self.assertIn('"止まらない（稼働）"', block(js, "function lifeChips(", "\n}\n"))
         self.assertNotIn("function legend()", js)

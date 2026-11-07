@@ -748,3 +748,11 @@ details.facts[open] { display: flex; }
 .t-break-bg { fill: #fbfcfe; }
 .t-break { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 .t-floor-label { font-size: 10px; }
+
+/* 19回目：チャットの質問チップ、カルテ・報告書の折りたたみ */
+.chat-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 2px; }
+.chip { border: 1.5px solid var(--navy); background: #fff; color: var(--navy); border-radius: 16px; padding: 5px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.chip:hover { background: #e6ebf3; }
+.consult-part { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.consult-part .own-head { color: var(--navy); }
+.report-fold textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; border: 1.5px solid var(--line); padding: 8px; margin: 6px 0; }

@@ -625,6 +625,14 @@ class DrawingReadTest(unittest.TestCase):
         self.assertIsNone(search.building_at("")["found"])
         self.assertIn("API キー", search.building_at("千葉県市川市八幡一丁目")["message"])
         self.assertIsNone(search._valid_facts({"building": "X", "floors_above": 10, "matched": False, "source_url": "https://e.x/"}))
+        # 総戸数・築年はあり得る範囲だけ残す（表示と1戸あたりに使う。判定には使わない）。
+        ok = search._valid_facts({"building": "X", "floors_above": 10, "units": 96, "built_year": 1998, "matched": True, "source_url": "https://e.x/"})
+        self.assertEqual((ok["units"], ok["built_year"]), (96, 1998))
+        bad = search._valid_facts({"building": "X", "floors_above": 10, "units": 1, "built_year": 1900, "matched": True, "source_url": "https://e.x/"})
+        self.assertEqual((bad["units"], bad["built_year"]), (None, None))
+        for prompt in (search.SYSTEM_FACTS, search.SYSTEM_AT):
+            self.assertIn('"units"', prompt)
+            self.assertIn("推測しません", prompt)
         for word in ("分譲マンション", "番地まで", "記憶だけで答えません", "matched"):
             self.assertIn(word, search.SYSTEM_AT)
         server = (ROOT / "app" / "server.py").read_text(encoding="utf-8")

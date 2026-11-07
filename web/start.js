@@ -711,7 +711,7 @@ function factsBox() {
   if (S.factsBusy) result = `<p class="hint">Web で探しています…</p>`;
   else if (S.facts?.found) {
     const f = S.facts.found;
-    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below === null ? "地下は書かれていない" : f.floors_below ? `地下${f.floors_below}階` : "地下なし"].filter(Boolean).join("・");
+    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below === null ? "地下は書かれていない" : f.floors_below ? `地下${f.floors_below}階` : "地下なし", unitsBuiltWords(f)].filter(Boolean).join("・");
     result = `<div class="facts-found"><p><b>${esc(floors)}</b>${f.building ? `（${esc(f.building)}）` : ""}</p>
       <p class="hint">出典：<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || f.source_url)}</a>${f.quote ? `「${esc(f.quote)}」` : ""}</p>
       <p class="hint">${esc(S.facts.message)}</p>
@@ -740,7 +740,10 @@ async function findFacts(given) {
   try {
     S.facts = await postJSON("/api/building-facts", { name, address: townLabel(S.place?.site?.label || "") });
     // 見つかったら、人に押させずに使う（2026-11-06 本人の指示・7回目）。出典は画面に出し、取り消せる。
-    if (S.facts?.found) applyFloors(S.facts.found.floors_above, S.facts.found.floors_below, "web");
+    if (S.facts?.found) {
+      applyFloors(S.facts.found.floors_above, S.facts.found.floors_below, "web");
+      adoptUnits(S.facts.found);
+    }
   } catch (error) {
     S.facts = { found: null, message: error.message };
   } finally {
@@ -750,6 +753,18 @@ async function findFacts(given) {
   }
   // 建物名で見つからなかったときは、住所からの「この建物ですか？」に回す（画面1に何も出ないままにしない。2026-11-07・16回目）。
   if (!S.facts?.found && S.place && !S.sampleId && !S.at) await findBuildingAt();
+}
+
+// Web で読めた総戸数・築年の文（表示だけ。判定には使わない）。
+function unitsBuiltWords(f) {
+  return [f?.units ? `${f.units}戸` : "", f?.built_year ? `${f.built_year}年築` : ""].filter(Boolean).join("・");
+}
+
+// Web で読めた総戸数を、費用の1戸あたりに使う（手で入れた戸数は上書きしない。取り消すで戻る。2026-11-07・19回目）。
+function adoptUnits(f) {
+  if (!f?.units || S.unitsFrom === "user") return;
+  S.units = f.units;
+  S.unitsFrom = "web";
 }
 
 // 候補を使う：地上の階数を「何階建て」に、地下の階数を「地下は ある／ない」に入れる（地下が書かれていなければ変えない）。
@@ -767,6 +782,7 @@ function useFacts() {
   const f = S.facts?.found;
   if (!f) return;
   applyFloors(f.floors_above, f.floors_below, "web");
+  adoptUnits(f);
   render();
 }
 
@@ -779,6 +795,10 @@ function dropFloors() {
   S.own = { floors: "", basement: "unknown" };
   S.facts = null;
   if (S.at) S.at.answer = "";
+  if (S.unitsFrom === "web") {
+    S.units = "";
+    S.unitsFrom = "";
+  }
   S.floorsApplied = null;
   if (S.building) loadBuilding().then(render);
   else render();
@@ -794,8 +814,8 @@ function factsLine() {
   if (S.factsBusy) return `<p class="hint facts-line">建物名から、地上と地下の階数を Web で探しています…</p>`;
   const f = S.facts?.found;
   if (!f || S.floorsApplied?.source !== "web") return "";
-  const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : ""].filter(Boolean).join("・");
-  return `<p class="hint facts-line"><b>${esc(floors)}</b>（<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a>）。機械室の階と受電の方式は、次の画面で確かめます。<button type="button" class="option small" data-act="drop-floors">取り消す</button></p>`;
+  const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : "", unitsBuiltWords(f)].filter(Boolean).join("・");
+  return `<p class="hint facts-line"><b>${esc(floors)}</b>（<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a>）。${f.units && S.unitsFrom === "web" ? "戸数は費用の1戸あたりに使います（判定には使いません）。" : ""}機械室の階と受電の方式は、次の画面で確かめます。<button type="button" class="option small" data-act="drop-floors">取り消す</button></p>`;
 }
 
 // 自分の建物だけ、住民が外から答えられる2つを聞く（分からなくても進める）。
@@ -884,6 +904,7 @@ function answerBuilding(answer) {
     S.facts = { found: S.at.found, message: S.at.message };
     S.query = S.at.found.building || S.query;
     applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web");
+    adoptUnits(S.at.found);
   }
   render();
 }
@@ -894,7 +915,7 @@ function buildingAsk() {
   if (S.at.answer === "yes") return "";
   const f = S.at.found;
   if (f && S.at.answer !== "no") {
-    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : ""].filter(Boolean).join("・");
+    const floors = [f.floors_above ? `地上${f.floors_above}階` : "", f.floors_below ? `地下${f.floors_below}階` : f.floors_below === 0 ? "地下なし" : "", unitsBuiltWords(f)].filter(Boolean).join("・");
     return `<div class="ask-bldg"><p>この建物ですか？：<b>${esc(f.building)}</b>（${esc(floors)}・<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a>）</p>
       <div class="options"><button type="button" class="option" data-at="yes">はい</button><button type="button" class="option" data-at="no">違う</button></div></div>`;
   }
@@ -1135,7 +1156,7 @@ function screenThree() {
     ${hasDrawing() ? progressLine(b, count) : ""}
     ${hasDrawing() ? `<p class="hint">未確認（危険という意味ではありません）は、図面で確かめた答えを入れると色が変わります。</p>` : ""}
     ${drawingQuestion()}
-    ${hasDrawing() ? readCard() + cards : observeCards()}
+    ${hasDrawing() ? readCard() + reportBox() + cards : observeCards()}
     ${figure}
     ${S.sampleId ? "" : hasDrawing() ? `<details class="more"><summary>建物のこと（階数・この辺りの経験）</summary>${ownQuestions(!hasDrawing())}${S.sampleId ? "" : experienceQuestion()}</details>` : `<div class="own-open">${ownQuestions(true)}${experienceQuestion()}</div>`}
     ${criticalPreview()}
@@ -1221,6 +1242,81 @@ function readCard() {
       ${before ? `<p class="hint">平面図・断面図・配置図・電気設備図（単線結線図）・給排水設備図・外構図。複数可、1枚32MBまで。${READ_NOTICE}</p>` : ""}
       ${readResult()}
     </div>`;
+}
+
+// ---- 点検報告書・管理資料の文から読む（/api/report。2026-11-07・19回目で画面に戻した）----
+// 読めた語→項目→効き方を見せ、人が「答えに入れる」を押したときだけ答え（S.extra）と書類の印（document_read）に入れる。
+const REPORT_ANSWER_WORDS = { hv: { no: "受電設備なし（書類に明記）" }, feed: { underground: "引込み 地中", overhead: "引込み 架空" }, panel_foot: { floor: "給水ポンプ制御盤 床置き", raised: "給水ポンプ制御盤 壁掛け・架台" }, rooms_floor: { basement: "受電設備は地下（書類）" }, damp: { yes: "湿気・漏水の指摘あり", no: "指摘なし" }, tank: { yes: "貯留槽あり" }, sealed: { yes: "止水バルブあり" } };
+
+async function readReport(text) {
+  const body = String(text || "").trim();
+  if (!body) {
+    S.report = { message: "文を貼り付けてください。", findings: [], answers: {} };
+    render();
+    return;
+  }
+  S.reportBusy = true;
+  render();
+  try {
+    S.report = await postJSON("/api/report", { text: body });
+    S.reportText = body;
+  } catch (error) {
+    S.report = { message: error.message, findings: [], answers: {} };
+  } finally {
+    S.reportBusy = false;
+    render();
+  }
+}
+
+async function readSampleReport() {
+  if (!S.sampleId) return;
+  const text = await (await fetch(`/samples/report_${S.sampleId}.txt`)).text();
+  await readReport(text);
+}
+
+async function applyReport() {
+  const r = S.report;
+  if (!r) return;
+  const keys = Object.keys(r.answers || {});
+  keys.forEach((key) => {
+    S.extra[key] = r.answers[key];
+  });
+  S.reportApplied = keys;
+  S.documentRead = Boolean(r.basement_power);
+  await loadBuilding();
+  render();
+}
+
+async function dropReport() {
+  (S.reportApplied || []).forEach((key) => delete S.extra[key]);
+  S.reportApplied = null;
+  S.documentRead = false;
+  await loadBuilding();
+  render();
+}
+
+function reportBox() {
+  const r = S.report;
+  let result = "";
+  if (S.reportBusy) result = `<p class="hint">読んでいます…</p>`;
+  else if (r) {
+    const findings = (r.findings || []).map((f) => `<li><b>${esc(f.word)}</b> → ${esc(f.item)}：${esc(f.effect)}</li>`).join("");
+    const answerWords = Object.entries(r.answers || {}).map(([key, value]) => REPORT_ANSWER_WORDS[key]?.[String(value)]).filter(Boolean);
+    const applyable = answerWords.length || r.basement_power;
+    const action = S.reportApplied
+      ? `<p class="auto-applied">書類の値を答えに入れました。<button type="button" class="option small" data-act="report-drop">取り消す</button></p>`
+      : applyable ? `<div class="options big"><button type="button" class="option chosen" data-act="report-apply">答えに入れる（${answerWords.length + (r.basement_power ? 1 : 0)}件）</button></div>` : "";
+    result = `<p class="hint">${esc(r.message || "")}</p>${findings ? `<ul class="proposals">${findings}</ul>` : ""}${answerWords.length ? `<p class="hint">答えに入れられるもの：${esc(answerWords.join("／"))}${r.basement_power ? "／受電設備は地下（書類で確認）" : ""}</p>` : ""}${action}`;
+  }
+  return `<details class="more report-fold"><summary>点検報告書・管理資料から読み取る</summary>
+    <p class="hint">点検報告書や管理会社の資料の文を貼り付けると、受電設備の階、引込み、盤の置き方、指摘事項などの記載を拾います。答えに入れるかは人が押して決めます。</p>
+    <textarea id="report-text" class="copy-area" rows="5" placeholder="例：受電設備：地下1階 受変電室。引込み：地中（高圧）。給水ポンプ制御盤は壁掛け。">${esc(S.reportText || "")}</textarea>
+    <div class="options">
+      <button type="button" class="option" data-act="report-read"${S.reportBusy ? " disabled" : ""}>文面から読み取る（※Anthropic API を使用します）</button>
+      ${S.sampleId ? `<button type="button" class="option" data-act="report-sample">見本の点検報告書で試す</button>` : ""}
+    </div>
+    ${result}
+  </details>`;
 }
 
 // 図面から読めた、部屋の階以外の項目（引込み・受電・盤の置き方・放流先・逆止弁・雨水ます・スロープ・換気口・管路口）。
@@ -1770,7 +1866,8 @@ function screenFour() {
       ${costTable()}
       ${aidSource()}
       <h2 class="part"><span>✓</span>本日の理事会で決めること</h2>
-      ${boardDecisions()}`;
+      ${boardDecisions()}
+      ${consultBox()}`;
   }
   const print = TABS.find(([key]) => key === S.tab)[2];
   return `<section class="s4">
@@ -1782,6 +1879,45 @@ function screenFour() {
     ${S.sendText ? `<textarea class="copy-area" rows="6" readonly>${esc(S.sendText)}</textarea>` : ""}
     <details class="more save-fold"><summary>入力した内容を保存・共有する</summary>${saveBox()}</details>
   </section>`;
+}
+
+// ---- 現地調査・見積もり仕様カルテと依頼文（/api/consult。2026-11-07・19回目で画面に戻した）----
+// 送信はせず手元で使う下書き（what-062）。文面はサーバーの定型を Claude が整え、検査に落ちれば定型のまま。
+const CONSULT_PARTS = [["karte", "① 現地調査・見積もり仕様カルテ"], ["letter", "② 管理会社・工事業者への依頼文"], ["schedule", "③ 補助金と手続きの順番"]];
+
+async function askConsult() {
+  if (!S.building || S.consultBusy) return;
+  S.consultBusy = true;
+  render();
+  try {
+    const checked = Object.entries(S.chk || {}).filter(([, on]) => on).map(([key]) => key);
+    S.consult = await postJSON("/api/consult", {
+      sample_id: S.sampleId,
+      answers: answers(),
+      label: S.place?.site?.label || "",
+      location_rows: S.place?.location?.rows || [],
+      confirmed: confirmedTokens(),
+      document_read: Boolean(S.documentRead),
+      checked: checked.length ? checked : ["plate", "hole"],
+      subsidy: subsidy().region,
+    });
+  } catch (error) {
+    S.consult = { error: error.message };
+  } finally {
+    S.consultBusy = false;
+    render();
+  }
+}
+
+function consultBox() {
+  const c = S.consult;
+  const parts = c && !c.error ? CONSULT_PARTS.map(([key, title]) => `<div class="consult-part"><p class="own-head">${title}</p><textarea class="copy-area" rows="6" readonly>${esc(c[key] || "")}</textarea><button type="button" class="option small" data-copy="${key}">コピーする</button></div>`).join("") : "";
+  const note = c ? `<p class="hint">${esc(c.error || [c.source === "claude" ? "文面を自動で整えました（数字・留保・主語は検査済み）。" : "プログラムの定型の文面です。", c.notice].filter(Boolean).join("　"))}</p>` : "";
+  return `<details class="more consult-fold"><summary>現地調査・見積もり仕様カルテと依頼文を作る</summary>
+    <p class="hint">管理会社や工事業者に見積りを頼むときの下書きです。この画面からは送らず、コピーして手元で使います。</p>
+    <button type="button" class="option" data-act="consult"${S.consultBusy ? " disabled" : ""}>${S.consultBusy ? "整えています…" : "カルテと依頼文を整える（※Anthropic API を使用します）"}</button>
+    ${note}${parts}
+  </details>`;
 }
 
 // ---- 文で送る（2026-11-05） ----
@@ -1981,6 +2117,12 @@ async function choosePlace(params, sampleId, demoId) {
     S.extra = {};
     S.read = null;
     S.autoApplied = false;
+    S.report = null;
+    S.reportText = "";
+    S.reportApplied = null;
+    S.documentRead = false;
+    S.consult = null;
+    S.unitsFrom = "";
     S.drawingImages = [];
     S.fig = "plan";
     S.reached = 1;
@@ -2035,7 +2177,7 @@ async function loadBuilding() {
     answers: answers(),
     label: S.place.site.label,
     confirmed: confirmedTokens(),
-    document_read: false,
+    document_read: Boolean(S.documentRead),
     directions: {},
     low_directions: reading.low_directions || [],
     high_directions: reading.high_directions || [],
@@ -2343,6 +2485,18 @@ screen.addEventListener("click", (event) => {
     resetPlace();
   } else if (target.dataset.at) {
     answerBuilding(target.dataset.at);
+  } else if (target.dataset.act === "consult") {
+    askConsult();
+  } else if (target.dataset.copy) {
+    copyText(S.consult?.[target.dataset.copy] || "", "コピーしました。");
+  } else if (target.dataset.act === "report-read") {
+    readReport(document.getElementById("report-text")?.value || "");
+  } else if (target.dataset.act === "report-sample") {
+    readSampleReport();
+  } else if (target.dataset.act === "report-apply") {
+    applyReport();
+  } else if (target.dataset.act === "report-drop") {
+    dropReport();
   } else if (target.dataset.act === "apply-floors") {
     const d = S.read?.drawing;
     if (d) applyFloors(d.floors_above, d.floors_below, "drawing");
@@ -2410,6 +2564,7 @@ screen.addEventListener("change", (event) => {
   }
   if (event.target.dataset.units) {
     S.units = event.target.value;
+    S.unitsFrom = "user";
     render();
   }
 });
@@ -2758,6 +2913,15 @@ document.getElementById("chat-toggle").addEventListener("click", () => {
 document.getElementById("chat-close").addEventListener("click", () => {
   document.getElementById("chat").hidden = true;
   document.getElementById("chat-toggle").hidden = false;
+});
+
+// ワンクリックの質問（2026-11-07・19回目）。押すと入力欄に入れて、そのまま送る。3つ目は AI を通さず安全基準の案内になる。
+document.getElementById("chat-chips").addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-chip]");
+  if (!chip || chatWaiting) return;
+  const input = document.getElementById("chat-input");
+  input.value = chip.dataset.chip;
+  document.getElementById("chat-form").requestSubmit();
 });
 
 document.getElementById("chat-form").addEventListener("submit", async (event) => {
