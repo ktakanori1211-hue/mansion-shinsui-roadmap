@@ -8,6 +8,7 @@
 - 要件定義と決定の記録：[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
 - 3分の紹介：[docs/OVERVIEW.md](docs/OVERVIEW.md)
 - デモ動画：準備中（提出時にここへリンクを入れます。台本は [docs/VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md)）
+- 提出フォームに貼る文：[docs/SUBMISSION.md](docs/SUBMISSION.md)
 
 ## 解く課題
 
