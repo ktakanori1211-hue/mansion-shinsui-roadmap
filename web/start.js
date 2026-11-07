@@ -210,6 +210,18 @@ function where() {
 }
 
 // 画面の上の小さな行：建物名が分かっていれば「建物名／町丁」、分からなければ町丁だけ。
+// 各画面の一番上：この画面で何をするか（2026-11-07・31回目）。
+const STEP_HEADS = {
+  1: ["場所の浸水リスクを知る", "国のハザードマップ × 地形の掛け算で判定"],
+  2: ["機械室の階を確かめる", "竣工図や外観から電気室・ポンプ室の位置を確認"],
+  3: ["浸水経路と対策を比べる", "水が入る順番と止水板の効果を比較"],
+  4: ["理事会に出す資料を受け取る", "A4・1枚の提案書と依頼メモを印刷"],
+};
+function stepHead(n) {
+  const [title, sub] = STEP_HEADS[n];
+  return `<p class="step-head"><span class="step-tag">STEP ${n}</span><b>${title}</b><small>${sub}</small></p>`;
+}
+
 function kicker() {
   if (!S.building || !S.place) return "";
   return S.building.sample.custom && !foundName() ? townLabel(S.place.site.label) : where();
@@ -390,14 +402,11 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
   const states = roomStates(level);
   const protectedNow = S.measure !== "none" && level > 0;
   const parts = [];
+  const waterParts = [];
   Object.entries(cad.rooms).forEach(([key, box]) => {
     if (states[key]) parts.push(roomOverlay(key, box, states[key], !small));
-    // 浸かる部屋には青い波の模様を重ねる（水が来ている見た目。2026-11-07・25回目）。
-    if (states[key]?.state === "wet") {
-      parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern ${states[key].depth || ""}"/>`);
-      // 水深の札（上から見ても深さが分かるように。2026-11-07・29回目）。
-      if (!small && box.h > 60) parts.push(`<g class="p-depth"><rect x="${box.x + 4}" y="${box.y + box.h - 24}" width="92" height="19"/><text x="${box.x + 50}" y="${box.y + box.h - 10}">${states[key].depth === "deep" ? "水深 約50cm" : "水深 20〜30cm"}</text></g>`);
-    }
+    // 浸かる部屋の水は、入口（矢印の来る側）から奥へ広がる。②は部屋の半分まで、③は部屋全体（2026-11-07・31回目）。
+    if (states[key]?.state === "wet") waterParts.push({ key, box, depth: states[key].depth });
   });
   if (level >= 1 && !small) {
     const tag = level >= 2 ? `${LEVEL_HEAD[level]}：${protectedNow ? "止水板と穴埋めで止める" : "青＝水が来る範囲"}` : LEVEL_HEAD[1];
@@ -424,6 +433,28 @@ function plan({ level = 0, pins = {}, small = false } = {}) {
     const target = roomAt(view, (m.x - cad.px(0, 0)[0]) / (cad.px(shape.W, 0)[0] - cad.px(0, 0)[0]), 0.98);
     const box = target && cad.rooms[target.key];
     entries.push({ x1: m.x, y1: m.y + 46, x2: m.x, y2: box ? box.y + box.h - Math.min(40, box.h * 0.45) : m.y - 30, label: m.kind === "conduit_hole" ? "管から壁の穴へ" : "扉・換気口から", lx: m.x + 14, ly: m.y + 40, anchor: "start", hole: m.kind === "conduit_hole", wallY: m.y });
+  });
+  waterParts.forEach(({ box, depth }) => {
+    const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+    const near = entries.length ? entries.reduce((best, e) => (Math.hypot(e.x2 - cx, e.y2 - cy) < Math.hypot(best.x2 - cx, best.y2 - cy) ? e : best), entries[0]) : null;
+    // 入口の側：矢印の出発点が部屋の上か下か左右か。分からなければ道路側（下）。
+    let side = "bottom";
+    if (near) side = near.y1 < box.y ? "top" : near.y1 > box.y + box.h ? "bottom" : near.x1 < box.x ? "left" : "right";
+    const frac = depth === "deep" ? 1 : 0.5;
+    const r = { x: box.x, y: box.y, w: box.w, h: box.h };
+    if (side === "top") r.h = box.h * frac;
+    else if (side === "bottom") { r.y = box.y + box.h * (1 - frac); r.h = box.h * frac; }
+    else if (side === "left") r.w = box.w * frac;
+    else { r.x = box.x + box.w * (1 - frac); r.w = box.w * frac; }
+    parts.push(`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" class="p-water ${depth || ""}"/>`);
+    if (depth === "deep") parts.push(`<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" class="p-water-pattern"/>`);
+    // 水の先端（②のとき）：広がっている向きに波の線。
+    if (frac < 1) {
+      if (side === "top") parts.push(wave(r.x, r.x + r.w, r.y + r.h, 3, 16));
+      else if (side === "bottom") parts.push(wave(r.x, r.x + r.w, r.y, 3, 16));
+      else parts.push(`<path d="M${side === "left" ? r.x + r.w : r.x} ${r.y} L${side === "left" ? r.x + r.w : r.x} ${r.y + r.h}" class="s-wave"/>`);
+    }
+    if (!small && box.h > 60) parts.push(`<g class="p-depth"><rect x="${box.x + 4}" y="${box.y + box.h - 24}" width="92" height="19"/><text x="${box.x + 50}" y="${box.y + box.h - 10}">${depth === "deep" ? "水深 約50cm" : "水深 20〜30cm"}</text></g>`);
   });
   entries.forEach((entry) => {
     const blocked = protectedNow;
@@ -934,6 +965,7 @@ function screenOne() {
     const lines = placeLines();
     const representative = S.place.site.basis === "representative";
     return `<section class="s1">
+      ${stepHead(1)}
       <div class="chosen-bar"><p class="place"><b>${esc(S.place.site.label)}</b>${foundBuildingLine() || chosenFloors()}</p><button type="button" class="option small" data-act="re-search">別の場所を探す</button></div>
       <div class="picked">
         ${riskHead(lines)}
@@ -953,6 +985,7 @@ function screenOne() {
   }
   return `<section class="s1">
     ${S.openId ? openBox() : ""}
+    ${stepHead(1)}
     <h1 class="title">大雨のとき、<br>あなたのマンションで<br>何が止まるか</h1>
     <form class="find" id="find">
       <input id="q" name="q" type="search" autocomplete="off" placeholder="住所かマンション名" aria-label="住所・マンション名・郵便番号">
@@ -1213,7 +1246,7 @@ function simBox(playing, shown) {
     <div class="sim-step"><span class="step-no">2</span>${measureChips()}</div>
     <div class="sim-step"><span class="step-no">3</span><div class="fig-switch"><span class="sim-label">図を切り替える</span><div class="options big fig-options">${tabs}</div></div></div>
     <div class="plan sim-fig">${figure}</div>
-    ${fig === "drawing" ? "" : `<p class="fig-legend"><span class="lg water">青の面＝水が入る範囲（②床に20〜30cm、③床から50cm）</span><span class="lg arrow">矢印＝水の入り道</span><span class="lg badge">赤い札＝止まる設備</span></p>`}
+    ${fig === "drawing" ? "" : `<p class="fig-legend"><span class="lg water">青の面＝水が入る範囲（②入口側から半分、③部屋全体）</span><span class="lg arrow">矢印＝水の入り道</span><span class="lg badge">赤い札＝止まる設備</span></p>`}
     ${stopList()}
     ${S.building?.sample?.custom && fig !== "drawing" ? `<p class="hint fig-note">${borrowedNote()}</p>` : ""}
     ${lifeChips(S.play)}
@@ -1239,6 +1272,7 @@ function screenTwo() {
   const playing = Boolean(S.timer);
   const shown = S.play > 0;
   return `<section class="s2">
+    ${stepHead(3)}
     <p class="kicker">${esc(kicker())}</p>
     <h1 class="title">${esc(measureHeadline())}</h1>
     <p class="lead-why">${esc(S.measure === "none" ? titleLine() : MEASURE_GAIN[S.measure] || "")}</p>
@@ -1317,6 +1351,7 @@ function screenThree() {
   const samplePlan = hasDrawing() ? `<div class="plan check-plan">${plan({ pins: pinsOf(steps()), small: true })}</div>${b.sample.custom ? `<p class="hint">${borrowedNote()}</p>` : ""}` : "";
   const figure = own ? (hasPlanImage ? drawingFigure() : drawingFigure(true) + samplePlan) : samplePlan;
   return `<section class="s3">
+    ${stepHead(2)}
     <p class="kicker">${esc(kicker())}</p>
     <h1 class="title">${hasDrawing() ? CHECK_LEAD : CHECK_LEAD_NO_DRAWING}</h1>
     ${hasDrawing() ? progressLine(b, count) : ""}
@@ -1394,7 +1429,7 @@ async function setObservation(key, value) {
 }
 
 // 図面を読むときの、送る前の明示（what-063）。
-const READ_NOTICE = "選んだ図面から部屋や設備の候補を読み取ります（※解析には Anthropic API を使用します。キーがないときは送らず、見本の答えを出します）。";
+const READ_NOTICE = "部屋と階の候補を読み取り、自動で反映します（※Anthropic API を使用。キーがなければ見本の答え）。";
 
 function readCard() {
   // 選ぶ前は説明を1行だけ。読んだあとは候補と「すべて入れる」（2026-11-07・13回目）。
@@ -1405,7 +1440,7 @@ function readCard() {
         <label class="option file">図面の写真・PDFを選ぶ<input type="file" id="plan-file" accept="image/*,application/pdf" multiple></label>
         ${S.sampleId ? `<button type="button" class="option" data-act="read-sample">見本の図面で試す</button>` : ""}
       </div>
-      ${before ? `<p class="hint">平面図・断面図・配置図・設備図・外構図・外観写真。複数可。Cmd+V の貼り付けでも読めます。${READ_NOTICE}</p>` : ""}
+      ${before ? `<p class="hint">平面図・断面図・設備図・外観写真など複数可（貼り付けも可）。${READ_NOTICE}</p>` : ""}
       ${readResult()}
     </div>`;
 }
@@ -1525,12 +1560,18 @@ function readProposals() {
   const main = (read.rooms || []).filter((room) => ROOM_MARKS[room.kind]);
   main.sort((p, q) => (p.word === names[p.kind] ? 0 : 1) - (q.word === names[q.kind] ? 0 : 1));
   main.forEach((room) => {
-    const choice = floorChoice(room.floor);
+    let choice = floorChoice(room.floor);
+    let floorText = room.floor || "階は読めず";
+    // 階の表記がない図面でも、画面1で「地下なし」と分かっている建物なら1階として扱う（地下と推測しない。2026-11-07・31回目）。
+    if (!choice && !room.floor && S.own.basement === "no") {
+      choice = "ground";
+      floorText = "階の表記なし → 地下なしの建物なので1階";
+    }
     const key = `${room.kind}:${choice || room.floor}`;
     if (seen.has(key)) return;
     seen.add(key);
     const word = room.word && room.word !== names[room.kind] ? `（図面では「${room.word}」）` : "";
-    list.push({ id: `room:${room.kind}`, kind: room.kind, choice, name: `${ROOM_MARKS[room.kind]} ${names[room.kind]}`, text: `${room.floor || "階は読めず"}${word}`, applied: Boolean(choice) && S.choices[room.kind] === choice });
+    list.push({ id: `room:${room.kind}`, kind: room.kind, choice, name: `${ROOM_MARKS[room.kind]} ${names[room.kind]}`, text: `${floorText}${word}`, applied: Boolean(choice) && S.choices[room.kind] === choice });
   });
   const d = read.drawing;
   if (d && d.floors_above) {
@@ -1664,17 +1705,18 @@ function riskHead(lines, compact = false) {
       return `<li>${mark(hit)}${name}：${inlandNone ? "国のデータなし" : esc(mapWord(line))}</li>`;
     }).join("");
   const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${mark(line.hit)}${esc(line.name)}：${esc(shortRainText(line))}</li>`).join("");
-  // この道具の売り：ハザードマップだけでは足りないと 2026 年の大雨で分かった。その事実を帯で先に見せる（数字は出典のまま）。
-  const found = rain?.accent && !compact ? `<div class="found-2026"><p class="f-head">2026年の大雨で分かったこと</p><p class="f-body">ハザードマップに色のない場所でも浸水しました。台風25号（2026年9月・千葉県）の浸水447件のうち<b>64%</b>は、洪水の地図に色のない高台のくぼ地と水路沿いの低地（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）。だからマンション浸水チェックでは、<b>国の想定 × 地形</b>の掛け算で見ます。</p></div>` : "";
-  const fact = "";
+  // この道具の売り：ハザードマップ × 地形。2枚のカードを1つの比較枠で包み、見出しに 64% を置く（2026-11-07・31回目。数字は出典のまま）。
+  const title = rain?.accent ? `<p class="mul-title">ハザードマップに色がなくても浸水する理由：<span class="mul-fact-line">2026年台風25号では千葉県の浸水447件のうち<b class="big">64%</b>がマップ色なしの場所でした</span><a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a></p>` : "";
   // 結論の下に「浸かると止まるもの」を添える（画面1の時点で何が止まるか分かるように。建物の階で変わるので、断定せず「浸かると」）。
   const consequence = !compact && head[0] === "risk" ? `<p class="rh-stop"><b>機械室（給水ポンプ室・電気室・借室）が浸かると、全戸で止まるもの：</b><span>水・トイレ</span><span>エレベーター</span><span>各戸の電気</span><small>何階にあるかで変わります。次の画面で竣工図から確かめます。</small></p>` : "";
   return `<div class="risk-head ${head[0]}"><p class="rh-title">${head[0] === "risk" ? "⚠ " : ""}${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p>${consequence}</div>
-  ${found}
-  <div class="mul">
-    <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-tag">これまでの見方</p><p class="mul-head"><span class="mul-no">国の想定</span>ハザードマップ ${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
-    <div class="mul-x">×</div>
-    <div class="mul-card new${rainHit ? " hit" : ""}"><p class="mul-tag">2026年の大雨で分かった見方</p><p class="mul-head"><span class="mul-no">地形</span>台風・大雨で浸かりやすいか ${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul></div>
+  <div class="mul-frame">
+    ${title}
+    <div class="mul">
+      <div class="mul-card${mapHit ? " hit" : ""}"><p class="mul-tag">これまでの見方</p><p class="mul-head">国のハザードマップだけ ${mark(mapHit ? true : mapClear ? false : null)}</p><ul>${mapLines}</ul></div>
+      <div class="mul-x">×</div>
+      <div class="mul-card new${rainHit ? " hit" : ""}"><p class="mul-tag">新しい見方</p><p class="mul-head">地形の浸かりやすさ（くぼ地・盛土・高低差） ${mark(rainHit ? true : rainClear ? false : null)}</p><ul>${rainLines}</ul></div>
+    </div>
   </div>`;
 }
 
@@ -2126,6 +2168,7 @@ function screenFour() {
   }
   const print = TABS.find(([key]) => key === S.tab)[2];
   return `<section class="s4">
+    ${stepHead(4)}
     <div class="tabs" role="tablist">${tabs}</div>
     ${body}
     <button type="button" class="primary" data-act="print">${print}</button>
@@ -2962,7 +3005,7 @@ function saveBox() {
     <div class="options"><button type="button" class="option" data-act="save-link">期限つきのリンクを作る</button><button type="button" class="option" data-act="save-file">暗号にしたファイルを保存する</button></div>
     ${S.saveLink ? `<p class="save-link"><input readonly value="${esc(S.saveLink)}"><button type="button" class="option small" data-act="link-copy">リンクをコピー</button></p>` : ""}
     ${S.saveMsg ? `<p class="hint" role="status">${esc(S.saveMsg)}</p>` : ""}
-    <p class="hint">場所・答え・対策・費用の個数を、ブラウザの中で暗号にして保存します（図面・チャット・APIキーは入れません）。パスワードを忘れると戻せません。</p>
+    <p class="hint">ブラウザの中で暗号にして保存します（図面・チャット・APIキーは入れません）。パスワードを忘れると戻せません。</p>
   </div>`;
 }
 
