@@ -770,3 +770,57 @@ details.facts[open] { display: flex; }
 .busy-box b { font-size: 16px; color: var(--navy); }
 .spinner { width: 20px; height: 20px; border: 3px solid #c7d6ee; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 22回目：画面3の操作（対策が主役、水位と再生は控えめ、図のタブは図の枠の上に小さく） */
+.measures-switch.big { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: #f3f7fd; border: 2px solid var(--navy); border-radius: 4px; }
+.measures-switch.big .sim-label { font-size: 15px; font-weight: 800; color: var(--navy); }
+.measures-switch.big .option { min-height: 44px; padding: 10px 16px; font-size: 16px; border: 2px solid var(--navy); color: var(--navy); border-radius: 3px; }
+.measures-switch.big .option.chosen { background: var(--navy); color: #fff; }
+.sim-controls.small { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.sim-controls.small .sim-label { font-size: 12.5px; color: var(--muted); }
+.sim-controls.small .option { padding: 4px 10px; font-size: 12.5px; border: 1px solid var(--rule); color: var(--muted); }
+.sim-controls.small .option.chosen { background: #e6ebf3; color: var(--navy); border-color: var(--navy); }
+.play.small { padding: 4px 10px; font-size: 12.5px; margin-left: auto; }
+.fig-head { margin-top: 8px; }
+.sim-tabs { display: inline-flex; gap: 2px; width: auto; }
+.sim-tabs .tab { padding: 5px 12px; font-size: 12px; border-width: 1.5px; border-radius: 4px 4px 0 0; margin-bottom: -2px; }
+.found-bldg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.found-bldg b { color: var(--ink); font-size: 15px; }
+.found-bldg .option.small { min-height: 28px; font-size: 12px; padding: 2px 8px; }
+/* A4：文字を減らして大きく、費用の比較を主役に */
+.a4-onepage .crit-table { font-size: 11px; }
+.a4-onepage .crit-table .c-main b { font-size: 11.5px; }
+.a4-onepage .crit-table .c-cost { font-size: 11px; font-weight: 800; }
+.a4-onepage .crit-table .c-dec { font-size: 10px; }
+.a4-onepage .crit-table th { font-size: 10px; }
+.a4-onepage .tier-head { font-size: 11px; }
+.a4-onepage .risk-head .rh-title { font-size: 14px; }
+.a4-onepage .rh-sub { font-size: 11px; }
+.a4-onepage .mul-card ul { font-size: 10px; }
+.a4-onepage .mul-head { font-size: 10.5px; }
+.a4-onepage .mul-fact { font-size: 9.5px; }
+.a4-onepage .life b { font-size: 11.5px; }
+.a4-onepage .life em { font-size: 12.5px; }
+.a4-box h2 { font-size: 12.5px; }
+.a4-main-title { font-size: 17px; }
+.a4-onepage .cost-table, .a4-onepage table.cost { font-size: 11px; }
+.a4-onepage .sheet-plan svg { max-height: 150px; }
+.a4-onepage .a4-figs .sheet-plan:nth-child(2) svg { max-height: 190px; }
+.a4-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cmp { border: 2px solid #cfd5e0; padding: 6px 8px; }
+.cmp.no { border-color: var(--risk-line); background: #fff6f5; }
+.cmp.yes { border-color: var(--clear-line); background: #f1f9f3; }
+.cmp-head { margin: 0; font-size: 11px; font-weight: 800; color: #333; }
+.cmp.no .cmp-head { color: var(--risk); }
+.cmp.yes .cmp-head { color: var(--clear); }
+.cmp-big { margin: 2px 0; font-size: 20px; font-weight: 900; line-height: 1.2; }
+.cmp.no .cmp-big { color: var(--risk); }
+.cmp.yes .cmp-big { color: var(--clear); }
+.cmp-big small { display: block; font-size: 11px; font-weight: 800; color: #333; }
+.cmp-sub { margin: 0; font-size: 9.5px; line-height: 1.4; color: #333; }
+.case-line { font-size: 13px; line-height: 1.55; padding: 6px 10px; border-left: 4px solid var(--risk-line); background: #fff6f5; color: #333; }
+.sim-tabs .tab { white-space: nowrap; }
+.a4-compare-box { border: 2px solid var(--risk-line); }
+.a4-onepage .cmp-big { font-size: 22px; }
+.a4-onepage .cmp-sub { font-size: 10px; }
+.a4-onepage .a4-figs .sheet-plan:nth-child(2) svg { max-height: 215px; }

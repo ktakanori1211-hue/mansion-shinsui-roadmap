@@ -375,14 +375,20 @@ class PlanTest(unittest.TestCase):
         self.assertIn("hasBasement()", figure)  # 地下1階がある建物は、地面の下に箱を描く（2026-11-06・10回目）
         one = block(js, "function screenOne()", "\n}\n")
         self.assertIn("${terrainFigure(lines)}", one)
-        # 2026-11-07・15回目：住所で選んだときは「この建物ですか？」を断面図の上に1行。人が「はい」を押すまで階数は使わない。
+        # 2026-11-07・22回目：住所で建物が見つかったら押させずに反映し、上の1行に建物名・階数・戸数・築年・出典。違うときは「修正」、見つからないときは「建物名・階数を入力」。
         self.assertLess(one.index("${buildingAsk()}"), one.index("${terrainFigure(lines)}"))
+        self.assertIn("${foundBuildingLine() || chosenFloors()}", one)
         ask = block(js, "function buildingAsk()", "\n}\n")
-        self.assertIn('data-at="yes"', ask)
-        self.assertIn('data-at="no"', ask)
+        self.assertIn('data-act="fix-building"', ask)
         self.assertIn("ownQuestions(true)", ask)
-        self.assertIn('postJSON("/api/building-at"', block(js, "async function findBuildingAt()", "\n}\n"))
+        self.assertNotIn('data-at="yes"', ask)
+        find = block(js, "async function findBuildingAt()", "\n}\n")
+        self.assertIn('postJSON("/api/building-at"', find)
+        self.assertIn('if (S.at.found) answerBuilding("yes");', find)
         self.assertIn('applyFloors(S.at.found.floors_above, S.at.found.floors_below, "web")', block(js, "function answerBuilding(", "\n}\n"))
+        self.assertIn('data-act="fix-building"', block(js, "function foundBuildingLine()", "\n}\n"))
+        # 見つけた建物名は画面3・4の見出しにも使う。
+        self.assertIn('found || "（建物名）"', block(js, "function where()", "\n}\n"))
         # 図面がない人の3問は、図面の答えがないときだけ建物の形に使い、確かめた印（confirmed）には入れない。
         answers = block(js, "function answers()", "\n}\n")
         self.assertIn('S.drawing === "no" && !floors.length', answers)
