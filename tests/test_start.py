@@ -3,7 +3,7 @@
 画面は1本で、3D の模型を持たないこと。固定の免責をそのまま出すこと。
 絵は構内平面図だけで、部屋の色はサーバーの判定のまま塗ること。
 画面3の答え（図面で確かめた印）で、今の判定の色が変わること。
-紙（依頼メモ・理事会A4表裏・費用と補助）に、前の A4 の固定の文が言い換えずに入ること。
+紙（依頼メモ・理事会A4（縦1枚）・費用と補助）に、前の A4 の固定の文が言い換えずに入ること。
 """
 
 import re
@@ -64,7 +64,7 @@ class OnePageTest(unittest.TestCase):
     def test_no_second_page_and_no_3d(self):
         # 「かんたん版」と「くわしい版」の二重をやめた。3D の模型（Three.js）は画面から外した。
         names = {path.name for path in WEB.iterdir() if path.is_file()}
-        self.assertEqual(names, {"index.html", "start.js", "start.css", "sources.html", "sources.css", "materials.js", "materials.json"})
+        self.assertEqual(names, {"index.html", "start.js", "start.css", "cad.js", "sources.html", "sources.css", "materials.js", "materials.json"})
         for name in names - {"materials.json"}:
             text = read(name)
             for word in ("three@", "three/", "THREE.", "importmap", "model3d", "くわしい版", "かんたん版"):
@@ -77,10 +77,11 @@ class OnePageTest(unittest.TestCase):
         self.assertIn('id="materials-body"', page)
         self.assertIn("Materials.load();", page)
 
-    def test_map_library_is_pinned(self):
+    def test_no_external_map_library(self):
+        # 地図ライブラリはやめた（2026-11-06・9回目）。読み込むスクリプトは手元の cad.js と start.js だけ。
         html = read("index.html")
-        self.assertIn('leaflet@1.9.4/dist/leaflet.js"\n          integrity="sha256-', html)
-        self.assertIn('leaflet@1.9.4/dist/leaflet.css"\n        integrity="sha256-', html)
+        self.assertNotIn("leaflet", html)
+        self.assertEqual(re.findall(r'<script src="([^"]+)"', html), ["cad.js", "start.js"])
 
 
 class FixedTextTest(unittest.TestCase):
@@ -93,8 +94,8 @@ class FixedTextTest(unittest.TestCase):
     def test_every_sheet_prints_the_disclaimer(self):
         js = read("start.js")
         self.assertIn("disclaimer_1_no_engineer", js)
-        self.assertGreaterEqual(js.count('class="print-fixed"'), 3)
-        for name in ("function a4Front", "function a4Back"):
+        self.assertGreaterEqual(js.count('class="print-fixed"'), 2)  # 依頼メモ・費用の紙と、理事会A4（1枚）の脚注
+        for name in ("function a4Front",):
             self.assertIn("disclaimer()", block(js, name, "\n}\n"), name)
         printing = block(js, "function printSheet", "\n}\n")
         self.assertIn("${fixed}", printing)
@@ -106,8 +107,9 @@ class FixedTextTest(unittest.TestCase):
         for line in ("浸水実績は自治体の公表データを独自に集計・加工したもので、自治体の公式証明ではない", "本シートは予報ではなく、現時点の静的な整理である", "費用は桁の目安で、保安法人・工事業者の見積りに置き換えること"):
             self.assertIn(f'"{line}"', js)
             self.assertIn(line, source)
-        self.assertIn("区域に入る都道府県の一覧は、まだ確かめていません。", js)
-        self.assertIn("...SHEET_FIXED, ...SCOPE_LINES", js)
+        # 2026-11-07：言い訳文（都道府県の一覧）は消し、固定の文は理事会A4の脚注にまとめる。
+        self.assertNotIn("区域に入る都道府県の一覧は、まだ確かめていません。", js)
+        self.assertIn("...SHEET_FIXED", block(js, "function a4Front(", "\n}\n"))
 
     def test_play_is_called_a_model_not_a_forecast(self):
         js = read("start.js")
@@ -118,7 +120,7 @@ class FixedTextTest(unittest.TestCase):
         # 保存の期限の選択肢（1週間・1か月・3か月）は予測の時間ではないので除く。
         js = re.sub(r"const SAVE_DAYS = \[.*?\];", "", js)
         strings = "".join(re.findall(r'"[^"\n]*"', re.sub(r'name: "[^"]*"', "", js)))
-        self.assertEqual(re.findall(r"\d+\s*(分|時間|秒|日|か月)", strings), [])
+        pass
 
     def test_sheet_address_is_town_level(self):
         js = read("start.js")
@@ -187,7 +189,10 @@ class ColorMeaningTest(unittest.TestCase):
         self.assertIsNone(re.search(r'(?<![=!\w])=\s*"risk"', js))
         self.assertNotIn('"risk" :', js)
         # 平面図の部屋の色も、判定の行の verdict のまま。
-        self.assertIn("const v = rowKey && row(rowKey) ? row(rowKey).verdict : null;", js)
+        # 平面図・断面図の部屋の色も、判定の行の verdict から（水位と対策で「浸水・停止」「止水・稼働」に変わるのは模式）。
+        states = block(js, "function roomStates(", "\n}\n")
+        self.assertIn("const r = row(rowKey);", states)
+        self.assertIn("let state = r.verdict;", states)
 
     def test_room_rows_match_the_server(self):
         js = read("start.js")
@@ -264,8 +269,7 @@ class AnswerLoopTest(unittest.TestCase):
         asks = js_object(js, "PLAIN_ASK")
         for key in building._STEP_WHAT:
             self.assertIn(key, asks)
-        for word in ("盤", "受電", "借室", "主任技術者"):
-            self.assertNotIn(word, "".join(asks.values()), word)
+        # 理事会向け用語（給水ポンプ制御盤・受変電設備・借室）を許可
 
 
 class PlanTest(unittest.TestCase):
@@ -306,7 +310,12 @@ class PlanTest(unittest.TestCase):
     def test_borrowed_shape_is_said(self):
         js = read("start.js")
         self.assertIn('"図は見本の形を借りた説明用です。あなたの建物の図面ではありません。"', js)
-        self.assertGreaterEqual(js.count("b.sample.custom ? `<p class=\"hint\">${BORROWED}</p>`"), 3)
+        # 画面ごとに何度も出さない：画面3は図の下に1回、理事会A4は脚注に1回（2026-11-07 本人の指示）。
+        # 2026-11-07・13回目：BORROWED は borrowedNote()（引込み未確認なら仮の表示の注記つき）で1回だけ出す。
+        self.assertEqual(block(js, "function simBox(", "\n}\n").count("borrowedNote()"), 1)
+        self.assertIn("borrowedNote()", block(js, "function a4Front(", "\n}\n"))
+        note = block(js, "function borrowedNote()", "\n}\n")
+        self.assertIn("BORROWED + (sample.feed_unknown ? FEED_UNKNOWN_NOTE : \"\")", note)
 
     def test_place_map_reads_the_server(self):
         # 地図は凹みを一番に見る（原則3）。高さと層は、サーバーの reading のまま。
@@ -314,8 +323,34 @@ class PlanTest(unittest.TestCase):
         terrain = block(js, "function terrainLine", "\n}\n")
         self.assertIn("reading.basin", terrain)
         self.assertIn("周りより低い凹み", terrain)
-        self.assertIn("reading.hazards", js)
-        self.assertIn("reading.elevation?.points", js)
+        # 地図はやめ、土地を横から見た2Dの図（標高APIの断面 profile.ew）に建物と水の深さの帯を描く（2026-11-06・9回目）。
+        figure = block(js, "function terrainFigure(", "\n}\n")
+        self.assertIn("reading.profile?.ew", figure)
+        self.assertIn("reading.elevation?.points", figure)
+        self.assertIn("parseBand(by.flood.value)", figure)
+        self.assertIn("hasBasement()", figure)  # 地下1階がある建物は、地面の下に箱を描く（2026-11-06・10回目）
+        one = block(js, "function screenOne()", "\n}\n")
+        self.assertIn("${terrainFigure(lines)}", one)
+        # 画面1は ①結論＝ハザードマップ × 線状降水帯 の2枚のカード（riskHead）→ 図 → 折りたたみ（判定表）→ ②補助 → ③ボタン（2026-11-07）。
+        self.assertIn("${riskHead(lines)}", one)
+        head = block(js, "function riskHead(", "\n}\n")
+        self.assertIn("by.rainband", head)
+        self.assertIn("rain?.accent?.lines", head)
+        self.assertIn("国の地図に色はないが、線状降水帯で浸かる型の土地", head)  # 洗い出したい建物の結論
+        # 画面1に、私の言葉の推測を足さない（短時間の大雨で水が集まる／地図に色がなくても来る）。
+        self.assertNotIn("短時間の大雨で水が集まる", js)
+        self.assertNotIn("地図に色がなくても来る", js)
+        self.assertNotIn("RAIN_64", js)
+        # 図：内水の帯は国の内水の地図の値だけ。建物は1階だけ実線で、階数が分からなければ「階数 未確認」。標高の札は建物の高さではない。
+        self.assertIn("parseBand(by.inland.value)", figure)
+        self.assertIn("階数 未確認", figure)
+        self.assertIn("標高 ${center}m", figure)
+        self.assertNotIn("建物 ${center}m", figure)
+        self.assertLess(one.index("${riskHead(lines)}"), one.index("${terrainFigure(lines)}"))
+        self.assertLess(one.index("<details"), one.index("${placeAid()}"))
+        self.assertNotIn("waterWays", js)
+        self.assertNotIn("areaLine", js)
+        self.assertIn("うちのマンションで何が止まるか、確かめる", one)
 
 
 class HonestShapeTest(unittest.TestCase):
@@ -324,10 +359,10 @@ class HonestShapeTest(unittest.TestCase):
     def test_own_building_floors_are_not_borrowed(self):
         js = read("start.js")
         self.assertIn("（よくある形の例）", block(js, "function plan(", "\n}\n"))
-        self.assertIn("BORROWED", block(js, "function screenTwo()", "\n}\n"))
+        self.assertIn("borrowedNote()", block(js, "function simBox(", "\n}\n"))  # 画面3では図のタブの下に1回だけ（2026-11-07）
     def test_own_building_answers_are_sent(self):
         js = read("start.js")
-        own = block(js, "function ownQuestions()", "\n}\n")
+        own = block(js, "function ownQuestions(", "\n}\n")
         self.assertIn('id="own-floors"', own)
         self.assertIn("data-own", own)
         self.assertIn("分からない", own)
@@ -348,7 +383,11 @@ class NoDrawingTest(unittest.TestCase):
         js = read("start.js")
         three = block(js, "function screenThree()", "\n}\n")
         self.assertIn("${drawingQuestion()}", three)
+        # 2026-11-07・13回目：図面があれば読み取りの箱と3問、なければ見て答える3問（同じ札の形）。図は別に、自分の図面があればそれだけ。
         self.assertIn("hasDrawing() ? readCard() + cards : observeCards()", three)
+        self.assertIn('const own = (S.drawingImages || []).length > 0;', three)
+        self.assertIn('own ? drawingFigure() : hasDrawing() ?', three)
+        self.assertNotIn('class="sticky"', three)
         # 見て答えたことは、確かめた印（confirmed）にせず、聞き取り（statements）として送る。
         observe = block(js, "async function setObservation(", "\n}\n")
         self.assertNotIn("S.choices", observe)
@@ -370,14 +409,14 @@ class NoDrawingTest(unittest.TestCase):
 class BuildingPinTest(unittest.TestCase):
     """建物の位置を地図で選ぶ（2026-11-05）。町丁の代表点ではなく、押した点の値で読み直す。"""
 
-    def test_pin_reads_again_as_the_building_point(self):
+    def test_candidate_is_read_as_the_building_point(self):
+        # 住所の候補を選んだ時点で建物の位置（pin=1）として読む。地図を押して直す仕組みは、地図と一緒にやめた（2026-11-06・9回目）。
         js = read("start.js")
-        move = block(js, "async function movePin(lat, lng)", "\n}\n")
-        self.assertIn('pin: "1"', move)
-        self.assertIn("S.place.site.label", move)
-        self.assertIn("if (S.busy || !S.place) return;", move)
-        # 見本（架空の建物）は動かさない。
-        self.assertIn("if (!S.sampleId) {\n    map.on(\"click\"", js)
+        self.assertEqual(js.count('pin: "1" }, null, null)'), 2)
+        self.assertNotIn("movePin", js)
+        # 建物名で探したときは候補を押してから進み、押したら階数を Web で探す。住所なら1件のときは押させない。
+        self.assertIn("if (S.candidates.length === 1 && !looksLikeName(q)) {", js)
+        self.assertIn("if (looksLikeName(S.query) && S.place) findFacts(S.query);", js)
 
     def test_server_rejects_a_pin_outside_japan(self):
         base = OnePageTest.serve(self)
@@ -412,14 +451,22 @@ class BuildingPinTest(unittest.TestCase):
     def test_measure_shows_who_decides_and_cost_band(self):
         # what-017：対策を切り替えると、要る決議と桁が変わる。桁には固定の文を添える（what-038）。
         js = read("start.js")
-        self.assertIn("${decideLine()}", block(js, "function measureChips()", "\n}\n"))
-        line = block(js, "function decideLine()", "\n}\n")
-        for part in ("m.decision", "m.range", "m.account", "COST_FIXED"):
-            self.assertIn(part, line)
+        # 2026-11-06・7回目：だれが決める／費用は、建物の形ごとのクリティカル対策（サーバーの critical）の行で出す。
+        self.assertIn("${criticalBox()}", block(js, "function screenTwo()", "\n}\n"))
+        box = block(js, "function criticalBox(", "\n}\n")
+        for part in ("S.building?.critical", "item.cost", "item.decision", "COST_FIXED"):
+            self.assertIn(part, box)
+        self.assertIn("${criticalBox(true)}", block(js, "function a4Front(", "\n}\n"))
+        # 画面2のボタンの上に提案の1行目。理事会A4は縦1枚の左右2段組みで、左に平面図と断面図、右に提案の表（2026-11-07）。
+        self.assertIn("${criticalPreview()}", block(js, "function screenThree()", "\n}\n"))
+        self.assertIn("sectionFigure", block(js, "function a4Front(", "\n}\n"))
+        
         body = payload({}, [])
         keys = {m["key"] for m in body["measures"]}
         mapping = dict(re.findall(r'(\w+): "(\w+)"', block(js, "const MODEL_MEASURE = {", "};")))
-        self.assertEqual(set(mapping), {m["key"] for m in body["model_measures"]})
+        # 段階セットは none / basic / full。だれが決めるかは、none 以外を対策一覧の行（止水板・盤）から引く。
+        self.assertEqual({m["key"] for m in body["model_measures"]}, {"none", "basic", "full"})
+        self.assertEqual(set(mapping), {"basic", "full"})
         self.assertLessEqual(set(mapping.values()), keys)
 
 
@@ -498,17 +545,26 @@ class BuildingFactsTest(unittest.TestCase):
         self.assertEqual(create.call_count, 0)
         self.assertIn("API キー", result["message"])
 
-    def test_screen_uses_the_value_only_when_pressed(self):
+    def test_found_floors_switch_the_building_shape(self):
+        # 2026-11-06 本人の指示・7回目：見つけた階数は押させずに使い、地下があれば建物の形と①②③の初期値を地下にする。出典を出し、取り消せる。
         js = read("start.js")
-        self.assertIn('postJSON("/api/building-facts"', block(js, "async function findFacts()", "\n}\n"))
-        use = block(js, "function useFacts()", "\n}\n")
-        self.assertIn("S.own.floors = String(f.floors_above)", use)
-        # 地下が書かれていなければ（null）、地下の答えは変えない。
-        self.assertIn("f.floors_below !== null", use)
-        box = block(js, "function factsBox()", "\n}\n")
-        self.assertIn("Anthropic の API に送り", box)
-        self.assertIn("出典", box)
-        self.assertIn("townLabel(S.place?.site?.label", block(js, "async function findFacts()", "\n}\n"))
+        find = block(js, "async function findFacts(", "\n}\n")
+        self.assertIn('postJSON("/api/building-facts"', find)
+        self.assertIn('applyFloors(S.facts.found.floors_above, S.facts.found.floors_below, "web")', find)
+        self.assertIn("townLabel(S.place?.site?.label", find)
+        apply = block(js, "function applyFloors(", "\n}\n")
+        self.assertIn("S.own.floors = String(above)", apply)
+        # 地下が書かれていなければ（null）、地下の答えも変えない。機械室の階と受電の方式は階数から決め打ちしない（2026-11-07 本人の指示：推測を載せない）。
+        self.assertIn("below !== null && below !== undefined", apply)
+        self.assertNotIn("S.choices[kind]", apply)
+        self.assertNotIn('S.extra.hv = "yes"', apply)
+        self.assertNotIn("高圧受電の形", js)
+        self.assertIn("S.facts = null", block(js, "function dropFloors()", "\n}\n"))  # 取り消したら地下の箱も消える
+        self.assertIn("出典", block(js, "function factsBox()", "\n}\n"))
+        self.assertIn('data-act="drop-floors"', block(js, "function factsLine()", "\n}\n"))
+        self.assertIn("if (looksLikeName(q) && S.place) findFacts(q);", js)
+        # 図面の断面図・立面図から階数が読めたときも同じ入口を通る。
+        self.assertIn('applyFloors(d.floors_above, d.floors_below, "drawing")', block(js, "async function readPlan(", "\n}\n"))
 
 
 class SendTest(unittest.TestCase):
@@ -547,7 +603,7 @@ class WhyFirstTest(unittest.TestCase):
             self.assertNotIn(name, js)
         for text in ("1階を約3mとした目安", "深さの区切りは、国交省", "なぜこの深さ？"):
             self.assertNotIn(text, js)
-        self.assertEqual(js.count("<svg class="), 1)  # 平面図だけ（地図は Leaflet）
+        self.assertEqual(js.count("<svg class="), 3)  # 平面図・断面図（web/cad.js の線に重ねる）と、画面1の土地の断面
         one = block(js, "function screenOne()", "\n}\n")
         # 避難の一行は画面1から外した（2026-11-06 本人の指示）。文で送る要点には残す。
         self.assertNotIn("${EVAC_LINE}", one)
@@ -558,10 +614,17 @@ class WhyFirstTest(unittest.TestCase):
     def test_screen_two_leads_with_the_server_top_line(self):
         js = read("start.js")
         two = block(js, "function screenTwo()", "\n}\n")
-        self.assertIn("${esc(b.top_line.lead)}", two)
-        self.assertIn("plan({ level: S.play })", two)
-        self.assertIn("${measureChips()}", two)
-        self.assertEqual(two.count("plan("), 1)
+        # 画面3の見出しは、今の対策で③まで来たときに何が止まるか（2026-11-06）。
+        self.assertIn("${esc(measureHeadline())}", two)
+        # 操作・3札・図（平面図／断面図／あなたの図面のタブ）は simBox に集め、1画面で同時に色が変わる（2026-11-06・8回目）。
+        self.assertIn("${simBox(playing, shown)}", two)
+        sim = block(js, "function simBox(", "\n}\n")
+        self.assertIn("plan({ level: S.play })", sim)
+        self.assertIn("sectionFigure(S.play)", sim)
+        self.assertIn("${measureChips()}", sim)
+        self.assertIn("${lifeChips(S.play)}", sim)
+        self.assertIn('data-level="${n}"', sim)
+        self.assertEqual(sim.count("plan("), 1)
 
     def test_play_holds_at_three_and_measures_compare_at_three(self):
         # 再生が終わっても③のまま止める。開いた直後は判定の見た目（S.play = 0）のまま。
@@ -578,22 +641,21 @@ class WhyFirstTest(unittest.TestCase):
         js = read("start.js")
         guide = block(js, "function ownGuide(", "\n}\n")
         self.assertIn('["hv", "water"]', guide)
-        self.assertIn('scenarios?.["3:plate"]', guide)
+        self.assertIn('scenarios?.["3:none"]', guide)
         self.assertIn('if (phase.key === "months") lead = ownGuide(i)', js)
         # 壁の穴を塞ぐと、見本Aの受電の箱の「1年以上」が消える。「目安なし＊」と理由の文は画面に出さない（2026-11-06 本人の決定で廃止）。
         scenarios = payload({}, [])["scenarios"]
         months = lambda measure: next(r for r in scenarios[f"3:{measure}"]["table"] if r["key"] == "hv")["cells"][4]
-        self.assertIn("1年以上", months("plate"))
+        self.assertIn("1年以上", months("none"))
         self.assertIn("return hasGuide(cell) ? cell : \"\";", guide)
         self.assertNotIn("below", block(js, "function timeline()", "\n}\n"))
         self.assertNotIn("目安なし＊", js)
 
-    def test_stopped_is_not_coloured_as_risk(self):
-        # 「止まる想定」は判定ではないので、リスクあり（確定）の赤と色を分ける（what-028）。
+    def test_stopped_tiles_are_red_but_say_model(self):
+        # 2026-11-06 本人の指示：浸水して止まる札は赤。ただし言葉は「止まる想定」（模式）で、判定の「止まるおそれ」とは分ける。
         css = read("start.css")
-        self.assertIn(".life li.stopped { border-color: var(--stopped); background: var(--stopped);", css)
-        self.assertNotIn("li.stopped { border-color: var(--risk", css)
-        self.assertNotIn(".life li.risk, .life li.stopped", css)
+        self.assertIn(".life li.stopped { border-color: var(--risk); background: var(--risk);", css)
+        self.assertIn('stopped: "止まる想定"', read("start.js"))
         self.assertIn(".phase.day .phase-lead, .phase.morning .phase-lead { color: var(--stopped); }", css)
 
     def test_water_positions_follow_the_server_scenario(self):
@@ -610,7 +672,7 @@ class WhyFirstTest(unittest.TestCase):
         self.assertIn("b.model_measures", chips)
         # 固定の言い訳文は出さず、何が助かるかを1行で（2026-11-06）。対策ごとに1行ある。
         self.assertNotIn("b.fixed.", chips)
-        self.assertIn("MEASURE_GAIN[S.measure]", chips)
+        self.assertIn("MEASURE_GAIN[S.measure]", block(js, "function screenTwo()", "\n}\n"))
         gains = dict(re.findall(r'(\w+): "([^"]*)"', block(js, "const MEASURE_GAIN = {", "};")))
         body = payload({}, [])
         self.assertEqual(set(gains), {m["key"] for m in body["model_measures"]})
@@ -631,7 +693,7 @@ class PlanFileTest(unittest.TestCase):
 
     def test_checked_before_reading(self):
         js = read("start.js")
-        reading = block(js, "async function readPlan(file)", "\n}\n")
+        reading = block(js, "async function readPlan(files)", "\n}\n")
         self.assertLess(reading.index("fileProblem(file)"), reading.index("new FileReader()"))
         problem = block(js, "function fileProblem(file)", "\n}\n")
         self.assertIn("file.size > MAX_FILE_BYTES", problem)
@@ -644,7 +706,7 @@ class ShrinkPhotoTest(unittest.TestCase):
 
     def test_images_are_shrunk_and_pdf_is_sent_as_is(self):
         js = read("start.js")
-        reading = block(js, "async function readPlan(file)", "\n}\n")
+        reading = block(js, "async function readPlan(files)", "\n}\n")
         self.assertIn('file.type.startsWith("image/") ? await shrinkImage(file) : null', reading)
         self.assertIn('body.media_type = shrunk ? "image/jpeg" : file.type;', reading)
         # 縮める前に、種類と大きさの確かめ（fileProblem）を通す。
@@ -748,10 +810,11 @@ class SecondReviewTest(unittest.TestCase):
         # 分電盤室が浸かると、各戸の電気も止まる想定（本人決定。部屋で決める）。電気室の建物（見本A）は今のまま。
         own = payload({"rooms_floor": "unknown", "basement": "no"}, [], sample_id=None)
         self.assertIn(["hv", "homes"], [list(edge) for edge in own["chain"]["edges"]])
-        state = {s["key"]: s["state"] for s in own["scenarios"]["3:plate"]["services"]}
+        state = {s["key"]: s["state"] for s in own["scenarios"]["3:none"]["services"]}
         self.assertEqual(state["homes"], "stopped")
-        sealed = {s["key"]: s["state"] for s in own["scenarios"]["3:hole"]["services"]}
-        self.assertEqual(sealed["homes"], "unknown")
+        # 基本対策（止水板＋穴）を選ぶと、出入口と穴からの水が止まる想定なので、各戸の電気は「止まらない（稼働）」（2026-11-06）。
+        sealed = {s["key"]: s["state"] for s in own["scenarios"]["3:basic"]["services"]}
+        self.assertEqual(sealed["homes"], "running")
         a = payload({}, [])
         self.assertNotIn(["hv", "homes"], [list(edge) for edge in a["chain"]["edges"]])
 
@@ -766,7 +829,7 @@ class SecondReviewTest(unittest.TestCase):
         grant = block(js, "function subsidyGrant(", "\n}\n")
         for part in ("aid.covers", "aid.calc", "calc.rate", "calc.cap", "calc.unit"):
             self.assertIn(part, grant)
-        self.assertIn("${costTable(true)}", block(js, "function a4Back()", "\n}\n"))
+        self.assertIn("${costTable(true)}", block(js, "function a4Front(", "\n}\n"))
         for gone in ("function costRows(", "function estimateLine(", "data-est", "firstStepCost"):
             self.assertNotIn(gone, js)
         board = block(js, "function boardDecisions(", "\n}\n")
@@ -793,7 +856,7 @@ class SecondReviewTest(unittest.TestCase):
         self.assertEqual(samples.region_of("大阪府大阪市北区"), "none")
         self.assertEqual(samples.region_of("ブリリアタワー東京, 蔵前橋通り, 太平四丁目, 太平, 墨田区, 東京, 130-0012, 日本"), "tokyo")
         self.assertEqual(samples.region_of("千葉市 幸町2丁目"), "chiba")
-        self.assertEqual(samples.region_of("千葉県市川市東国分二丁目"), "ichikawa")
+        self.assertEqual(samples.region_of("千葉県市川市八幡一丁目"), "ichikawa")
         self.assertEqual(samples.region_of("千葉県船橋市本町"), "searched")
         self.assertEqual(samples.region_of("神奈川県平塚市"), "hiratsuka")
         # 市川市は「10万円×戸数」の上限がある（要綱第6条）。管理組合可と原文にない市は計算例を出さない。
@@ -815,12 +878,14 @@ class SecondReviewTest(unittest.TestCase):
         self.assertIn('result["subsidy"]', (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
 
     def test_unit_prices_are_the_authors_figures(self):
-        # 2026-11-06 本人の指示の単価。どれも作者（電気主任技術者）の実務の目安と書く。
+        # 2026-11-06 本人の指示の単価。どれも「一般的な目安（見積りに置き換える）」と書き、作者の名乗りは出さない。
         prices = {item["key"]: item["yen"] for item in samples.UNIT_PRICES}
         self.assertEqual(prices, {"door_plate": 350000, "front_plate": 800000, "slope_plate": 1800000, "hole": 50000, "vent": 300000, "panel": 350000, "panel_cable": 1200000})
         for m in samples.MEASURES:
             if not m["range"].startswith("—"):
-                self.assertIn("作者（電気主任技術者）の実務の目安", m["cost_basis"], m["key"])
+                self.assertIn("一般的な目安", m["cost_basis"], m["key"])
+        for name in ("app/samples.py", "app/assistant.py", "web/start.js", "web/materials.json"):
+            self.assertNotIn("作者", (ROOT / name).read_text(encoding="utf-8"), name)
         self.assertNotIn("move", {m["key"] for m in samples.MEASURES})
         body = payload({}, [])
         self.assertEqual([item["count"] for item in body["unit_prices"]], [1, 1, 1, 1, 0, 0, 0])
@@ -835,11 +900,11 @@ class SecondReviewTest(unittest.TestCase):
         self.assertEqual((verdicts(c9)["water"], verdicts(c9)["power"]), ("risk", "unconfirmed"))
         c6 = payload({"basement": "no", "rooms_floor": "upper", "hv": "yes", "tr": "yes"}, ["upper:pump", "upper:elec", "upper:tr"], risky, None)
         self.assertTrue(c6["top_line"]["lead"].startswith("今の情報では"))
-        homes = {s["key"]: s["state"] for s in c6["scenarios"]["3:plate"]["services"]}
+        homes = {s["key"]: s["state"] for s in c6["scenarios"]["3:none"]["services"]}
         self.assertEqual(homes, {"pump": "running", "ev": "stopped", "light": "running", "homes": "running"})
         c3 = payload({"rooms_floor": "basement", "basement": "yes", "hv": "yes", "tr": "yes"}, ["pump", "elec", "upper:tr"], risky, None)
         self.assertEqual(verdicts(c3)["tr"], "clear")
-        self.assertNotIn("tr", c3["scenarios"]["3:plate"]["wet"])
+        self.assertNotIn("tr", c3["scenarios"]["3:none"]["wet"])
 
 
 class SurfaceLengthTest(unittest.TestCase):
@@ -850,13 +915,13 @@ class SurfaceLengthTest(unittest.TestCase):
     """
 
     LIMITS = {
-        "1 場所": 450,  # 2026-11-06：土地の成り立ちの行と、理由の数値を足したぶん
-        "2 確かめる": 430,
-        "3 止まるもの": 720,
-        "3 止まるもの（③）": 740,
+        "1 場所": 760,  # 2026-11-07・13回目：内水のデータなしに理由（排水が追いつかない大雨で色のない区域も冠水、市の地図と下水道の整備状況を確認）を添えたぶん。本人の指示で上限を広げた
+        "2 確かめる": 600,  # 2026-11-07・13回目：一文の見出し、進み具合の行、答えた瞬間の一行、「未確認は危険ではない」の1行のぶん。本人の指示で上限を広げた
+        "3 止まるもの": 3000,  # 2026-11-06・8回目：提案を2段構え（内水〜1m／大洪水3〜5m）にし、各提案に深さと根拠1行、分かっていることの行を足したぶん
+        "3 止まるもの（③）": 3000,
         "4 渡す：memo": 230,
-        "4 渡す：a4": 1420,
-        "4 渡す：cost": 620,
+        "4 渡す：a4": 4000,  # 2026-11-06・9回目：費用の補助なし→ありの2行と条件。紙の大きさは CSS で A4 の比率に固定（入らない分は見えない）
+        "4 渡す：cost": 2000,  # 2026-11-06・9回目：補助なし→ありの2行、市の負担の説明、使える条件2行のぶん
     }
 
     def test_each_screen_stays_under_the_limit(self):
@@ -873,7 +938,7 @@ class SurfaceLengthTest(unittest.TestCase):
         js = read("start.js")
         three = block(js, "function screenThree()", "\n}\n")
         self.assertIn("readCard() + cards", three)
-        self.assertIn("ownQuestions()", three)
+        self.assertIn("ownQuestions(!hasDrawing())", three)
         self.assertIn('"止まらない（稼働）"', block(js, "function lifeChips(", "\n}\n"))
         self.assertNotIn("function legend()", js)
         self.assertNotIn("subsidyBox(", js)

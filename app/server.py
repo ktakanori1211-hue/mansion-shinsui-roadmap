@@ -84,7 +84,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(
                 200,
                 [
-                    {"id": key, "label": samples.SAMPLES[p["sample"]]["button"], "sample": p["sample"], "kind": samples.SAMPLES[p["sample"]]["kind"]}
+                    {"id": key, "label": samples.SAMPLES[p["sample"]]["button"], "sample": p["sample"], "kind": samples.SAMPLES[p["sample"]]["kind"], "floors": samples.SAMPLES[p["sample"]]["floors"]}
                     for key, p in DEMO_POINTS.items()
                 ],
             )

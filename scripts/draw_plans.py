@@ -246,7 +246,7 @@ class PlanView:
         w, h = x1 - x0, y1 - y0
         if kind == "cubicle":
             self.box(x0 + w * 0.15, y1 - h * 0.34, x1 - w * 0.15, y1 - h * 0.1)
-            self.label(cx, y1 - h * 0.22, "受電の箱（キュービクル）", 8)
+            self.label(cx, y1 - h * 0.22, "高圧受変電設備（キュービクル）", 8)
         elif kind == "transformer":
             self.box(x0 + w * 0.22, y1 - h * 0.34, x1 - w * 0.22, y1 - h * 0.1)
             self.label(cx, y1 - h * 0.22, "？", 12, bold=True)
@@ -262,7 +262,7 @@ class PlanView:
         elif kind == "panel_stand":
             self.box(x0 + w * 0.15, y1 - h * 0.34, x1 - w * 0.15, y1 - h * 0.14)
             self.box(x0 + w * 0.1, y1 - h * 0.38, x1 - w * 0.1, y1 - h * 0.11, "シャッター")
-            self.label(cx, y1 - h * 0.24, "おおもとのスイッチ盤（架台の上）", 7)
+            self.label(cx, y1 - h * 0.24, "主開閉器盤（架台の上）", 7)
         elif kind == "water_tank":
             self.box(x0 + w * 0.2, y1 - h * 0.42, x1 - w * 0.2, y1 - h * 0.12)
             self.label(cx, y1 - h * 0.27, "受水槽", 8)
@@ -555,7 +555,7 @@ def _level_mark(sheet, x, y, key):
     sheet.text(x, y, str(key), 10.5, color="#0277bd", bold=True)
 
 
-# 断面の部屋の名前と、重ね絵での扱い。power は盤・受電の箱の部屋（サーバーの wet の hv で浸かるかを決める）、
+# 断面の部屋の名前と、重ね絵での扱い。power は盤・高圧受変電設備の部屋（サーバーの wet の hv で浸かるかを決める）、
 # tr は借室（中は描かない）、floor は一番低い床の続きの部屋。
 _ROOM_ROLES = {
     "電気室": "power",
@@ -572,7 +572,7 @@ _ROOM_ROLES = {
 
 def _section_short(sample):
     """水の位置①②③の短い言い方。断面図の凡例と画面の重ね絵で同じ文を使う。"""
-    short = {1: "道路・スロープ・壁の穴に達した", 2: "一番低い床に達した", 3: "盤・受電の箱の下端に達した"}
+    short = {1: "道路・スロープ・壁の穴に達した", 2: "一番低い床に達した", 3: "盤・高圧受変電設備の下端に達した"}
     if not sample["underground_feed"]:
         short[1], short[3] = "前の道路・坂下の扉に達した", "架台の上の盤の下端に達した"
     return short
@@ -656,7 +656,7 @@ def section_underground(sheet, sample, view, left, base):
     sheet.rect(X(cub_x), Z(level_3 + 1600), cub_w * s, 1600 * s, "設備")
     for leg in (cub_x + 300, cub_x + cub_w - 300):
         sheet.line(X(leg), Z(level_3), X(leg), Z(b1), "設備")
-    sheet.text(X(cub_x + cub_w / 2), Z(level_3 + 800), "受変電設備" if has_gen else "受電の箱\n（キュービクル）", 11)
+    sheet.text(X(cub_x + cub_w / 2), Z(level_3 + 800), "受変電設備" if has_gen else "高圧受変電設備\n（キュービクル）", 11)
     tr_x, tr_end = rooms[1][0] + 400, rooms[2][0] - 400
     sheet.rect(X(tr_x), Z(level_3 + 1300), (tr_end - tr_x) * s, 1300 * s, "設備")
     sheet.text((X(tr_x) + X(tr_end)) / 2 + 16, Z(level_3 + 650), "？", 18, bold=True)
@@ -670,7 +670,7 @@ def section_underground(sheet, sample, view, left, base):
         sheet.rect(X(18400), Z(b1 + 1500), 2200 * s, 1500 * s, "設備")
         sheet.text(X(19500), Z(b1 + 750), "発電機", 11)
         _water_lines(sheet, X(25150), Z(b1 + 2200), X(28400) - X(25150), 2200 * s, 11)
-    # 引込（HH → 管 → 壁の穴 → 受電の箱）
+    # 引込（HH → 管 → 壁の穴 → 高圧受変電設備）
     hh_x, hh_w = 5900, 1100
     sheet.rect(X(hh_x), Z(150), hh_w * s, 2100 * s, "引込", 2)
     sheet.text(X(hh_x + hh_w / 2), Z(150) - 34, "歩道ぎわの蓋（HH）", 11.5, layer="寸法", bold=True)
@@ -779,7 +779,7 @@ def section_hillside(sheet, sample, view, left, base):
         room_end = rooms[i + 1][0] if i + 1 < len(rooms) else build_right
         # 1階の部屋は低いので、中の「？」と重ならない大きさにとどめる。
         sheet.text((X(x) + X(room_end)) / 2, Z(top_2 - 300) + 15, name, _fit_label(name, X(room_end) - X(x), 20, 12), bold=True)
-    for x, w, name in ((8800, 2800, "スイッチ盤"), (19400, 2400, "制御盤")):
+    for x, w, name in ((8800, 2800, "主開閉器盤"), (19400, 2400, "制御盤")):
         sheet.line(X(x), Z(floor_1), X(x), Z(floor_1 + 500), "設備")
         sheet.line(X(x + w), Z(floor_1), X(x + w), Z(floor_1 + 500), "設備")
         sheet.rect(X(x), Z(floor_1 + 1900), w * s, 1400 * s, "設備")
@@ -960,7 +960,7 @@ def system_sheet(sample):
     sheet.text(170, 352, "上の引込みと同じか別かも図から分からない", 10.5, "start", layer="寸法")
     _flow(sheet, tr, homes)
     if sample["has_chief_engineer"]:
-        hv = _box(sheet, 790, 150, 170, "受変電設備" if sid == "c" else "受電の箱", floor)
+        hv = _box(sheet, 790, 150, 170, "受変電設備" if sid == "c" else "高圧受変電設備", floor)
         _flow(sheet, entry, hv)
         panel = _box(sheet, 1030, 150, 170, "共用の分電盤", floor)
         _flow(sheet, hv, panel)
@@ -973,7 +973,7 @@ def system_sheet(sample):
         sheet.line(px + pw, py + ph / 2, bus, py + ph / 2, "図枠", 1.8)
     else:
         sheet.text(625, 230, "受電設備なし。借室から先は低圧（例）", 10.5, layer="寸法")
-        panel = _box(sheet, 790, 420, 170, "共用部のおおもとの\nスイッチ盤", floor, pin="ア")
+        panel = _box(sheet, 790, 420, 170, "共用部の\n主開閉器盤", floor, pin="ア")
         sheet.line(625, 378, 625, 449, "引込", 1.6)
         sheet.arrow(625, 449, 790, 449, "引込", 9)
         sheet.line(720, 179, 745, 179, "引込", 1.6)

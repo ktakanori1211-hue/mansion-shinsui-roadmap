@@ -54,6 +54,12 @@ ROOM_WORDS = {
     "basin": ["雨水ます", "雨水桝"],
     "gen": ["発電機室", "非常用発電機"],
     "door": ["坂下側出入口", "足元換気口"],
+    # 細かい設備の語（2026-11-06 本人の指示・7回目：本物の竣工図の EPS・PS・MB・階段・受水槽も読む）。
+    "eps": ["EPS", "電気配管シャフト"],
+    "ps": ["PS", "パイプシャフト"],
+    "mb": ["MB", "メーターボックス"],
+    "stair": ["階段"],
+    "entrance": ["エントランス", "風除室"],
 }
 
 def _plain_word(text: str) -> str:
@@ -71,10 +77,10 @@ def room_kind(text: str) -> Optional[str]:
 
 
 ROOM_NAMES = {
-    "elec": "電気室（マンション側の受電の箱の部屋）",
+    "elec": "電気室（マンション側の高圧受変電設備の部屋）",
     "tr": "東京電力の変圧器の部屋（借室）",
     "panel_room": "共用部のおおもとのスイッチ盤の部屋",
-    "pump": "ポンプの部屋",
+    "pump": "給水ポンプ室",
     "ev": "エレベーターの通り道",
     "park": "機械式駐車場",
     "slope": "地下へ降りる車路スロープ",
@@ -83,6 +89,11 @@ ROOM_NAMES = {
     "basin": "敷地の雨水ます",
     "gen": "非常用発電機の部屋",
     "door": "坂の下の側の扉と足元の換気口",
+    "eps": "EPS（電気の配線のシャフト）",
+    "ps": "PS（配管のシャフト）",
+    "mb": "MB（メーターボックス）",
+    "stair": "階段",
+    "entrance": "エントランス・風除室",
 }
 
 # 11/8 までの費用は判定表の桁だけを使う。band は 4=数万 5=数十万 6=数百万 7=数千万 8=1億円超。
@@ -97,7 +108,7 @@ MEASURES = [
     {"key": "vent", "tier": "工事が要る", "label": "足元の換気口を高くする", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "30万円（換気口1か所）", "low": 5, "high": 6, "sample_yen": 300000, "tokyo": "with_plate", "chiba": "no"},
     {"key": "power", "tier": "工事が要る", "label": "停電したとき外から電源車をつなげる受け口を 1 階につくる", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "数十万〜数百万円", "low": 5, "high": 6, "sample_yen": 1500000, "tokyo": "unknown", "chiba": "no"},
     {"key": "door_rebuild", "tier": "更新と一緒", "label": "壁を壊して枠ごと防水扉にする", "decision": "総会（特別決議）", "account": "修繕積立金", "range": "300万円〜", "low": None, "high": None, "open_ended": True, "sample_yen": 4000000, "tokyo": "yes", "chiba": "no"},
-    # 「受電の箱を屋上へ移す」は、現実的でないため外した（2026-11-06 本人決定）。
+    # 「高圧受変電設備（キュービクル）を屋上へ移す」は、現実的でないため外した（2026-11-06 本人決定）。
     # ここから下は、ノートの「実現したい機能」から足した行。新しい金額は持たず、桁は見積りで確かめる。
     {"key": "pump_check", "tier": "今すぐ", "label": "排水ポンプ（地下の床、機械式駐車場の掘り込み、汚水の汲み上げ）が動くかを、保守会社の点検で確かめる", "decision": "理事会で決められる場合がある（建物の規約と予算による）", "account": "管理費（保守の契約に入っているかを確かめる）", "range": "—（契約による）", "low": None, "high": None, "sample_yen": 0, "tokyo": "none", "chiba": "none"},
     {"key": "backflow", "tier": "工事が要る", "label": "逆止弁を付ける", "decision": "総会（普通決議）", "account": "修繕積立金", "range": "—（見積りで確かめる）", "low": None, "high": None, "sample_yen": 0, "tokyo": "with_plate", "chiba": "no"},
@@ -117,9 +128,9 @@ HOLE_OWNER_NO_ENGINEER = "管理会社→電気工事の業者"
 
 # 壁の穴の行の折りたたみに出す、塞ぎ方の使い分け。施工時間や停電の要否は根拠が確かめられていないので書かない。
 HOLE_NOTE = "使っていない予備の管の口は栓で塞ぎ、ケーブルが通った穴は固まらない（非硬化の）止水材で埋めます（ケーブルの通った穴に栓は使えません）。"
-# 費用の単価（2026-11-06 本人＝電気主任技術者の実務の目安）。場所・サイズ別の単価×個数で、画面4の表と A4 と相談の文に使う。
+# 費用の単価（2026-11-06 本人の指示。一般的な目安）。場所・サイズ別の単価×個数で、画面4の表と A4 と相談の文に使う。
 # kind：plate は止水板（補助の対象の計算に使う）。default は、その建物で最初に入れておく個数の決め方。
-COST_BASIS_NONE = "作者（電気主任技術者）の実務の目安です。見積りに置き換えます。"
+COST_BASIS_NONE = "一般的な目安です（実際の工事では現地調査・見積りの値に置き換えます）。"
 UNIT_PRICES = [
     {"key": "door_plate", "label": "通用口・機械室の扉の止水板（幅1m）", "yen": 350000, "kind": "plate", "measure": "plate", "default": "one"},
     {"key": "front_plate", "label": "正面玄関の止水板（幅2.5m）", "yen": 800000, "kind": "plate", "measure": "pillar", "default": "one"},
@@ -129,8 +140,12 @@ UNIT_PRICES = [
     {"key": "panel", "label": "ポンプ制御盤の壁掛け・かさ上げ", "yen": 350000, "kind": "panel", "measure": "panel", "default": "floor_panel"},
     {"key": "panel_cable", "label": "同上（ケーブル延長あり）", "yen": 1200000, "kind": "panel", "measure": "panel", "default": "zero"},
 ]
-# 未対策で浸水したときの復旧費の目安（同じく作者の実務の目安）。
+# 未対策で浸水したときの復旧費の目安（一般的な目安）。
 RECOVERY_COST_LINE = "未対策で浸水したときの復旧費の目安：約1,000万〜2,500万円（1〜4週間の断水・停電）"
+# 同じ目安の下限と上限（円）。理事会A4で1戸あたりに割るために出す。
+RECOVERY_COST_YEN = (10000000, 25000000)
+# 無対策で機械室が浸水したときの被害の目安の1行（ほかの建物の例と一般的な目安。この建物の値ではない）。画面3の札の下と理事会A4に、この文のまま出す。
+DAMAGE_LINE = "無対策で機械室が浸水した場合の目安：断水8日・トイレ11日（2019年の台風で地下の電気室が浸かった川崎市の高層マンションの例。建築設備技術者協会の調査）／設備全損時の復旧費 約1,000万〜2,500万円（一般的な目安）"
 for _measure in MEASURES:
     if not _measure["range"].startswith("—"):
         _measure["cost_basis"] = COST_BASIS_NONE
@@ -508,7 +523,8 @@ SAMPLES = {
                     ("park_1f", "機械式駐車場", 0, 0, 18000, 7200, {"symbol": "parking", "openings": [_door("right", 3600, "shutter", 3000)]}),
                     ("slope", "車路スロープ", 18000, 0, 25200, 7200, {"symbol": "slope", "openings": [_door("top", 21600, "shutter", 4500)]}),
                     ("garbage", "ごみ置場", 25200, 0, 29400, 7200, {"openings": [_door("top", 27300, "double", 1500)]}),
-                    ("bike", "駐輪場", 29400, 0, 42000, 7200, {"symbol": "bike", "openings": [_door("top", 36000, "double", 1800)]}),
+                    ("bike", "駐輪場", 29400, 0, 36000, 7200, {"symbol": "bike", "openings": [_door("top", 32700, "double", 1800)]}),
+                    ("garden", "植栽", 36000, 0, 42000, 7200, {"symbol": "garden", "outdoor": True}),
                     ("trunk", "トランクルーム", 0, 7200, 9000, 15000, {"openings": [_door("bottom", 4500)]}),
                     ("office", "管理員室", 9000, 7200, 15000, 15000, {"openings": [_door("right", 10800), _door("bottom", 12000, "window", 2400)]}),
                     ("hall", "エントランスホール", 15000, 7200, 24000, 12600, {"openings": [_door("bottom", 19500, "sliding", 2400)]}),
@@ -516,7 +532,8 @@ SAMPLES = {
                     ("ev_1f", "EV", 24000, 7200, 27000, 10200, {"symbol": "ev", "openings": [_door("left", 8700, "open", 1000)]}),
                     ("stair_1f", "階段", 27000, 7200, 30000, 15000, {"symbol": "stair"}),
                     ("mail", "メールコーナー", 24000, 10200, 27000, 15000),
-                    ("assembly", "集会室", 30000, 7200, 42000, 15000, {"openings": [_door("left", 12600), _door("bottom", 36000, "window", 3600)]}),
+                    ("unit_101", "住戸101", 30000, 7200, 36000, 15000, {"unit": True}),
+                    ("unit_102", "住戸102", 36000, 7200, 42000, 15000, {"unit": True}),
                 ),
                 "marks": [
                     {"kind": "road"},
@@ -557,7 +574,8 @@ SAMPLES = {
                 "name": "1階平面図",
                 "rooms": _rooms(
                     (30000, 13200),
-                    ("parking_flat", "平置き駐車場", 0, 0, 15000, 5400, {"symbol": "parking_flat", "openings": [_door("top", 7500, "open", 6000)]}),
+                    ("parking_flat", "平置き駐車場", 0, 0, 10500, 5400, {"symbol": "parking_flat", "openings": [_door("top", 5250, "open", 6000)]}),
+                    ("garden", "植栽", 10500, 0, 15000, 5400, {"symbol": "garden", "outdoor": True}),
                     ("bike", "駐輪場", 15000, 0, 24000, 5400, {"symbol": "bike", "openings": [_door("top", 19500, "double", 1800)]}),
                     ("ev", "EV", 24000, 0, 27000, 2700, {"symbol": "ev", "openings": [_door("bottom", 25500, "open", 1000)]}),
                     ("stair", "階段", 27000, 0, 30000, 5400, {"symbol": "stair"}),
@@ -648,7 +666,7 @@ SAMPLES = {
             },
         ],
         "pins": [
-            {"key": "ア", "target": "elec", "view": 0, "x": 0.0833, "y": 0.975, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、受電の箱の部屋の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は、電気の月次点検のときに合わせて頼む）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
+            {"key": "ア", "target": "elec", "view": 0, "x": 0.0833, "y": 0.975, "title": "ケーブルを通す壁の穴", "how_water": "道路の下の電線の管を通って、高圧受変電設備（キュービクル）の部屋の壁の穴から水が入ることがあります。玄関の止水板では防げない経路です。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。穴が止水されているかを見てもらいます。部屋の中の確認は主任技術者が立ち会い、業者はその指示に従い、盤に触れません。", "who": "管理会社から防水・設備業者へ現地調査を依頼（部屋の中の確認は、電気の月次点検のときに合わせて頼む）", "who_kind": "engineer", "memo": 2, "focus": "elec"},
             {"key": "イ", "target": "pump", "view": 0, "x": 0.85, "y": 0.85, "title": "ポンプのスイッチ盤", "how_water": "盤の下の端より水が上がると、ポンプが止まり全戸断水につながります。高層階ほど階段で水を運ぶのが難しくなります。", "check": "確かめるのは「確かめる人」の欄の人です。住民、理事、管理員は部屋に入りません。盤の下の端の高さと、部屋の床の高さを測ってもらいます。", "who": "管理会社から給水ポンプの保守業者へ", "who_kind": "contractor", "memo": 3, "focus": "pump"},
             {"key": "ウ", "target": "tank", "view": 0, "x": 0.85, "y": 0.2, "title": "雨水ますと地下の貯留タンク", "how_water": "敷地の水が雨水ますからタンクへ流れ込み、満水になると地下の蓋からあふれることがあります（武蔵小杉の例。建築設備技術者協会の調査など）。", "check": "蓋は開けません。導入管に止水バルブがあるか、タンクの蓋に耐水圧のロックがあるかを、竣工図で確かめ、現地は業者に見てもらいます。", "who": "管理会社が竣工図で確かめ、設備業者へ現地調査を依頼", "who_kind": "contractor", "memo": 2, "focus": "tank"},
             {"key": "エ", "target": "tr", "view": 0, "x": 0.4028, "y": 0.85, "title": "東京電力の変圧器の部屋", "how_water": "ここが浸かると各戸の電気が止まります。部屋の中の機器の高さは建物の側から分かりません。", "check": "穴や管路に、だれも栓や止水材を入れません。扉は開けず、浸水時は近づきません。水防ラインの協議は管理組合と管理会社が東京電力パワーグリッドと行います。", "who": "管理会社から東京電力パワーグリッドへ照会", "who_kind": "tepco", "memo": 1, "focus": "tr"},
@@ -703,7 +721,9 @@ DEFAULT_ANSWERS = {
     "b": {"built_year": 2006, "floors": 5, "basement": "no", "rooms_floor": "ground", "slope": "no", "vent": "yes", "cover": "no", "panel_foot": "raised", "door_step": "yes", "tr": "yes", "hv": "no", "hv_documented": True},
     "c": {"built_year": 2009, "floors": 38, "basement": "yes", "rooms_floor": "basement", "slope": "yes", "vent": "unknown", "cover": "yes", "panel_foot": "raised", "door_step": "unknown", "tr": "yes", "hv": "yes"},
 }
-EMPTY_ANSWERS = {"built_year": None, "floors": None, "basement": "unknown", "rooms_floor": "unknown", "slope": "unknown", "vent": "unknown", "cover": "unknown", "panel_foot": "unknown", "door_step": "unknown", "tr": "unknown", "hv": "unknown"}
+EMPTY_ANSWERS = {"built_year": None, "floors": None, "basement": "unknown", "rooms_floor": "unknown", "slope": "unknown", "vent": "unknown", "cover": "unknown", "panel_foot": "unknown", "door_step": "unknown", "tr": "unknown", "hv": "unknown", "drain": "unknown", "check_valve": "unknown", "pipe_opening": "unknown"}
+# 盤の置き方（図面の読み取りと答え）。raised は借りた見本の形のまま。
+PANEL_MOUNT_WORDS = {"floor": "床置き", "wall": "壁掛け", "stand": "架台の上", "unknown": "形は未確認"}
 
 
 def base_for_answers(answers: dict, fallback: Optional[str] = None) -> str:
@@ -777,7 +797,12 @@ def apply_answers(sample_id: Optional[str], answers: Optional[dict], label: str 
     elif custom:
         sample["feed_unknown"] = True
         sample["underground_feed"] = answers.get("cover") == "yes" or base["underground_feed"]
-    sample["panel_mount"] = {"floor": "床置き", "raised": base["panel_mount"], "unknown": "形は未確認"}[answers.get("panel_foot", "raised")]
+    foot = answers.get("panel_foot", "raised")
+    sample["panel_mount"] = base["panel_mount"] if foot == "raised" else PANEL_MOUNT_WORDS.get(foot, "形は未確認")
+    # 排水の放流先・逆止弁・管路口は、図面で読んで人が入れたときだけ値が入る（それ以外は unknown）。判定の色は変えず、行の文と依頼メモに使う。
+    sample["drain_outlet"] = answers.get("drain") if answers.get("drain") in ("sewer", "ditch") else "unknown"
+    sample["check_valve"] = answers.get("check_valve") if answers.get("check_valve") in ("yes", "no") else "unknown"
+    sample["pipe_opening"] = answers.get("pipe_opening") if answers.get("pipe_opening") in ("yes", "no") else "unknown"
     return sample
 
 
@@ -796,6 +821,7 @@ def client_view(sample: dict) -> dict:
     }
     return {
         **{k: sample[k] for k in ("id", "name", "button", "kind", "archetype", "subsidy", "floors", "units", "built", "has_chief_engineer", "panel_mount", "underground_feed", "plan", "report", "title")},
+        "feed_unknown": bool(sample.get("feed_unknown")),
         "answers": sample.get("answers") or DEFAULT_ANSWERS.get(sample["id"], {}),
         "custom": bool(sample.get("custom")),
         "engineer_unsure": bool(sample.get("engineer_unsure")),

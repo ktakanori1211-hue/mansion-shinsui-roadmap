@@ -90,12 +90,11 @@ class SceneLayerTest(unittest.TestCase):
         import pathlib
         import re
 
-        # 画面の地図は、サーバーが読んだ層（reading.hazards の layer）だけを重ね、層の名前を自分で持たない。
+        # 画面は層の名前を自分で持たない（2026-11-06・9回目：ハザードマップの地図はやめ、判定表の行と標高の断面で見せる）。
         source = (pathlib.Path(__file__).resolve().parent.parent / "web" / "start.js").read_text(encoding="utf-8")
         used = set(re.findall(r'"(0\d_[a-z0-9_]+)"', source))
-        read = {layer for _, _, layer in location.HAZARD_LAYERS}
-        self.assertLessEqual(used, read)
-        self.assertIn("shown.layer", source)
+        self.assertEqual(used, set())
+        self.assertNotIn("disaportaldata.gsi.go.jp/raster", source)
 
     def test_tsunami_is_read(self):
         self.assertIn("tsunami", [key for key, _, _ in location.HAZARD_LAYERS])

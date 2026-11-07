@@ -85,7 +85,7 @@ class BuildingPositionTest(unittest.TestCase):
     def test_town_without_records_has_no_record_row(self):
         # 記録の行は手元に記録がある町丁だけ。代わりに地形分類の行が出る（2026-11-06 本人の指示）。
         rows = judge.judge_location(reading(), state.BUILDING, None)
-        self.assertEqual([item.key for item in rows], ["flood", "inland", "surge", "ground", "landform"])
+        self.assertEqual([item.key for item in rows], ["flood", "inland", "surge", "ground", "landform", "rainband"])
         self.assertEqual(row(rows, "flood").verdict, state.CLEAR)
 
     def test_water_landform_is_a_caution_on_its_own_row(self):
@@ -181,7 +181,7 @@ class StateTest(unittest.TestCase):
         rows = judge.judge_location(reading(), state.REPRESENTATIVE, None)
         data = state.new_state(site, {}, rows)
         self.assertEqual(set(data), {"schema_version", "site", "location", "equipment", "pins"})
-        self.assertEqual(len(data["location"]["rows"]), 5)
+        self.assertEqual(len(data["location"]["rows"]), 6)  # 2026-11-07：線状降水帯の行（rainband）が増えた
         self.assertEqual(data["location"]["rows"][0]["verdict_label"], "問題なし")
 
 
@@ -299,3 +299,46 @@ class BasinTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RainbandTest(unittest.TestCase):
+    """線状降水帯の大雨で、洪水の地図に色がなくても浸かった型（低い土地・くぼ地・内水の色）。規則で判定し、根拠は報道の実数（2026-11-07）。"""
+
+    def test_low_landform_hits_even_without_map_colour(self):
+        data = reading(codes=("11005",))
+        data["landforms"][0]["names"] = ["後背低地"]
+        rows = judge.judge_location(data, state.BUILDING, None)
+        rain = row(rows, "rainband")
+        self.assertEqual(rain.verdict, state.RISK)
+        self.assertIn("土地の成り立ち", rain.conclusion)
+        self.assertTrue(any("447件" in line and "64%" in line for line in rain.details))
+        self.assertTrue(any("weathernews.jp" in line or "ウェザーニューズ" in line for line in rain.details))
+        # 色がなくても、型に当たるときは全部を問題なしにしない。
+        self.assertEqual(row(rows, "flood").verdict, state.CLEAR)
+        self.assertEqual([line["hit"] for line in rain.accent["lines"]], [True, False, False])
+
+    def test_basin_hits_and_numbers_are_in_the_line(self):
+        rows = judge.judge_location(reading(center=3.5, around=(3.6, 3.7, 3.4, 3.6)), state.BUILDING, None)
+        rain = row(rows, "rainband")
+        ground = rain.accent["lines"][1]
+        self.assertIn("標高3.5m", ground["text"])
+        self.assertIn("3.7", ground["text"])
+
+    def test_inland_data_missing_is_said_not_assumed(self):
+        rows = judge.judge_location(reading({"inland": hazard("inland", status="no_tile")}), state.BUILDING, None)
+        rain = row(rows, "rainband")
+        self.assertEqual(rain.verdict, state.UNCONFIRMED)
+        self.assertEqual(rain.accent["lines"][2]["hit"], None)
+        self.assertIn("内水", rain.conclusion)
+        # 2026-11-07・13回目：データなしの理由（下水道未整備・側溝排水・処理能力超過）と、市の地図・下水道整備状況の確認を添える。数字は足さない。
+        self.assertEqual(rain.accent["lines"][2]["text"], judge.INLAND_NO_DATA_SHORT)
+        inland = row(rows, "inland")
+        self.assertEqual(inland.value, "データなし")
+        self.assertEqual(inland.conclusion, judge.INLAND_NO_DATA)
+        for word in ("市の地図にはある場合がある", "排水が追いつかない", "洪水の地図に色のない区域でも冠水", "下水道の整備状況（合流式・分流式・側溝放流）"):
+            self.assertIn(word, judge.INLAND_NO_DATA)
+        self.assertNotRegex(judge.INLAND_NO_DATA, r"[0-9０-９]+[%％]")
+
+    def test_clear_when_no_type_matches(self):
+        rows = judge.judge_location(reading(), state.BUILDING, None)
+        self.assertEqual(row(rows, "rainband").verdict, state.CLEAR)

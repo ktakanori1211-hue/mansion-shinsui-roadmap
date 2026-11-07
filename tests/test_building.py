@@ -169,7 +169,7 @@ class AnswersTest(unittest.TestCase):
 
     def test_transformer_room_unseen_is_not_painted(self):
         sample, _ = self.rows({"tr": "no", "basement": "yes", "rooms_floor": "basement"})
-        scenario = building.scenario(sample, 3, "plate")
+        scenario = building.scenario(sample, 3, "none")
         self.assertNotIn("tr", scenario["stopped"])
         self.assertTrue(any("位置は未確認" in line for line in scenario["notes"]))
 
@@ -179,8 +179,12 @@ class AnswersTest(unittest.TestCase):
 
     def test_floor_panel_is_wet_at_the_second_level(self):
         sample, _ = self.rows({"panel_foot": "floor", "basement": "yes"})
-        self.assertIn("panel", building.scenario(sample, 2, "plate")["wet"])
-        self.assertNotIn("panel", building.scenario(samples.SAMPLES["a"], 2, "plate")["wet"])
+        self.assertIn("panel", building.scenario(sample, 2, "none")["wet"])
+        self.assertNotIn("panel", building.scenario(samples.SAMPLES["a"], 2, "none")["wet"])
+        # 基本対策（止水板＋穴）なら②で浸からない。③まで来ると床置きの盤だけ浸かり、二重対策（盤を高く）なら浸からない（2026-11-06）。
+        self.assertEqual(building.scenario(sample, 2, "basic")["wet"], [])
+        self.assertEqual(building.scenario(sample, 3, "basic")["wet"], ["panel"])
+        self.assertEqual(building.scenario(sample, 3, "full")["wet"], [])
 
     def test_old_building_gets_the_guideline_note(self):
         _, rows = self.rows({"built_year": 1999, "cover": "yes", "basement": "yes", "feed": "underground"})
@@ -259,45 +263,53 @@ class ScenarioTest(unittest.TestCase):
         return building.scenario(samples.SAMPLES[key], water, measure)
 
     def test_first_level_stops_nothing(self):
-        scenario = self.scenario("a", 1, "plate")
+        scenario = self.scenario("a", 1, "none")
         self.assertEqual(scenario["stopped"], [])
         self.assertTrue(any(building.FIXED["nothing_wet"] in line for line in scenario["below"]))
         self.assertIn(building.FIXED["tr_outside"], scenario["below"])
 
-    def test_raised_panel_still_stops_water_when_receiving_box_is_wet(self):
-        scenario = self.scenario("a", 3, "raise")
-        self.assertNotIn("panel", scenario["wet"])
-        self.assertIn("pump", scenario["stopped"])
+    def test_no_measure_wets_every_machine_room_at_the_third_level(self):
+        # 対策なし（現状）：③で電気室・借室・ポンプの盤が浸かり、水・電気・EVが止まる想定。
+        scenario = self.scenario("a", 3, "none")
+        self.assertEqual(scenario["wet"], ["ev", "hv", "panel", "tr"])
+        self.assertIn("homes", scenario["stopped"])
+        self.assertNotIn(building.FIXED["hole"], scenario["notes"])
+
+    def test_basic_set_keeps_the_machine_rooms_dry(self):
+        # ① 止水板＋壁の穴：出入口と穴からの水を止めるので、③でも機械の部屋は浸からない。注意書きは穴の固定の文。
+        scenario = self.scenario("a", 3, "basic")
+        self.assertEqual(scenario["wet"], [])
+        self.assertEqual(scenario["stopped"], [])
+        self.assertIn(building.FIXED["hole"], scenario["notes"])
+        self.assertNotIn(building.FIXED["raise"], scenario["notes"])
+
+    def test_full_set_adds_the_raised_panel_note(self):
+        scenario = self.scenario("a", 3, "full")
+        self.assertEqual(scenario["wet"], [])
+        self.assertIn(building.FIXED["hole"], scenario["notes"])
         self.assertIn(building.FIXED["raise"], scenario["notes"])
 
-    def test_sealed_hole_keeps_transformer_room_wet(self):
-        scenario = self.scenario("a", 3, "hole")
-        self.assertNotIn("hv", scenario["wet"])
-        self.assertIn("tr", scenario["wet"])
-        self.assertIn("homes", scenario["stopped"])
-        self.assertIn(building.FIXED["hole"], scenario["notes"])
-
     def test_transformer_room_alone_stops_everything_without_mansion_equipment(self):
-        scenario = self.scenario("b", 3, "hole")
+        scenario = self.scenario("b", 3, "none")
         self.assertIn("hv", scenario["stopped"])
         self.assertIn("pump", scenario["stopped"])
 
     def test_no_guide_days_when_the_equipment_is_dry(self):
-        scenario = self.scenario("a", 2, "plate")
+        scenario = self.scenario("a", 2, "none")
         text = str(scenario["table"][2]["cells"])
         self.assertNotIn("4〜7日", text)
         self.assertTrue(any(building.FIXED["gone"] in line for line in scenario["below"]))
 
-    def test_gone_note_only_names_dry_equipment(self):
-        below = " ".join(self.scenario("a", 3, "raise")["below"])
-        self.assertIn("設備（制御盤）", below)
+    def test_protected_building_says_nothing_is_wet(self):
+        below = " ".join(self.scenario("a", 3, "basic")["below"])
+        self.assertIn(building.FIXED["nothing_wet"], below)
         self.assertNotIn("受電の箱", below)
 
     def test_raise_note_shown_for_every_building(self):
-        self.assertIn(building.FIXED["raise"], self.scenario("b", 3, "raise")["notes"])
+        self.assertIn(building.FIXED["raise"], self.scenario("b", 3, "full")["notes"])
 
     def test_tank_route_is_said_to_be_outside(self):
-        self.assertIn(building.FIXED["tank_outside"], self.scenario("c", 1, "plate")["notes"])
+        self.assertIn(building.FIXED["tank_outside"], self.scenario("c", 1, "none")["notes"])
 
     def test_table_never_names_chiba(self):
         for key in samples.SAMPLES:
@@ -305,7 +317,7 @@ class ScenarioTest(unittest.TestCase):
                 self.assertNotIn("千葉", str(scenario["table"]))
 
     def test_no_engineer_text_for_building_without_one(self):
-        actions = self.scenario("b", 3, "plate")["table"][-1]["cells"]
+        actions = self.scenario("b", 3, "none")["table"][-1]["cells"]
         self.assertNotIn("主任技術者が判断", actions[1])
         self.assertIn("主任技術者はいません", actions[1])
 
@@ -1010,14 +1022,14 @@ class LiveFindingsTest(unittest.TestCase):
         self.assertIn("千葉市", create.call_args[0][0][0]["content"])
 
     def test_one_answer_carries_the_screen_actions(self):
-        reply = self.chat_reply("切り替えました。", focus="elec", water="3", measure="hole", statement="うちは1階に電気室がある")
+        reply = self.chat_reply("切り替えました。", focus="elec", water="3", measure="basic", statement="うちは1階に電気室がある")
         with mock.patch.object(claude, "create", return_value=reply):
             result = assistant.chat("見せてください", [], {"sample_id": "a"})
         self.assertEqual(result["actions"], [
             {"type": "statement", "text": "うちは1階に電気室がある"},
             {"type": "focus", "target": "elec"},
             {"type": "water", "level": 3},
-            {"type": "measure", "key": "hole"},
+            {"type": "measure", "key": "basic"},
         ])
 
     def test_values_outside_the_rules_are_dropped(self):
@@ -1338,3 +1350,53 @@ class StopCountTest(unittest.TestCase):
         result = building.services({"ev"})
         states = {item["key"]: item["state"] for item in result}
         self.assertEqual(states, {"pump": "running", "ev": "stopped", "light": "running", "homes": "unknown"})
+
+
+class CriticalMeasureTest(unittest.TestCase):
+    """2026-11-06 本人の指示・7回目：どの建物でも同じ提案にせず、建物の形（地下の機械室／1階の機械室／2階以上）で切り替える。"""
+
+    def test_shape_follows_the_answers_then_the_borrowed_sample(self):
+        self.assertEqual(building.shape_of(samples.SAMPLES["a"]), "basement")
+        self.assertEqual(building.shape_of(samples.SAMPLES["b"]), "ground")
+        upper = samples.apply_answers(None, {"basement": "no", "rooms_floor": "upper"}, "東京都")
+        self.assertEqual(building.shape_of(upper), "upper")
+        mixed = samples.apply_answers(None, {"basement": "unknown", "rooms_floor": "unknown", "room_floors": {"pump": "basement", "elec": "ground"}}, "東京都")
+        self.assertEqual(building.shape_of(mixed), "basement")
+
+    def test_proposals_per_shape(self):
+        # 2段構え（8回目）：頻発する内水（〜1m）で止めない対策 ＋ 万一の大洪水で全損を防ぐ対策（事前停電・EV退避）。根拠1行つき。
+        a = building.critical_measures(samples.SAMPLES["a"])
+        self.assertEqual([t["key"] for t in a["tiers"]], ["frequent", "major"])
+        self.assertEqual([i["key"] for i in a["tiers"][0]["items"]], ["hole", "plate", "tepco"])
+        self.assertEqual([i["key"] for i in a["tiers"][1]["items"]], ["procedure", "ev_rule"])
+        self.assertEqual([i["no"] for i in a["items"]], [1, 2, 3, 4, 5])
+        self.assertIn("5万円", a["items"][0]["cost"])
+        self.assertTrue(all(i["basis"] and i["depth"] for i in a["items"]))
+        self.assertIn("引込みは歩道のハンドホールから地中", a["facts"])
+        # 1階の建物は「最初の入り道（扉の下・換気口）を一番安く止める」が最優先。盤の題名は分かっている形に合わせる（見本Bは架台の上）。
+        b = building.critical_measures(samples.SAMPLES["b"])
+        self.assertEqual([i["key"] for i in b["tiers"][0]["items"]], ["plate_vent", "panel"])
+        self.assertIn("架台の上", b["items"][1]["title"])
+        self.assertNotIn("床置き", b["items"][1]["title"])
+        self.assertIn("一番安く", b["first_rule"])
+        floor = samples.apply_answers(None, {"basement": "no", "rooms_floor": "ground", "panel_foot": "floor"}, "東京都")
+        self.assertIn("床置き", building.critical_measures(floor)["items"][1]["title"])
+        deep = building.critical_measures(samples.SAMPLES["b"], [{"key": "flood", "verdict": "risk", "value": "3m〜5m", "conclusion": "3m〜5mの想定"}])
+        self.assertIn("3m〜5m", deep["tiers"][1]["items"][0]["basis"])
+        self.assertIn("盤を上げても防げない", deep["tiers"][1]["items"][0]["basis"])
+        self.assertEqual(deep["depth"], "川の洪水 3m〜5m")
+        # 3mの想定でも、数年おきの内水（〜1m）には止水板と盤の高さが効くので、外さない。
+        self.assertEqual([i["key"] for i in deep["tiers"][0]["items"]], ["plate_vent", "panel"])
+        upper = samples.apply_answers(None, {"basement": "no", "rooms_floor": "upper"}, "東京都")
+        self.assertEqual([i["key"] for i in building.critical_measures(upper)["items"]], ["front_plate", "ev_rule"])
+
+    def test_unit_counts_and_stage_names_follow_the_shape(self):
+        counts = {u["key"]: u["count"] for u in building.unit_prices(samples.SAMPLES["a"])}
+        self.assertEqual((counts["hole"], counts["slope_plate"], counts["panel"]), (1, 1, 0))
+        counts = {u["key"]: u["count"] for u in building.unit_prices(samples.SAMPLES["b"])}
+        self.assertEqual((counts["hole"], counts["vent"], counts["panel"]), (0, 1, 0))  # 架台の上なので、盤の工事は測ってから
+        self.assertIn("壁の穴", building.measures_for_model(samples.SAMPLES["a"])[1]["short"])
+        self.assertIn("換気口", building.measures_for_model(samples.SAMPLES["b"])[1]["short"])
+        payload = building.building_payload(samples.SAMPLES["a"], [], [])
+        self.assertEqual(payload["critical"]["shape"], "basement")
+

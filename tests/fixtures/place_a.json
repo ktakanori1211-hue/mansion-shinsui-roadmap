@@ -1,1 +1,442 @@
-{"schema_version": 1, "site": {"label": "千葉市 幸町2丁目", "longitude": 140.091583, "latitude": 35.621826, "basis": "representative", "demo": true}, "location": {"reading": {"point": {"longitude": 140.091583, "latitude": 35.621826}, "elevation": {"distance_m": 50, "points": [{"key": "center", "label": "中心", "elevation_m": 3.8, "source": "5m（レーザ）"}, {"key": "north", "label": "北", "elevation_m": 3.7, "source": "5m（レーザ）"}, {"key": "east", "label": "東", "elevation_m": 3.3, "source": "5m（レーザ）"}, {"key": "south", "label": "南", "elevation_m": 3.4, "source": "5m（レーザ）"}, {"key": "west", "label": "西", "elevation_m": 3.6, "source": "5m（レーザ）"}]}, "profile": {"ns": [[100, 3.3], [50, 3.7], [0, 3.8], [-50, 3.4], [-100, 3.5]], "ew": [[-100, 3.5], [-50, 3.6], [0, 3.8], [50, 3.3], [100, 3.3]]}, "low_directions": ["東", "南", "西"], "high_directions": [], "basin": false, "hazards": [{"key": "flood_planned", "label": "洪水(計画規模)", "layer": "01_flood_l1_shinsuishin_newlegend_data", "legend": null, "nearby_legend": null, "status": "no_tile"}, {"key": "flood_max", "label": "洪水(想定最大規模)", "layer": "01_flood_l2_shinsuishin_data", "legend": null, "nearby_legend": "〜0.5m", "status": "no_color"}, {"key": "inland", "label": "内水", "layer": "02_naisui_data", "legend": null, "nearby_legend": null, "status": "no_tile"}, {"key": "storm_surge", "label": "高潮", "layer": "03_hightide_l2_shinsuishin_data", "legend": "0.5m〜3m", "nearby_legend": null, "status": "color"}, {"key": "tsunami", "label": "津波", "layer": "04_tsunami_newlegend_data", "legend": null, "nearby_legend": null, "status": "no_tile"}], "hazard_legend": [{"color": "#dc7adc", "label": "20m〜"}, {"color": "#f285c9", "label": "10m〜20m"}, {"color": "#ff9191", "label": "5m〜10m"}, {"color": "#ffb7b7", "label": "3m〜5m"}, {"color": "#ffd8c0", "label": "0.5m〜3m"}, {"color": "#f8e1a6", "label": "0.5m〜1m"}, {"color": "#f7f5a9", "label": "〜0.5m"}, {"color": "#ffffb3", "label": "〜0.3m"}], "landforms": [{"key": "natural", "label": "自然地形", "codes": ["10904"], "names": ["旧水部"], "status": "found"}, {"key": "artificial", "label": "人工地形", "codes": ["11005"], "names": ["盛土地・埋立地"], "status": "found"}], "durations": [{"key": "duration_max", "label": "洪水(想定最大規模)の浸水継続時間", "layer": "01_flood_l2_keizoku_data", "legend": null, "nearby_legend": null, "status": "no_tile"}], "duration_note": "「2週間以上〜」の色の場合、「4週間以上〜」となる場合もあります（凡例の注記）"}, "basis_note": "これは町丁の代表点の値で、建物の位置の値ではありません。地図の上でピンを建物の位置へ動かすと、その位置で読み直します。", "rows": [{"key": "flood", "label": "川があふれる場合（洪水）", "verdict": "unconfirmed", "headline": "町丁の代表点では川があふれる場合の地図に色がありませんが、すぐ近く（数m先）に色があります（〜0.5m）。", "details": ["洪水(計画規模)：地図のデータが取れていない", "洪水(想定最大規模)：色がない（すぐ近く（数m先）に「〜0.5m」の色）", "出典：「ハザードマップポータルサイト」を加工して作成"], "confirm_by": "管理会社が、市の洪水ハザードマップで、建物の位置に色があるかを確かめます。", "verdict_label": "未確認（調査が必要）", "records": [], "summary": "計画規模：データが取れず／想定最大：色なし（数m先に〜0.5m）", "confirm_short": "管理会社が市の洪水の図で", "value": "〜0.5m", "conclusion": "ピンの点に色はなく、数m先に色あり", "accent": {"kind": "nearby", "level": "low", "badges": ["すぐ近くに色あり"]}}, {"key": "inland", "label": "大雨で下水や水路があふれる場合（内水）", "verdict": "unconfirmed", "headline": "町丁の代表点では、大雨で下水や水路があふれる場合の地図のデータが取れておらず、色があるかどうかも分かりません。", "details": ["内水：地図のデータが取れていない", "この地図は地面の高さが基準で、色がなくても地下の部屋には水が入ることがあります。", "国の地図に載るのは、オープンデータの利用を認めた市町村の分だけです。", "出典：「ハザードマップポータルサイト」を加工して作成"], "confirm_by": "管理会社が市区町村に、大雨で下水や水路があふれる場合の浸水想定区域図があるか、あればこの住所に色があるかを確かめます。", "verdict_label": "未確認（調査が必要）", "records": [], "summary": "データが取れず", "confirm_short": "管理会社が市区町村に照会", "value": "データなし", "conclusion": "色があるかどうかも分かりません", "accent": null}, {"key": "surge", "label": "高潮", "verdict": "risk", "headline": "町丁の代表点で、高潮の想定に色があります（0.5m〜3m）。", "details": ["高潮：凡例の「0.5m〜3m」の色", "この色は町丁の代表点の値です。地図を押すと、建物の位置で読み直します。", "どんな条件の高潮を想定した色かは、地図の案内に書かれていません。", "出典：「ハザードマップポータルサイト」を加工して作成"], "confirm_by": null, "verdict_label": "リスクあり（確定）", "records": [], "summary": "色あり（0.5m〜3m）", "confirm_short": null, "value": "0.5m〜3m", "conclusion": "想定に色あり（深さの帯：中くらい）", "accent": {"kind": "hazard", "level": "mid", "badges": ["ハザード着色あり"], "band": "mid", "band_label": "中くらい"}}, {"key": "ground", "label": "敷地の高低差", "verdict": "clear", "headline": "町丁の代表点の標高は3.8mで、周囲より高く、くぼ地や低く平らな土地の仮の目安には当たりません。", "details": ["周囲50m：北 3.7m、東 3.3m、南 3.4m、西 3.6m", "目安と周囲の点の距離は検証前の仮のものです。比べる距離を変えると結果が変わることがあります。", "標高は地図の標高データの値で、敷地を測ったものではありません。", "国の地形分類で『旧水部』『盛土地・埋立地』にあたる地域です（国土地理院。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません）。", "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成", "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/bousaichiri/lfc_index.html、標高 API）", "この値は、上のデータを読み取って加工したものです。"], "confirm_by": null, "verdict_label": "問題なし", "records": [], "summary": "標高3.8m。周りより高い", "confirm_short": null, "value": "標高3.8m", "conclusion": "標高3.8m・周りより高い", "accent": {"kind": "terrain", "level": "mid", "badges": ["地形分類：旧水部", "地形分類：盛土地・埋立地"]}}, {"key": "landform", "label": "土地の成り立ち（地形分類）", "verdict": "unconfirmed", "headline": "国の地形分類で『旧水部・盛土地・埋立地』にあたる地域です。水がたまりやすい、または地盤が低い土地の分類です。", "details": ["国土地理院の地形分類（提供実験）。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません。", "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成", "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/bousaichiri/lfc_index.html、標高 API）", "この値は、上のデータを読み取って加工したものです。"], "confirm_by": "地形分類は国土地理院の一般的な分類です。敷地のまわりの冠水歴は、管理会社が自治体の浸水履歴と管理員の記録で確かめます。", "verdict_label": "未確認（調査が必要）", "records": [], "summary": "旧水部・盛土地・埋立地", "confirm_short": "管理会社が履歴と管理員の記録で", "value": "旧水部・盛土地・埋立地", "conclusion": "旧水部・盛土地・埋立地（水がたまりやすい土地の分類）", "accent": null}, {"key": "record", "label": "市の浸水の記録", "verdict": "risk", "headline": "同じ丁目に浸水の記録があります（13行、日付は9つ）。", "details": ["平成13年9月10〜11日の2行は全項目が同じで、別の通報か重複かは資料から分かりません。", "資料には、住民等からの通報で市が把握したものであること、特定の個人の物件の水害履歴を示すものではないこと、履歴がないことが浸水被害がないことを示すものではないこと、当時と住所が変わっている場合があることが書かれています。", "隣の町丁の記録は、まだ照らし合わせていません。", "出典：千葉市 浸水履歴一覧表（記録期間 平成元年4月〜令和8年3月）（読み取った事実を加工して作成）"], "confirm_by": "実際にどの深さまで水が来たかは、管理会社が管理員の記録と市への問い合わせで確かめます。", "verdict_label": "リスクあり（確定）", "records": ["平成13年8月21〜22日　台風11号　道路冠水", "平成13年8月21〜22日　台風11号　道路冠水", "平成13年9月10〜11日　台風15号　道路冠水", "平成13年9月10〜11日　台風15号　道路冠水", "平成16年6月7日　大雨　道路冠水", "平成21年8月10日　大雨　道路冠水", "平成21年10月14日　大雨　床上浸水", "平成22年9月8日　台風9号　床下浸水", "平成25年10月15〜16日　台風26号　道路冠水", "平成25年10月15〜16日　台風26号　床上浸水", "令和元年10月25日　大雨　床下浸水", "令和元年10月25日　大雨　道路冠水", "令和5年9月8〜9日　台風13号　道路冠水"], "summary": "同じ丁目に記録あり（13行、日付は9つ）", "confirm_short": "深さは管理会社が確かめる", "value": "記録13行", "conclusion": "同じ丁目に浸水の記録あり", "accent": null}]}, "equipment": [], "pins": [], "subsidy": {"region": "chiba", "label": "千葉市（1/2・上限75万円）", "rate_label": "防水板の設置等の費用の1/2以内、一つの建物等につき75万円を限度、1回を限度、100円未満切り捨て", "cautions": ["防水板の工事着手・購入の前に交付決定を受ける必要があります（千葉市の案内）。対象になりうるのは、取り外しか移動ができる防水板です。", "「過去に浸水被害が発生した地域」が条件です。この町丁が当たるかは原文から読み取れないので、今年度の受付期間とあわせて市の下水道営業課に確かめます。", "共用部は理事長が申請者で、規約と理事会議事録の写しを付けると市の資料にあります。常設のものも対象になるかは、市に確かめます。"], "url": "https://www.city.chiba.jp/kensetsu/gesuidokikaku/eigyo/youkou-youryou.html", "checked": "2026-11-06", "calc": {"rate": 0.5, "cap": 750000, "unit": 100}}}
+{
+  "schema_version": 1,
+  "site": {
+    "label": "千葉市 幸町2丁目",
+    "longitude": 140.091583,
+    "latitude": 35.621826,
+    "basis": "representative",
+    "demo": true
+  },
+  "location": {
+    "reading": {
+      "point": {
+        "longitude": 140.091583,
+        "latitude": 35.621826
+      },
+      "elevation": {
+        "distance_m": 50,
+        "points": [
+          {
+            "key": "center",
+            "label": "中心",
+            "elevation_m": 3.8,
+            "source": "5m（レーザ）"
+          },
+          {
+            "key": "north",
+            "label": "北",
+            "elevation_m": 3.7,
+            "source": "5m（レーザ）"
+          },
+          {
+            "key": "east",
+            "label": "東",
+            "elevation_m": 3.3,
+            "source": "5m（レーザ）"
+          },
+          {
+            "key": "south",
+            "label": "南",
+            "elevation_m": 3.4,
+            "source": "5m（レーザ）"
+          },
+          {
+            "key": "west",
+            "label": "西",
+            "elevation_m": 3.6,
+            "source": "5m（レーザ）"
+          }
+        ]
+      },
+      "profile": {
+        "ns": [
+          [
+            100,
+            3.3
+          ],
+          [
+            50,
+            3.7
+          ],
+          [
+            0,
+            3.8
+          ],
+          [
+            -50,
+            3.4
+          ],
+          [
+            -100,
+            3.5
+          ]
+        ],
+        "ew": [
+          [
+            -100,
+            3.5
+          ],
+          [
+            -50,
+            3.6
+          ],
+          [
+            0,
+            3.8
+          ],
+          [
+            50,
+            3.3
+          ],
+          [
+            100,
+            3.3
+          ]
+        ]
+      },
+      "low_directions": [
+        "東",
+        "南",
+        "西"
+      ],
+      "high_directions": [],
+      "basin": false,
+      "hazards": [
+        {
+          "key": "flood_planned",
+          "label": "洪水(計画規模)",
+          "layer": "01_flood_l1_shinsuishin_newlegend_data",
+          "legend": null,
+          "nearby_legend": null,
+          "status": "no_tile"
+        },
+        {
+          "key": "flood_max",
+          "label": "洪水(想定最大規模)",
+          "layer": "01_flood_l2_shinsuishin_data",
+          "legend": null,
+          "nearby_legend": "〜0.5m",
+          "status": "no_color"
+        },
+        {
+          "key": "inland",
+          "label": "内水",
+          "layer": "02_naisui_data",
+          "legend": null,
+          "nearby_legend": null,
+          "status": "no_tile"
+        },
+        {
+          "key": "storm_surge",
+          "label": "高潮",
+          "layer": "03_hightide_l2_shinsuishin_data",
+          "legend": "0.5m〜3m",
+          "nearby_legend": null,
+          "status": "color"
+        },
+        {
+          "key": "tsunami",
+          "label": "津波",
+          "layer": "04_tsunami_newlegend_data",
+          "legend": null,
+          "nearby_legend": null,
+          "status": "no_tile"
+        }
+      ],
+      "hazard_legend": [
+        {
+          "color": "#dc7adc",
+          "label": "20m〜"
+        },
+        {
+          "color": "#f285c9",
+          "label": "10m〜20m"
+        },
+        {
+          "color": "#ff9191",
+          "label": "5m〜10m"
+        },
+        {
+          "color": "#ffb7b7",
+          "label": "3m〜5m"
+        },
+        {
+          "color": "#ffd8c0",
+          "label": "0.5m〜3m"
+        },
+        {
+          "color": "#f8e1a6",
+          "label": "0.5m〜1m"
+        },
+        {
+          "color": "#f7f5a9",
+          "label": "〜0.5m"
+        },
+        {
+          "color": "#ffffb3",
+          "label": "〜0.3m"
+        }
+      ],
+      "landforms": [
+        {
+          "key": "natural",
+          "label": "自然地形",
+          "codes": [
+            "10904"
+          ],
+          "names": [
+            "旧水部"
+          ],
+          "status": "found"
+        },
+        {
+          "key": "artificial",
+          "label": "人工地形",
+          "codes": [
+            "11005"
+          ],
+          "names": [
+            "盛土地・埋立地"
+          ],
+          "status": "found"
+        }
+      ],
+      "durations": [
+        {
+          "key": "duration_max",
+          "label": "洪水(想定最大規模)の浸水継続時間",
+          "layer": "01_flood_l2_keizoku_data",
+          "legend": null,
+          "nearby_legend": null,
+          "status": "no_tile"
+        }
+      ],
+      "duration_note": "「2週間以上〜」の色の場合、「4週間以上〜」となる場合もあります（凡例の注記）"
+    },
+    "basis_note": "これは町丁の代表点の値で、建物の位置の値ではありません。地図の上でピンを建物の位置へ動かすと、その位置で読み直します。",
+    "rows": [
+      {
+        "key": "flood",
+        "label": "川があふれる場合（洪水）",
+        "verdict": "unconfirmed",
+        "headline": "町丁の代表点では川があふれる場合の地図に色がありませんが、すぐ近く（数m先）に色があります（〜0.5m）。",
+        "details": [
+          "洪水(計画規模)：地図のデータが取れていない",
+          "洪水(想定最大規模)：色がない（すぐ近く（数m先）に「〜0.5m」の色）",
+          "出典：「ハザードマップポータルサイト」を加工して作成"
+        ],
+        "confirm_by": "管理会社が、市の洪水ハザードマップで、建物の位置に色があるかを確かめます。",
+        "verdict_label": "注意",
+        "records": [],
+        "summary": "計画規模：データが取れず／想定最大：色なし（数m先に〜0.5m）",
+        "confirm_short": "管理会社が市の洪水の図で",
+        "value": "〜0.5m",
+        "conclusion": "ピンの点に色はなく、数m先に色あり",
+        "accent": {
+          "kind": "nearby",
+          "level": "low",
+          "badges": [
+            "すぐ近くに色あり"
+          ]
+        }
+      },
+      {
+        "key": "inland",
+        "label": "大雨で下水や水路があふれる場合（内水）",
+        "verdict": "unconfirmed",
+        "headline": "町丁の代表点では、大雨で下水や水路があふれる場合の地図のデータが取れておらず、色があるかどうかも分かりません。",
+        "details": [
+          "内水：地図のデータが取れていない",
+          "この地図は地面の高さが基準で、色がなくても地下の部屋には水が入ることがあります。",
+          "国の地図に載るのは、オープンデータの利用を認めた市町村の分だけです。",
+          "出典：「ハザードマップポータルサイト」を加工して作成"
+        ],
+        "confirm_by": "管理会社が市区町村に、大雨で下水や水路があふれる場合の浸水想定区域図があるか、あればこの住所に色があるかを確かめます。",
+        "verdict_label": "未確認（調査が必要）",
+        "records": [],
+        "summary": "データが取れず",
+        "confirm_short": "管理会社が市区町村に照会",
+        "value": "データなし",
+        "conclusion": "国の内水データは未配信（市の地図にはある場合がある）。大雨で下水道や水路の排水が追いつかないときは、洪水の地図に色のない区域でも冠水が起きる。市の内水ハザードマップと、前面道路の下水道の整備状況（合流式・分流式・側溝放流）を確認",
+        "accent": null
+      },
+      {
+        "key": "surge",
+        "label": "高潮",
+        "verdict": "risk",
+        "headline": "町丁の代表点で、高潮の想定に色があります（0.5m〜3m）。",
+        "details": [
+          "高潮：凡例の「0.5m〜3m」の色",
+          "この色は町丁の代表点の値です。地図を押すと、建物の位置で読み直します。",
+          "どんな条件の高潮を想定した色かは、地図の案内に書かれていません。",
+          "出典：「ハザードマップポータルサイト」を加工して作成"
+        ],
+        "confirm_by": null,
+        "verdict_label": "リスクあり（確定）",
+        "records": [],
+        "summary": "色あり（0.5m〜3m）",
+        "confirm_short": null,
+        "value": "0.5m〜3m",
+        "conclusion": "想定に色あり（深さの帯：中くらい）",
+        "accent": {
+          "kind": "hazard",
+          "level": "mid",
+          "badges": [
+            "ハザード着色あり"
+          ],
+          "band": "mid",
+          "band_label": "中くらい"
+        }
+      },
+      {
+        "key": "ground",
+        "label": "敷地の高低差",
+        "verdict": "clear",
+        "headline": "町丁の代表点の標高は3.8mで、周囲より高く、くぼ地や低く平らな土地の仮の目安には当たりません。",
+        "details": [
+          "周囲50m：北 3.7m、東 3.3m、南 3.4m、西 3.6m",
+          "目安と周囲の点の距離は検証前の仮のものです。比べる距離を変えると結果が変わることがあります。",
+          "標高は地図の標高データの値で、敷地を測ったものではありません。",
+          "国の地形分類で『旧水部』『盛土地・埋立地』にあたる地域です（国土地理院。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません）。",
+          "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成",
+          "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/bousaichiri/lfc_index.html、標高 API）",
+          "この値は、上のデータを読み取って加工したものです。"
+        ],
+        "confirm_by": null,
+        "verdict_label": "問題なし",
+        "records": [],
+        "summary": "標高3.8m。周りより高い",
+        "confirm_short": null,
+        "value": "標高3.8m",
+        "conclusion": "標高3.8m・周りより高い",
+        "accent": {
+          "kind": "terrain",
+          "level": "mid",
+          "badges": [
+            "地形分類：旧水部",
+            "地形分類：盛土地・埋立地"
+          ]
+        }
+      },
+      {
+        "key": "landform",
+        "label": "土地の成り立ち（地形分類）",
+        "verdict": "unconfirmed",
+        "headline": "国の地形分類で『旧水部・盛土地・埋立地』にあたる地域です。水がたまりやすい、または地盤が低い土地の分類です。",
+        "details": [
+          "国土地理院の地形分類（提供実験）。地形分類ごとの一般的なリスクで、この敷地のリスクを示すものではありません。",
+          "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成",
+          "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/bousaichiri/lfc_index.html、標高 API）",
+          "この値は、上のデータを読み取って加工したものです。"
+        ],
+        "confirm_by": "地形分類は国土地理院の一般的な分類です。敷地のまわりの冠水歴は、管理会社が自治体の浸水履歴と管理員の記録で確かめます。",
+        "verdict_label": "注意",
+        "records": [],
+        "summary": "旧水部・盛土地・埋立地",
+        "confirm_short": "管理会社が履歴と管理員の記録で",
+        "value": "旧水部・盛土地・埋立地",
+        "conclusion": "旧水部・盛土地・埋立地（水がたまりやすい土地の分類）",
+        "accent": null
+      },
+      {
+        "key": "rainband",
+        "label": "線状降水帯の大雨（洪水の地図の外で浸かる型）",
+        "verdict": "risk",
+        "headline": "線状降水帯の大雨で、洪水の地図に色がなくても浸かった型（土地の成り立ち）に当たります。",
+        "details": [
+          "土地の成り立ち：旧水部・盛土地・埋立地",
+          "土地の高さ：標高3.8m、東・南・西が低い。西3.6 東3.3 北3.7 南3.4",
+          "内水の地図：国のデータなし（市の内水ハザードマップを確認）",
+          "2026年9月の台風25号（千葉県）の浸水・道路冠水447件の内訳：川沿いの低地36%（158件）、海・水路沿いの低地16%（73件）、川から離れた高台のくぼ地48%（216件）。後ろの2つ（足すと64%）は洪水の地図で色のない場所でした。",
+          "高台で冠水した場所の多くは、内水ハザードマップでは「0.5m未満」の色が付いていました（同じ記事）。",
+          "出典：ウェザーニューズ 2026/9/22「台風25号 千葉県の浸水・道路冠水447件の分析」",
+          "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成",
+          "出典：「ハザードマップポータルサイト」を加工して作成"
+        ],
+        "confirm_by": null,
+        "verdict_label": "リスクあり（確定）",
+        "records": [],
+        "summary": "型に当たる（土地の成り立ち）",
+        "confirm_short": null,
+        "value": "旧水部・盛土地・埋立地",
+        "conclusion": "型に当たる（土地の成り立ち）",
+        "accent": {
+          "lines": [
+            {
+              "name": "土地の成り立ち",
+              "text": "旧水部・盛土地・埋立地",
+              "hit": true
+            },
+            {
+              "name": "土地の高さ",
+              "text": "標高3.8m、東・南・西が低い。西3.6 東3.3 北3.7 南3.4",
+              "hit": false
+            },
+            {
+              "name": "内水の地図",
+              "text": "国のデータなし（市の内水ハザードマップを確認）",
+              "hit": null
+            }
+          ],
+          "fact": "2026年9月の台風25号（千葉県）の浸水・道路冠水447件の内訳：川沿いの低地36%（158件）、海・水路沿いの低地16%（73件）、川から離れた高台のくぼ地48%（216件）。後ろの2つ（足すと64%）は洪水の地図で色のない場所でした。",
+          "fact_inland": "高台で冠水した場所の多くは、内水ハザードマップでは「0.5m未満」の色が付いていました（同じ記事）。",
+          "source_url": "https://weathernews.jp/news/202609/220091/",
+          "source": "ウェザーニューズ 2026/9/22"
+        }
+      },
+      {
+        "key": "record",
+        "label": "市の浸水の記録",
+        "verdict": "risk",
+        "headline": "同じ丁目に浸水の記録があります（13行、日付は9つ）。",
+        "details": [
+          "平成13年9月10〜11日の2行は全項目が同じで、別の通報か重複かは資料から分かりません。",
+          "資料には、住民等からの通報で市が把握したものであること、特定の個人の物件の水害履歴を示すものではないこと、履歴がないことが浸水被害がないことを示すものではないこと、当時と住所が変わっている場合があることが書かれています。",
+          "隣の町丁の記録は、まだ照らし合わせていません。",
+          "出典：千葉市 浸水履歴一覧表（記録期間 平成元年4月〜令和8年3月）（読み取った事実を加工して作成）"
+        ],
+        "confirm_by": "実際にどの深さまで水が来たかは、管理会社が管理員の記録と市への問い合わせで確かめます。",
+        "verdict_label": "リスクあり（確定）",
+        "records": [
+          "平成13年8月21〜22日　台風11号　道路冠水",
+          "平成13年8月21〜22日　台風11号　道路冠水",
+          "平成13年9月10〜11日　台風15号　道路冠水",
+          "平成13年9月10〜11日　台風15号　道路冠水",
+          "平成16年6月7日　大雨　道路冠水",
+          "平成21年8月10日　大雨　道路冠水",
+          "平成21年10月14日　大雨　床上浸水",
+          "平成22年9月8日　台風9号　床下浸水",
+          "平成25年10月15〜16日　台風26号　道路冠水",
+          "平成25年10月15〜16日　台風26号　床上浸水",
+          "令和元年10月25日　大雨　床下浸水",
+          "令和元年10月25日　大雨　道路冠水",
+          "令和5年9月8〜9日　台風13号　道路冠水"
+        ],
+        "summary": "同じ丁目に記録あり（13行、日付は9つ）",
+        "confirm_short": "深さは管理会社が確かめる",
+        "value": "記録13行",
+        "conclusion": "同じ丁目に浸水の記録あり",
+        "accent": null
+      }
+    ]
+  },
+  "equipment": [],
+  "pins": [],
+  "subsidy": {
+    "region": "chiba",
+    "label": "千葉市（1/2・上限75万円）",
+    "rate_label": "防水板の設置等の費用の1/2以内、一つの建物等につき75万円を限度、1回を限度、100円未満切り捨て",
+    "cautions": [
+      "防水板の工事着手・購入の前に交付決定を受ける必要があります（千葉市の案内）。対象になりうるのは、取り外しか移動ができる防水板です。",
+      "「過去に浸水被害が発生した地域」が条件です。この町丁が当たるかは原文から読み取れないので、今年度の受付期間とあわせて市の下水道営業課に確かめます。",
+      "共用部は理事長が申請者で、規約と理事会議事録の写しを付けると市の資料にあります。常設のものも対象になるかは、市に確かめます。"
+    ],
+    "url": "https://www.city.chiba.jp/kensetsu/gesuidokikaku/eigyo/youkou-youryou.html",
+    "checked": "2026-11-06",
+    "calc": {
+      "rate": 0.5,
+      "cap": 750000,
+      "unit": 100
+    }
+  }
+}

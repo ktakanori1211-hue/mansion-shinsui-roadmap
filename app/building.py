@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import asdict
 from typing import List, Optional
 
@@ -22,10 +24,11 @@ FIXED = {
     "disclaimer_1_no_engineer": "本シートは公開データと入力情報から作成したもので、現地の判定や安全を保証するものではない。浸水中は電気室・借室（東京電力の変圧器の部屋）・ポンプ室・EVピットに立ち入らず、復電の可否は電気主任技術者が判断する（電気主任技術者を選任していない建物では、借室は東京電力パワーグリッドの確認を待ち、マンション側は電気工事の業者が点検・測定した結果を書面で受けて管理組合が判断する。どちらも済むまで電気を戻さない）",
     "water_not_entry": "水の位置は、立ち入ってよい高さではありません。水が残る部屋には、深さにかかわらず入りません。水が引いても、借室（東京電力の変圧器の部屋）は東京電力パワーグリッド、マンション側の部屋は主任技術者（いない建物では電気工事業者）が安全を確かめて入ってよいと指示するまで、住民、理事、管理員は入りません。",
     "timeline_top": "目安はほかの建物の実例と一般的な目安で、この建物の日数ではありません",
-    "gone": "この位置では、この目安のもとになった設備（制御盤／受電の箱）は浸からない想定です。ポンプ本体やエレベーターなど、ほかの設備が浸かったときに戻るまでの期間は確かめていません",
+    "gone": "この位置では、この目安のもとになった設備（制御盤／高圧受変電設備）は浸からない想定です。ポンプ本体やエレベーターなど、ほかの設備が浸かったときに戻るまでの期間は確かめていません",
     "nothing_wet": "この位置で浸かる設備はない想定です。戻るまでの期間の目安は出しません",
     "tr_outside": "東京電力の変圧器の部屋（借室）は、対策の切り替えに含めていません（東京電力パワーグリッドに確かめる）",
     "tr_box": "この切り替えに含めていません（東京電力パワーグリッドに確かめる）",
+    "tr_protected": "東京電力の変圧器の部屋（借室）も、出入口と壁の穴を止めれば浸からない想定です（部屋の中の対策は東京電力パワーグリッドに確かめる）",
     "hole": "壁の穴を塞いだのは、この図の入り道一つだけです。ほかの入り道は現地調査で確かめます",
     "raise": "付け替えた制御盤は、この図では浸からない想定で描いています。付け替える高さは見積りと現地調査で決めるもので、実際にどの高さの水まで浸からずに済むかは、この図では示していません。付け替えたのは制御盤だけで、ほかの設備の高さは変わりません。",
     "chain": "遮断や引込みの停止をすると、塗っていない箱も止まります。塗っていない箱も、浸かった部分があれば点検が要ります",
@@ -36,10 +39,10 @@ FIXED = {
 WATER_LEVELS = [
     {"key": 1, "label": "①", "text": "前の道路・スロープ・地下の壁の穴に達した"},
     {"key": 2, "label": "②", "text": "一番低い床（エレベーターの底の部分、床置きの機器の下端）に達した"},
-    {"key": 3, "label": "③", "text": "壁掛けや架台の上の盤、受電の箱、東京電力の変圧器の部屋の下端に達した"},
+    {"key": 3, "label": "③", "text": "壁掛けや架台の上の盤、高圧受変電設備（キュービクル）、東京電力の変圧器の部屋の下端に達した"},
 ]
 
-ACTIONS_MORNING = "電気室などに水が残っていたら、電気室・借室・ポンプ室・EV ピットに立ち入りません。東京電力パワーグリッドが電気を切り離し、主任技術者が、水に触れずに近づけて安全と判断したときに、マンション側の受電の箱の、電気の入口側で最初のスイッチを切ります。管理員か理事長は、その二つを主任技術者に確かめてから排水を始めます。マンション側の電気を戻すかは、点検と電気の安全確認のあとで主任技術者が判断します。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
+ACTIONS_MORNING = "電気室などに水が残っていたら、電気室・借室・ポンプ室・EV ピットに立ち入りません。東京電力パワーグリッドが電気を切り離し、主任技術者が、水に触れずに近づけて安全と判断したときに、マンション側の高圧受変電設備（キュービクル）の、電気の入口側で最初のスイッチを切ります。管理員か理事長は、その二つを主任技術者に確かめてから排水を始めます。マンション側の電気を戻すかは、点検と電気の安全確認のあとで主任技術者が判断します。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
 ACTIONS_MORNING_NO_ENGINEER = "部屋などに水が残っていたら、東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません。管理員か理事長は、東京電力パワーグリッドに電話で切り離しを確かめます。盤の部屋を見に行って確かめません。電気工事の業者に電気が切れていて排水を始めてよいと確かめたうえで、管理組合が排水を始めます。マンション側の盤に電気を戻すかは、点検のあとで電気工事の業者と決めます。東京電力の設備の送電の再開は東京電力パワーグリッドが行います"
 ACTIONS_DAY = "管理員か理事長が主任技術者に連絡します。遮断するかは主任技術者が判断し、操作は主任技術者の指示で、電気室の外から、または水に触れずにできるときだけ行います。扉を開けて中に入って操作しません。外から切れないときは電気室に入らず、主任技術者と東京電力パワーグリッドに連絡し、引込みの停止を頼みます。遮断は、在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡とあわせて行います。浸水中は電気室・借室・ポンプ室・EV ピットに立ち入りません"
 ACTIONS_DAY_NO_ENGINEER = "管理員か理事長が東京電力パワーグリッドと管理会社に連絡します。この建物に主任技術者はいません。盤の部屋に入って電気を切りません。在宅で医療機器を使う住民への配慮と、全戸の排水禁止の連絡をあわせて行います。浸水中は東京電力の変圧器の部屋・盤の部屋・ポンプ室・エレベーターの底の部分に立ち入りません"
@@ -135,7 +138,10 @@ RAIN_SET_OF_THREE = {
 }
 # 下水の逆流の行。書類（竣工図）で確かめる行の形だけにする。止まる設備の数には入れない。
 BACKFLOW_HEADLINE = "下水の水位が上がったとき、低い階のトイレや排水口から水が逆流するかは、まだ分かっていません。"
-BACKFLOW_CONFIRM = "管理会社が竣工図で、下水道が雨水と汚水を一緒に流す方式（合流式）か、排水管に逆止弁があるか、あれば平時に動作を確かめたかを確かめます。"
+BACKFLOW_CONFIRM = "管理会社が竣工図（給排水設備図）と市区町村の下水道の担当で、前面道路の下水道の整備状況（合流式・分流式・側溝放流）と、排水管の逆止弁の有無、あれば平時に動作を確かめたかを確かめます。"
+# 図面で放流先・逆止弁が読めて人が入れたときの、逆流の行の一言（判定は未確認のまま。平時の動作確認が残るため）。
+DRAIN_WORDS = {"sewer": "放流先は公共下水道（図面）", "ditch": "放流先は側溝・水路（図面）"}
+VALVE_WORDS = {"yes": "逆止弁あり（図面）。平時の動作確認は未確認", "no": "逆止弁なし（図面）"}
 LOCK_CONFIRM = "管理会社が、オートロックの保守会社に、停電のときの扉の動き（開いたままか、閉じたままか）と、電池で動く時間を確かめます。"
 
 
@@ -353,7 +359,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
     1階の部屋は、盤の下端の高さが分かるまで「未確認」。2階以上・図面にないと確かめた部屋は「問題なし」。
     location_clear は、立地の5項目がすべて問題なし（建物の位置で確かめた）のとき。
 
-    document_read は、点検報告書などの書類で受電の箱が地下にあると読めたこと。
+    document_read は、点検報告書などの書類で高圧受変電設備（キュービクル）が地下にあると読めたこと。
     hollow は、立地の敷地の高低差の行に「くぼ地の目安」か「周囲より低い凹み」の札があること。
     """
     rows = []
@@ -419,7 +425,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "power",
                 "電気（共用部）",
                 UNCONFIRMED,
-                "マンション側で電気を受ける部屋があるか、高圧か低圧か（保安会社の契約があるか）は、まだ確かめていません。受電の箱か、おおもとのスイッチ盤が浸かると、共用部が停電し、給水ポンプも止まって断水します。",
+                "マンション側で電気を受ける部屋があるか、高圧か低圧か（保安会社の契約があるか）は、まだ確かめていません。高圧受変電設備（キュービクル）か、おおもとのスイッチ盤が浸かると、共用部が停電し、給水ポンプも止まって断水します。",
                 "受電の部屋と、高圧か低圧かが未確認",
                 "管理会社が、点検の記録か保安規程、竣工図、共用部の電気代の明細で確かめます。電気室の扉や盤の保安会社の連絡先シール・高圧の表示も手がかりになります。",
                 "管理会社（書類）",
@@ -439,7 +445,7 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 "電気（共用部）",
                 verdict,
                 f"エレベーター、給水ポンプ、廊下の照明の電気を受ける箱は、{where}。浸かると共用部が停電し、給水ポンプも止まって断水します。",
-                f"受電の箱は{elec_word}。浸かると共用部が停電し断水も" if known else f"受電の箱の階（{elec_word}）は{'図面で確認。高さは未確認' if elec_level else '書類で未確認'}",
+                f"高圧受変電設備（キュービクル）は{elec_word}。浸かると共用部が停電し断水も" if known else f"高圧受変電設備（キュービクル）の階（{elec_word}）は{'図面で確認。高さは未確認' if elec_level else '書類で未確認'}",
                 "床からの盤や箱の高さは未確認です。管理会社か電気工事の業者が巻き尺で測り、依頼メモに書きます。主任技術者がいる建物では、月次点検のときに高さの確認と記録を頼めます（契約の範囲は要確認）。",
                 "管理会社、主任技術者（高さ）",
                 1,
@@ -718,13 +724,15 @@ def judge_equipment(sample: dict, confirmed: List[str], location_risk: bool, doc
                 details=[HOLLOW_REASON] if hollow else [],
             )
         )
+    known = [DRAIN_WORDS.get(sample.get("drain_outlet", ""), ""), VALVE_WORDS.get(sample.get("check_valve", ""), "")]
+    known = [word for word in known if word]
     rows.append(
         _item(
             "backflow",
             "下水の逆流（低い階のトイレ・排水口）",
             UNCONFIRMED,
             BACKFLOW_HEADLINE,
-            "合流式か、逆止弁の有無と動作の確認が未確認",
+            "・".join(known) + "。下水道の方式と動作の確認が未確認" if known else "下水道の方式（合流式・分流式・側溝放流）と、逆止弁の有無・動作の確認が未確認",
             BACKFLOW_CONFIRM,
             "管理会社（竣工図）",
             1,
@@ -800,7 +808,7 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
         basement_keys = {"elec", "tr", "pump"}
         if not basement_keys.issubset(confirmed):
             notes.append("地下にあるのは書類や聞き取りによるもので、図面ではまだ確かめていない。管理会社が竣工図で確かめる。")
-        notes.append("給水・排水のスイッチ盤は製作に約2か月（建築設備技術者協会の報告書）。武蔵小杉は断水8日・トイレ11日（ほかの建物の例）。一番安い手は数万円から。")
+        notes.append("給水・排水のスイッチ盤は製作に約2か月（建築設備技術者協会の報告書）。2019年の台風で地下の電気室が浸かった川崎市の高層マンションの例：断水8日・トイレ11日（ほかの建物の例）。一番安い手は数万円から。")
         notes.append(TOP_NOTE_GUIDE_DAYS)
         a4_notes.append(A4_NOTE_CHIBA)
     else:
@@ -814,13 +822,13 @@ def top_line(sample: dict, equipment: List[dict], location_rows: List[dict], con
 _STEP_ORDER = ["water", "power", "tr", "entry", "ev", "drain", "backflow", "lock", "park"]
 # 何が分かれば答えが出るかを、住民や理事が読める言葉で一行にする。判定は言わない。
 _STEP_WHAT = {
-    "water": "ポンプの盤が床から何cmにあるか",
+    "water": "給水ポンプ制御盤が床から何cmにあるか",
     "power": "電気を受ける部屋の階と、高圧か低圧か",
     "tr": "東京電力の変圧器の部屋があるか・どの階か",
     "entry": "電気の部屋の壁の穴がふさがれているか",
     "ev": "エレベーターの底に水が入ったときの手順",
-    "drain": "トイレの水を汲み上げるポンプがあるか・どの階か",
-    "backflow": "下水の逆流を止める弁があるか",
+    "drain": "汚水・排水ポンプの設置階と制御盤の高さ",
+    "backflow": "前面道路の下水道整備状況（合流式・分流式・側溝放流）と逆止弁の有無",
     "lock": "停電のとき玄関の扉がどう動くか",
     "park": "機械式駐車場の掘り込みの深さと排水",
 }
@@ -858,7 +866,11 @@ def unit_prices(sample: dict) -> List[dict]:
         "feed": 1 if sample.get("underground_feed") else 0,
         "floor_panel": 1 if sample.get("panel_mount") == "床置き" else 0,
     }
-    return [{**item, "count": rule[item["default"]]} for item in samples.UNIT_PRICES]
+    # クリティカルな対策の個数は、建物の形から最初から入れておく（2026-11-06 本人の指示・7回目）。
+    critical = {}
+    for item in critical_measures(sample)["items"]:
+        critical.update(item["units"])
+    return [{**item, "count": max(rule[item["default"]], critical.get(item["key"], 0))} for item in samples.UNIT_PRICES]
 
 
 def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
@@ -882,7 +894,9 @@ def visible_measures(sample: dict, equipment: List[dict]) -> List[dict]:
             row["owner"] = samples.HOLE_OWNER_NO_ENGINEER
         if measure["key"] == "panel" and sample["panel_mount"] != "壁掛け":
             row["label"] = "ポンプのスイッチ盤をさらに高い位置に付け替える（盤の下の端が低いと分かった場合）"
-        if measure["key"] == "hole" and not sample["underground_feed"]:
+        if measure["key"] == "hole" and sample.get("feed_unknown"):
+            row["label"] = "盤の部屋の壁や床の穴（管路口・給排水管などが通る穴）をふさぐ（引込みが地中か架空かは単線結線図で確かめる。施工は電気工事の業者が、停電の要否・離隔を決めてから。理事や管理員は部屋に入らない。東京電力の変圧器室の穴には、だれも栓や止水材を入れない）"
+        elif measure["key"] == "hole" and not sample["underground_feed"]:
             row["label"] = "盤の部屋の壁や床の穴（給排水管などが通る穴）をふさぐ（施工は電気工事の業者が、停電の要否・離隔を決めてから。理事や管理員は部屋に入らない。東京電力の変圧器の部屋の穴には、だれも栓や止水材を入れない）"
         rows.append(row)
     return rows
@@ -975,7 +989,7 @@ def has_room(sample: dict, key: str) -> bool:
 
 # 分電盤室が浸かると、各戸の電気も止まる想定にする（2026-11-05 本人決定。電気主任技術者としての実務の判断）。
 # 部屋で決める：図に「分電盤室」（共用部のおおもとのスイッチ盤の部屋）がある建物では、その盤から各戸へ電気が行くとみる。
-# 高圧受電の電気室（受電の箱）が浸かったときの各戸は、今のまま（各戸は借室から）。
+# 高圧受電の電気室（高圧受変電設備（キュービクル））が浸かったときの各戸は、今のまま（各戸は借室から）。
 PANEL_ROOM_HOMES_NOTE = "分電盤室が浸かると、共用部だけでなく各戸の電気も止まる想定です（分電盤室から各戸へ電気が行く建物の想定）。"
 
 
@@ -992,7 +1006,7 @@ def _chain_with_room(sample: dict, confirmed: Optional[List[str]] = None) -> dic
     if is_bulk(sample, confirmed):
         nodes = [
             {"key": "line", "label": "外の電線"},
-            {"key": "hv", "label": "受電の箱"},
+            {"key": "hv", "label": "高圧受変電設備（キュービクル）"},
             {"key": "panel", "label": "給水ポンプの制御盤"},
             {"key": "pump", "label": "給水ポンプ（全戸の水）"},
             {"key": "ev", "label": "エレベーター"},
@@ -1019,7 +1033,7 @@ def _chain_nodes(sample: dict) -> dict:
     if sample["has_chief_engineer"]:
         nodes = [
             {"key": "line", "label": "外の電線"},
-            {"key": "hv", "label": "受電の箱"},
+            {"key": "hv", "label": "高圧受変電設備（キュービクル）"},
             {"key": "panel", "label": "給水ポンプの制御盤"},
             {"key": "pump", "label": "給水ポンプ（全戸の水）"},
             {"key": "ev", "label": "エレベーター"},
@@ -1043,21 +1057,181 @@ def _chain_nodes(sample: dict) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+def shape_of(sample: dict) -> str:
+    """建物の形（2026-11-06 本人の指示・7回目）：basement＝地下に電気室・ポンプ室／ground＝地下なし・1階に機械室／upper＝主要設備が2階以上。
+
+    画面2の答え（部屋ごとの階）→ 全体の答え → 借りた見本の形の順に見る。
+    """
+    answers = sample.get("answers") or {}
+    floors = answers.get("room_floors") or {}
+    machine = [floors.get(key) for key in ("pump", "elec", "panel_room") if floors.get(key)]
+    if "basement" in machine or answers.get("rooms_floor") == "basement":
+        return "basement"
+    if answers.get("rooms_floor") == "upper":
+        return "upper"
+    if machine or answers.get("rooms_floor") == "ground" or answers.get("basement") == "no":
+        return "ground"
+    return "basement" if sample.get("archetype") in ("basement", "tower") else "ground"
+
+
+def _deep_flood(location_rows: Optional[List[dict]]) -> bool:
+    """洪水か高潮の想定が3m以上か（公的な凡例の区分のまま。新しい閾値は作らない）。"""
+    for row in location_rows or []:
+        if row.get("key") not in ("flood", "surge") or row.get("verdict") != "risk":
+            continue
+        numbers = [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)\s*m", f"{row.get('value', '')} {row.get('conclusion', '')}")]
+        # 凡例の帯の下の端で見る（「3m〜5m」は3m以上、「0.5m〜3m」は違う）。
+        if numbers and numbers[0] >= 3:
+            return True
+    return False
+
+
+# 建物の形ごとの、クリティカルな対策（2026-11-06 本人の指示・7〜8回目）。金額は単価の表（samples.UNIT_PRICES）と同じ一般的な目安。
+# 2段構え：頻発する線状降水帯・内水冠水（〜1m）で止めない対策 ／ 万一の川の洪水（3〜5m）で全損・長期停電を防ぐ対策。
+# 深さ3mの水では盤を1m上げても防げないが、数年おきの数十cm〜1mの冠水には止水板と盤の高さが決定的に効く。両方を出し、どの深さへの手かを添える。
+TIER_FREQUENT = "頻発する線状降水帯・内水冠水（〜1m）で止めない対策"
+TIER_MAJOR = "万一の川の洪水（3〜5m）で全損・長期停電を防ぐ対策"
+_FREQUENT = {
+    "basement": [
+        {"key": "hole", "title": "地中の高圧ケーブル配管穴（管路口）の止水埋め", "cost": "5万円／か所", "decision": "理事会で決められる場合がある（管理費で即実施可）", "why": "道路の下の管を伝って、地下の電気室の壁の穴から水が入る。玄関の止水板では防げない経路", "units": {"hole": 1}},
+        {"key": "plate", "title": "地下スロープ・階段入口の止水板", "cost": "35万〜180万円（幅1m〜4m）", "decision": "理事会で決められる場合がある（支柱式は総会の普通決議）", "why": "前の道路の水が、スロープと階段を伝って地下の機械の部屋へ流れ込む", "units": {"slope_plate": 1, "door_plate": 1}},
+        {"key": "tepco", "title": "東京電力の借室の止水の申し入れ", "cost": "0円（申し入れ）", "decision": "理事会で申し入れる", "why": "借室が浸かると各戸の電気が止まる。部屋の中の対策は東京電力パワーグリッドの分担", "units": {}},
+    ],
+    "ground": [
+        {"key": "plate_vent", "title": "1階出入口の止水板＋足元の換気口カバー", "cost": "35万円＋30万円", "decision": "理事会で決められる場合がある（換気口は総会の普通決議）", "why": "扉の下と足元の換気口から、機械室に水が入る。最初の入り道を一番安く止める手", "units": {"door_plate": 1, "vent": 1}},
+        {"key": "panel", "title": "床置きポンプ制御盤の壁掛け・高所かさ上げ", "cost": "35万円（ケーブル延長ありは120万円）", "decision": "総会（普通決議）・修繕積立金", "why": "1階の床から20〜30cmの浅い水で盤が浸かり、全戸の水が止まる", "units": {"panel": 1}},
+    ],
+    "upper": [
+        {"key": "front_plate", "title": "1階エントランスの止水板", "cost": "35万円（幅1mの扉1か所）", "decision": "理事会で決められる場合がある", "why": "1階の共用部（ホール・メールコーナー・機械室の扉）に水が入る", "units": {"door_plate": 1}},
+    ],
+}
+_PROCEDURE = {"key": "procedure", "title": "浸水前の事前停電手順の策定", "cost": "0円", "decision": "理事会で決める（主任技術者・保安会社と手順を確認）", "why": "充電部が水没したまま通電すると短絡・焼損して全損になる。浸水の前に電気を落とせば、乾かして点検すれば戻せる機器が残る", "units": {}}
+_EV_RULE = {"key": "ev_rule", "title": "大雨警報時のエレベーター最上階退避ルール", "cost": "0円", "decision": "理事会で決める", "why": "エレベーターの底（ピット）は建物で一番低く、どの深さの水でも最初に浸かる", "units": {}}
+SHAPE_NAMES = {"basement": "地下に電気室・ポンプ室がある建物", "ground": "地下なし・1階に機械室がある建物", "upper": "主要設備が2階以上にある建物"}
+_MOUNT_WORDS = {"床置き": "盤は床置き", "壁掛け": "盤は壁掛け", "架台の上": "盤は架台の上", "形は未確認": "盤の形は未確認"}
+
+
+def _depth_label(location_rows: Optional[List[dict]]) -> str:
+    """この場所の洪水・高潮の想定（公的な凡例の帯のまま）。色がなければ空。"""
+    names = {"flood": "川の洪水", "surge": "高潮"}
+    found = []
+    for row in location_rows or []:
+        if row.get("key") in names and row.get("verdict") == "risk" and row.get("value"):
+            found.append(f"{names[row['key']]} {row['value']}")
+    return "・".join(found)
+
+
+def _basis_facts(sample: dict, shape: str, location_rows: Optional[List[dict]]) -> List[str]:
+    """提案の根拠（図面・答え・深さから分かっていること）。推測は書かない。"""
+    answers = sample.get("answers") or {}
+    floors = answers.get("room_floors") or {}
+    names = {"pump": "ポンプ室", "elec": "電気室", "panel_room": "分電盤室", "tr": "借室"}
+    words = {"basement": "地下", "ground": "1階", "upper": "2階以上"}
+    told = [f"{names[k]}が{words[v]}" for k, v in floors.items() if k in names and v in words]
+    facts = []
+    if told:
+        facts.append("図面・答えで" + "・".join(told))
+    elif sample.get("custom"):
+        facts.append({"basement": "答えでは機械室は地下", "ground": "答えでは地下なし・機械室は1階", "upper": "答えでは主要設備は2階以上"}[shape])
+    else:
+        facts.append("見本の図面で機械室は" + {"basement": "地下1階", "ground": "1階", "upper": "2階以上"}[shape])
+    # 引込みは、図面・書類で分かったときだけ断定する。自分の建物で単線結線図を見ていないうちは未確認（2026-11-07・13回目）。
+    if sample.get("feed_unknown"):
+        facts.append("引込み方式は未確認（地中引込なら管路口の止水が必要）")
+    else:
+        facts.append("引込みは歩道のハンドホールから地中" if sample.get("underground_feed") else "引込みは電柱から（地中の管路はない）")
+    facts.append(_MOUNT_WORDS.get(sample.get("panel_mount", ""), "盤の形は未確認"))
+    depth = _depth_label(location_rows)
+    facts.append(f"この場所の想定：{depth}" if depth else "この場所は国の地図に色がない（地図の外でも冠水は起きる）")
+    return facts
+
+
+def critical_measures(sample: dict, location_rows: Optional[List[dict]] = None) -> dict:
+    """建物の条件に応じた、クリティカルな対策の提案（2段構え、番号つき、根拠1行つき）。判定ではなく提案。"""
+    shape = shape_of(sample)
+    depth = _depth_label(location_rows)
+    deep = _deep_flood(location_rows)
+    mount = sample.get("panel_mount", "")
+    frequent = [dict(item) for item in _FREQUENT[shape]]
+    if shape == "basement" and sample.get("feed_unknown"):
+        frequent[0] = {**frequent[0], "title": "地下の電気室・盤の部屋の壁や床の穴（管路口を含む）の止水埋め", "why": "引込みが地中なら道路の下の管を伝って管路口から、架空でも壁や床の穴から、地下の電気室に水が入る。玄関の止水板では防げない経路。引込み方式は単線結線図で確かめる"}
+    elif shape == "basement" and not sample.get("underground_feed"):
+        frequent[0] = {**frequent[0], "title": "地下の電気室・盤の部屋の壁や床の穴の止水埋め", "why": "壁や床の穴から、地下の電気室に水が入る。玄関の止水板では防げない経路"}
+    if shape == "basement" and not any(room["key"] == "slope" for view in sample["views"] for room in view["rooms"]):
+        frequent[1] = {**frequent[1], "title": "地下へ降りる階段・出入口の止水板", "cost": "35万円（幅1mの扉1か所）", "units": {"door_plate": 1}}
+    # 盤の対策の題名は、分かっている盤の形に合わせる（床置きと分かっていないのに「床置き」とは書かない。2026-11-06 本人の指摘）。
+    if shape == "ground":
+        if mount in ("壁掛け", "架台の上"):
+            frequent[1] = {**frequent[1], "title": f"ポンプ制御盤（{mount}）の下端の高さを測り、床から50cm未満ならかさ上げ", "why": f"{mount}でも下端が床から数十cmなら、内水の浅い水で浸かる", "units": {}}
+        elif mount != "床置き":
+            frequent[1] = {**frequent[1], "title": "ポンプ制御盤の形と下端の高さの確認（床置きなら壁掛け・かさ上げ）", "why": "盤の形と高さが分かるまでは、浅い水で浸かるものとして扱う", "units": {}}
+    # 根拠：図面・答え・深さから。
+    # 管路口の根拠も、引込みが分かっているときだけ地中と書く（2026-11-07・13回目）。
+    if sample.get("feed_unknown"):
+        hole_basis = "引込み方式は単線結線図で未確認。地中引込なら歩道のHHから管を伝って、架空でも壁や床の穴から、電気室に水が来る（内水の数十cmでも）"
+    elif sample.get("underground_feed"):
+        hole_basis = "引込みが歩道のHHから地中なので、管を伝って電気室の壁の穴に水が来る（内水の数十cmでも）"
+    else:
+        hole_basis = "引込みは電柱からで地中の管路はないが、壁や床の穴（給排水管などが通る穴）から電気室に水が来る（内水の数十cmでも）"
+    basis = {
+        "hole": hole_basis,
+        "plate": "地下へ降りるスロープ・階段は、道路の冠水が数十cmでも流れ込む",
+        "tepco": "借室が機械室と同じ階にある",
+        "panel": f"機械室が1階で、{_MOUNT_WORDS.get(mount, '盤の形は未確認')}。内水の20〜30cmで盤の下端に届く",
+        "plate_vent": "1階の出入口と足元の換気口は、道路の冠水が数十cmで越える高さ",
+        "front_plate": "機械は上の階でも、1階の共用部は道路の冠水で浸かる",
+    }
+    for item in frequent:
+        item["basis"] = basis.get(item["key"], "")
+        item["depth"] = "〜1m（内水・線状降水帯）"
+    major = []
+    if shape != "upper" or deep:
+        why_depth = f"この場所の想定は{depth}。1階の機械室は天井まで浸かり、盤を上げても防げない。" if deep else (f"この場所の想定は{depth}。" if depth else "地図に色はないが、想定を超える雨では機械室まで水が来る。")
+        major.append({**_PROCEDURE, "basis": why_depth + "浸水の前に電気を落とせば、充電部の水没による短絡・焼損を防げる", "depth": "3〜5m（川の洪水）" if deep else "想定を超える水"})
+    major.append({**_EV_RULE, "basis": "エレベーターのピットは一番低い所にあり、水位①②で止まる想定", "depth": "どの深さでも"})
+    items = frequent + major
+    for no, item in enumerate(items, 1):
+        item["no"] = no
+    first_rule = {
+        "basement": "地下の機械室へ水が入る最初の道（地中の管の穴）を、一番安く・理事会で決められる手で止める",
+        "ground": "1階の機械室へ水が入る最初の道（扉の下・換気口）を、一番安く・理事会で決められる手で止める。盤の高さはその次",
+        "upper": "機械は上の階なので、1階の共用部とエレベーターの底を守る",
+    }[shape]
+    return {
+        "shape": shape,
+        "shape_name": SHAPE_NAMES[shape],
+        "first_rule": first_rule,
+        "depth": depth,
+        "facts": _basis_facts(sample, shape, location_rows),
+        "tiers": [{"key": "frequent", "title": TIER_FREQUENT, "items": frequent}, {"key": "major", "title": TIER_MAJOR, "items": major}],
+        "items": items,
+    }
+
+
 def measures_for_model(sample: dict) -> List[dict]:
+    shape = shape_of(sample)
     raised = "制御盤を高い位置に付け替える" if sample["panel_mount"] == "壁掛け" else "制御盤をさらに高い位置に付け替える"
     hole = (
-        "マンション側の電気室の、ケーブルを通す壁の穴を塞ぐ（借室の穴は含めない）"
+        "マンション側の盤の部屋の、壁や床の穴（管路口を含む）を塞ぐ（借室の穴は含めない）"
+        if sample.get("feed_unknown")
+        else "マンション側の電気室の、ケーブルを通す壁の穴を塞ぐ（借室の穴は含めない）"
         if sample["underground_feed"]
         else "マンション側の盤の部屋の、壁や床の穴を塞ぐ（借室の穴は含めない）"
     )
+    # 2026-11-06 本人の指示：単発の対策ではなく、段階のセット（対策なし → ① 基本 → ② 二重）で切り替える。名前は建物の形に合わせる。
+    basic = {
+        "basement": ("① 止水板＋壁の穴を塞ぐ", f"基本対策：地下への入口の止水板と、{hole}（約40万円〜）"),
+        "ground": ("① 止水板＋換気口カバー", "基本対策：1階出入口の止水板と、足元の換気口のカバー（約65万円〜）"),
+        "upper": ("① エントランスの止水板", "基本対策：1階エントランスの止水板（約35万円〜）"),
+    }[shape]
     return [
-        {"key": "plate", "short": "止水板だけ", "label": "玄関の止水板だけ（地中の壁の穴からの経路は残る）" if sample["underground_feed"] else "玄関の止水板だけ（壁や床の穴からの経路は残る）"},
-        {"key": "hole", "short": "壁の穴を塞ぐ" if sample["underground_feed"] else "穴を塞ぐ", "label": hole},
-        {"key": "raise", "short": "盤を高くする", "label": raised},
+        {"key": "none", "short": "対策なし（現状）", "label": "対策をしていない今の状態"},
+        {"key": "basic", "short": basic[0], "label": basic[1]},
+        {"key": "full", "short": "② さらに盤を高くする", "label": f"二重対策：基本対策に加えて、{raised}（＋35万円）"},
     ]
 
 
-# 「止まる設備の数」で数えるのは、住民が使えなくなるものだけ。受電の箱や制御盤は止まる原因として別に見せる。
+# 「止まる設備の数」で数えるのは、住民が使えなくなるものだけ。高圧受変電設備（キュービクル）や制御盤は止まる原因として別に見せる。
 SERVICES = [
     ("pump", "給水（全戸の水）"),
     ("ev", "エレベーター"),
@@ -1088,20 +1262,26 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
     tr_unseen = answers.get("tr") in ("no", "unknown") or "absent:tr" in confirmed
     # 図面で2階以上・描かれていないと確かめた部屋は、水の位置③でも浸からない（2026-11-06 本人の決定）。
     safe = lambda *keys: any(key in confirmed for key in keys)  # noqa: E731
+    # 対策の段階（2026-11-06）：none＝対策なし／basic＝出入口の止水板＋壁の穴の止水／full＝basic＋盤を高い位置へ。
+    # basic で出入口と壁の穴からの水を止める。水が③（止水板の高さ）まで来ても、浸かるのは床置きの盤だけ。full なら盤も浸からない。
+    protected = measure in ("basic", "full")
     wet = set()
-    if water >= 2:
+    if water >= 2 and not protected:
         if not safe("absent:ev"):
             wet.add("ev")
-        if sample["panel_mount"] == "床置き" and measure != "raise" and not safe("upper:pump", "absent:pump"):
+        if sample["panel_mount"] == "床置き" and not safe("upper:pump", "absent:pump"):
             wet.add("panel")
     if water >= 3:
-        if not tr_unseen and not bulk and not safe("upper:tr"):
-            wet.add("tr")
-        if measure != "hole" and not safe("upper:elec", "upper:panel_room"):
-            wet.add("hv")
-        if measure != "raise" and not safe("upper:pump", "absent:pump"):
+        if not protected:
+            if not tr_unseen and not bulk and not safe("upper:tr"):
+                wet.add("tr")
+            if not safe("upper:elec", "upper:panel_room"):
+                wet.add("hv")
+            if not safe("upper:pump", "absent:pump"):
+                wet.add("panel")
+        elif measure == "basic" and sample["panel_mount"] == "床置き" and not safe("upper:pump", "absent:pump"):
             wet.add("panel")
-    tr_safe = safe("upper:tr") and not bulk
+    tr_safe = (safe("upper:tr") or protected) and not bulk
 
     chain = chain_nodes(sample, confirmed)
     stopped = set(wet)
@@ -1114,9 +1294,9 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
                 changed = True
 
     notes = [FIXED["timeline_top"]]
-    if measure == "hole":
+    if measure in ("basic", "full"):
         notes.append(FIXED["hole"])
-    if measure == "raise":
+    if measure == "full":
         notes.append(FIXED["raise"])
     if sample["archetype"] == "tower":
         notes.append(FIXED["tank_outside"])
@@ -1137,7 +1317,7 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
         return "止まる想定" if key in stopped else "—"
 
     checker = "主任技術者か電気工事の業者" if sample.get("engineer_unsure") else "主任技術者" if sample["has_chief_engineer"] else "電気工事の業者"
-    hv_name = "共用部の電気（受電の箱）" if sample["has_chief_engineer"] else "共用部の電気（おおもとのスイッチ盤）"
+    hv_name = "共用部の電気（高圧受変電設備）" if sample["has_chief_engineer"] else "共用部の電気（おおもとのスイッチ盤）"
     guide_days = "排水開始から仮復旧まで4〜7日程度（受電設備・供給用変圧器が浸かった場合。経産省の検討会資料、一般的な目安）"
     table = [
         {
@@ -1206,14 +1386,14 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
             {
                 "key": "others",
                 "label": "ほかの建物の例",
-                "cells": ["—", "—", "—", "武蔵小杉は断水8日・トイレ11日（建築設備技術者協会の調査など。ほかの建物の例）", "武蔵小杉の本復旧は6〜8か月（同。ほかの建物の例）"],
+                "cells": ["—", "—", "—", "2019年の台風で地下の電気室が浸かった川崎市の高層マンションの例：断水8日・トイレ11日（建築設備技術者協会の調査など。ほかの建物の例）", "同じ例の本復旧は6〜8か月（同。ほかの建物の例）"],
                 "stopped": False,
             }
         )
     day_text, morning_text = actions_for(sample)
     day = FIXED["no_stop"] if no_stop else day_text
     before = ACTIONS_BEFORE
-    if measure == "plate" and sample["underground_feed"]:
+    if measure == "none" and sample["underground_feed"] and not sample.get("feed_unknown"):
         before += "。止水板だけのときは、地中の壁の穴からの経路が残ります"
     rain = rain_lines(sample, confirmed)
     before += "。" + rain["third"] + "".join(rain["extra"])
@@ -1228,15 +1408,15 @@ def scenario(sample: dict, water: int, measure: str, confirmed: Optional[List[st
 
     if not wet:
         below.append("＊" + FIXED["nothing_wet"])
-        below.append(FIXED["tr_outside"])
+        below.append(FIXED["tr_protected"] if measure in ("basic", "full") and water >= 3 else FIXED["tr_outside"])
     elif gone:
         # 同じ表で止まる想定の設備を「浸からない」と読ませないよう、目安が消えた設備の名前だけを出す。
         names = []
         if not panel_wet:
             names.append("制御盤")
         if not hv_wet:
-            names.append("受電の箱" if sample["has_chief_engineer"] else "おおもとのスイッチ盤")
-        below.append("＊" + FIXED["gone"].replace("制御盤／受電の箱", "／".join(names)))
+            names.append("高圧受変電設備" if sample["has_chief_engineer"] else "おおもとのスイッチ盤")
+        below.append("＊" + FIXED["gone"].replace("制御盤／高圧受変電設備", "／".join(names)))
 
     return {
         "water": water,
@@ -1289,7 +1469,10 @@ def direction_line(directions: dict, low: List[str], sample: dict, high: Optiona
         parts.append(f"水が来そうな側は{directions['water']}（指定）")
     if directions.get("door"):
         parts.append(f"電気室の扉の側は{directions['door']}（指定）")
-    entrances = "スロープ、扉、歩道ぎわの蓋" if sample["underground_feed"] else "坂の下の側の扉、足元の換気口"
+    if sample.get("feed_unknown"):
+        entrances = "扉、足元の換気口、歩道ぎわの蓋（引込みが地中の場合）"
+    else:
+        entrances = "スロープ、扉、歩道ぎわの蓋" if sample["underground_feed"] else "坂の下の側の扉、足元の換気口"
     if not parts:
         return f"{lead}{entrances}の高さを先に確かめます。" if lead else ""
     return lead + "、".join(parts) + f"。その向きに{entrances}があれば、先に確かめます。"
@@ -1357,6 +1540,8 @@ def building_payload(
         "measures": visible_measures(sample, equipment),
         "unit_prices": unit_prices(sample),
         "recovery_cost_line": samples.RECOVERY_COST_LINE,
+        "recovery_cost_yen": list(samples.RECOVERY_COST_YEN),
+        "damage_line": samples.DAMAGE_LINE,
         "subsidies": samples.SUBSIDIES,
         "memos": memo_list,
         "scale": scale,
@@ -1365,6 +1550,7 @@ def building_payload(
         "chain": chain_nodes(sample, confirmed),
         "water_levels": WATER_LEVELS,
         "model_measures": measures_for_model(sample),
+        "critical": critical_measures(sample, location_rows),
         "scenarios": scenarios(sample, confirmed),
         "heights": list(heights(sample).values()),
         "rain": rain_lines(sample, confirmed),

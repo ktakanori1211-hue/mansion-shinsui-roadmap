@@ -4,8 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>マンション浸水ロードマップ</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="start.css">
 </head>
 <body>
@@ -55,11 +53,10 @@
     </form>
   </aside>
 
-  <!-- 印刷だけに出す紙（依頼メモ・理事会A4表裏・費用と補助）。 -->
+  <!-- 印刷だけに出す紙（依頼メモ・理事会A4（縦1枚）・費用と補助）。 -->
   <section class="print-memo" id="print-memo" aria-hidden="true"></section>
 
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="cad.js"></script>
   <script src="start.js"></script>
 </body>
 </html>

@@ -67,7 +67,7 @@ def surface_counts() -> dict | None:
     if not shutil.which("osascript"):
         return None
     data = json.dumps(sample_a_payload(), ensure_ascii=False)
-    script = STUBS + (ROOT / "web" / "start.js").read_text(encoding="utf-8") + "\nvar DATA = " + data + ";\n" + RENDER
+    script = STUBS + (ROOT / "web" / "cad.js").read_text(encoding="utf-8") + "\n" + (ROOT / "web" / "start.js").read_text(encoding="utf-8") + "\nvar DATA = " + data + ";\n" + RENDER
     with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
         handle.write(script)
         path = handle.name

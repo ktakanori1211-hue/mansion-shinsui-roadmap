@@ -75,17 +75,18 @@ class SectionAnchorsTest(unittest.TestCase):
 
 
 class ScenarioFactsTest(unittest.TestCase):
-    """重ね絵が頼る scenario の形。壁の穴を塞いでも、水の位置②でエレベーターの底は浸かる。"""
+    """重ね絵が頼る scenario の形。対策の段階は none（現状）→ basic（止水板＋穴）→ full（＋盤を高く）（2026-11-06）。"""
 
-    def test_hole_does_not_stop_the_lowest_floor(self):
+    def test_measure_set_keys_and_the_lowest_floor(self):
         for sid in ("a", "b", "c"):
             table = building.scenarios(samples.get(sid), [])
-            for measure in ("plate", "hole", "raise"):
-                self.assertIn("ev", table[f"2:{measure}"]["wet"])
-            self.assertNotIn("hv", table["3:hole"]["wet"])
-            self.assertIn("hv", table["3:plate"]["wet"])
-            self.assertNotIn("panel", table["3:raise"]["wet"])
-            self.assertEqual(table["1:plate"]["wet"], [])
+            self.assertEqual({key.split(":")[1] for key in table}, {"none", "basic", "full"})
+            self.assertIn("ev", table["2:none"]["wet"])
+            self.assertIn("hv", table["3:none"]["wet"])
+            self.assertEqual(table["2:basic"]["wet"], [])
+            self.assertNotIn("hv", table["3:basic"]["wet"])
+            self.assertEqual(table["3:full"]["wet"], [])
+            self.assertEqual(table["1:none"]["wet"], [])
 
 
 if __name__ == "__main__":

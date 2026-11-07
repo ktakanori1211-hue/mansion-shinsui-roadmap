@@ -20,7 +20,7 @@
   --water: #2f7fd0;
   --rule: #13294b;
   --paper: #f4f5f7;
-  --stopped: #3d4b5c;
+  --stopped: #b3261e;
 }
 
 * { box-sizing: border-box; }
@@ -35,7 +35,7 @@ body {
 }
 
 .top, .steps, .screen, .fixed-note, .key-form {
-  max-width: 560px;
+  max-width: 960px;
   margin: 0 auto;
   padding-left: 16px;
   padding-right: 16px;
@@ -89,14 +89,9 @@ button { font: inherit; }
 .picked { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
 .place { margin: 0; font-size: 15px; }
 .question { margin: 0; font-size: 19px; font-weight: 800; }
-.map-box { border-radius: 2px; overflow: hidden; border: 1px solid var(--line); }
-.site-map { height: 240px; background: #e8ebef; }
 .terrain { margin: 0; font-size: 16px; font-weight: 800; padding-left: 10px; border-left: 5px solid var(--unconfirmed-line); }
 .terrain.risk { color: var(--risk); border-left-color: var(--risk-line); }
 .terrain small { display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
-.map-point { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 14.5px; }
-.map-point i { width: 26px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,.2); display: inline-block; }
-.map-point small { font-size: 12px; color: var(--muted); }
 /* 折りたたみは、押せると分かるボタンの形にする（2026-11-05 本人の指摘「小さすぎてクリックできると気づかない」）。 */
 details.more > summary, .phase-more > summary { display: inline-flex; align-items: center; gap: 6px; list-style: none; border: 1.5px solid var(--accent); color: var(--accent); background: #fff; border-radius: 2px; padding: 6px 14px; font-size: 13.5px; font-weight: 800; cursor: pointer; }
 details.more > summary::-webkit-details-marker, .phase-more > summary::-webkit-details-marker { display: none; }
@@ -104,7 +99,6 @@ details.more > summary::before, .phase-more > summary::before { content: "＋"; 
 details.more[open] > summary::before, .phase-more[open] > summary::before { content: "－"; }
 .place-more { display: flex; flex-direction: column; gap: 6px; }
 .place-more[open] > *:not(summary) { margin-top: 6px; }
-.map-caption { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink); }
 .place-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .place-chips li { display: flex; gap: 6px; align-items: baseline; border-radius: 2px; padding: 3px 10px; font-size: 13px; background: #f1f2f4; color: var(--muted); }
 .place-chips li b { color: var(--ink); }
@@ -116,21 +110,9 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .floor input { width: 4.2em; height: 40px; border: 1.5px solid var(--line); border-radius: 2px; font: inherit; font-size: 17px; text-align: center; }
 .floor small { font-weight: 400; color: var(--muted); font-size: 12px; }
 /* 地図の上の印 */
-.m-height { background: #fff; border: 1.5px solid #8a96a8; border-radius: 2px; font-size: 12px; font-weight: 700; text-align: center; line-height: 19px; color: #3c4656; }
-.m-height.up { border-color: #8a5a12; color: #8a5a12; }
-.m-height.down { border-color: #2f6fb0; color: #2f6fb0; }
-.m-height.same { border-color: #b8bec8; color: #6b717c; }
-.m-flow span { display: block; font-size: 22px; line-height: 26px; text-align: center; color: var(--water); font-weight: 800; text-shadow: 0 0 3px #fff; }
-.m-site b { display: block; background: var(--navy); color: #fff; border-radius: 2px; font-size: 12px; text-align: center; line-height: 26px; }
-.m-legend { background: rgba(255, 255, 255, .92); border-radius: 2px; padding: 2px 8px; font-size: 12px; font-weight: 700; color: var(--ink); }
 
-.site-map.pickable { cursor: crosshair; }
 .pin-hint { margin: -2px 0 0; font-size: 13.5px; font-weight: 800; color: var(--accent); background: #eef4fc; border-radius: 2px; padding: 8px 10px; }
 .pin-hint.done { color: var(--clear); background: var(--clear-bg); }
-.map-legend { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: -4px; }
-.map-legend p { margin: 0; }
-.map-legend .up { color: #8a5a12; font-weight: 800; }
-.map-legend .down { color: #2f6fb0; font-weight: 800; }
 .lg-row { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; margin-top: 2px !important; }
 .lg { display: inline-flex; align-items: center; gap: 3px; }
 .lg i { width: 12px; height: 10px; border-radius: 2px; display: inline-block; border: 1px solid rgba(0,0,0,.1); }
@@ -198,10 +180,9 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .life li { border-radius: 0; padding: 8px 6px; text-align: center; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--rule); background: #fff; }
 .life li.risk { color: var(--risk); }
 /* 「止まる想定」は判定ではなく、水の位置と対策の想定の印。リスクあり（確定）の赤と分ける（what-028）。 */
-.life li.stopped { border-color: var(--stopped); background: var(--stopped); color: #fff; }
-.life li.clear { color: var(--clear); }
-.life li.running { color: var(--muted); }
-.life li.running em, .life li.unconfirmed em { font-size: 15px; word-break: keep-all; }
+.life li.stopped { border-color: var(--risk); background: var(--risk); color: #fff; }
+.life li.clear, .life li.running { color: var(--clear); border-color: var(--clear); background: #eef7ee; }
+.life li.clear em, .life li.running em, .life li.unconfirmed em { font-size: 15px; word-break: keep-all; }
 .life-head { margin: 0 0 -4px; font-size: 14px; font-weight: 800; color: var(--stopped); }
 .life b { font-size: 14px; line-height: 1.3; word-break: keep-all; }
 .sheet .life b { font-size: 12.5px; }
@@ -239,7 +220,6 @@ details.more[open] > summary::before, .phase-more[open] > summary::before { cont
 .own-row { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; flex-wrap: wrap; }
 .inland-note { margin: 2px 0 0; font-size: 12.5px; line-height: 1.6; color: #4a5361; background: #fff; border-radius: 2px; padding: 6px 8px; border: 1px dashed #b8bec8; }
 .inland-note a { color: var(--accent); font-weight: 700; }
-.map-legend summary, .facts summary { font-size: 12.5px; color: var(--accent); cursor: pointer; font-weight: 700; }
 details.facts { display: block; }
 details.facts[open] { display: flex; }
 .h-band { fill: var(--water); opacity: .12; }
@@ -291,7 +271,25 @@ details.facts[open] { display: flex; }
 .aid-box b { font-size: 15px; color: var(--navy); }
 .aid-box p { margin: 2px 0; }
 .aid-box ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
-.paper { border: 1px solid var(--rule); border-radius: 0; padding: 14px; background: #fff; }
+/* 画面の A4 は本当の A4 の比率（210:297）で見せる。収まらない分は見えない＝入れすぎの合図（2026-11-06 本人の指摘）。 */
+.paper { border: 1px solid var(--rule); border-radius: 0; padding: 12px 14px; background: #fff; aspect-ratio: 210 / 297; overflow: hidden; font-size: 12px; line-height: 1.4; }
+.paper .sheet-plan { margin: 4px 0; }
+.paper .sheet-plan svg { max-height: 32vw; width: auto; margin: 0 auto; display: block; }
+.paper .sheet.back .sheet-plan svg { max-height: 26vw; }
+.paper .life { gap: 4px; }
+.paper .life li { padding: 4px 3px; }
+.paper .life em { font-size: 13px; }
+.paper .life small { display: none; }
+.paper .critical ol { gap: 2px; }
+.paper .critical li { font-size: 11.5px; gap: 0 6px; }
+.paper .critical .c-meta { font-size: 10.5px; }
+.paper .tier-head { margin: 4px 0 2px; font-size: 11.5px; padding: 2px 6px; }
+.paper .decide li { font-size: 11.5px; padding: 2px; }
+.paper h2 { margin: 6px 0 3px; font-size: 13px; }
+.paper .sheet-line { font-size: 11px; }
+.paper .print-fixed { font-size: 9.5px; margin-top: 6px; }
+.paper .cost { font-size: 11.5px; }
+.paper .cost-sum b { font-size: 20px; }
 .sheet h1 { font-size: 18px; line-height: 1.45; margin: 4px 0 8px; }
 .sheet h2 { font-size: 15px; margin: 12px 0 6px; border-bottom: 2px solid var(--ink); }
 .sheet-tag { margin: 0; font-size: 11.5px; color: var(--muted); }
@@ -313,7 +311,7 @@ details.facts[open] { display: flex; }
 /* 質問する（チャット）。右下の小さな入口と、下から出る窓。 */
 .chat-toggle { position: fixed; right: 16px; bottom: 16px; z-index: 20; border: 0; border-radius: 2px; background: var(--navy); color: #fff; font-weight: 800; padding: 12px 18px;  cursor: pointer; }
 .chat-toggle[hidden] { display: none; }
-.chat { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-width: 560px; margin: 0 auto; max-height: 72vh; display: flex; flex-direction: column; gap: 6px; background: #fff; border-radius: 2px 16px 0 0;  padding: 12px 14px 14px; }
+.chat { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-width: 960px; margin: 0 auto; max-height: 72vh; display: flex; flex-direction: column; gap: 6px; background: #fff; border-radius: 2px 16px 0 0;  padding: 12px 14px 14px; }
 .chat[hidden] { display: none; }
 .chat-head { display: flex; justify-content: space-between; align-items: center; }
 .chat-head button { border: 1px solid var(--line); background: #fff; border-radius: 2px; padding: 4px 12px; cursor: pointer; }
@@ -338,11 +336,13 @@ details.facts[open] { display: flex; }
 }
 
 @media print {
-  @page { size: A4; margin: 12mm; }
+  @page { size: A4; margin: 10mm; }
   body { background: #fff; }
   .top, .key-form, .steps, .screen, .fixed-note, .chat, .chat-toggle { display: none !important; }
   .print-memo { display: block !important; font-size: 10.5pt; line-height: 1.55; }
   .print-memo .sheet { break-after: page; }
+  .print-memo .sheet-plan svg { max-height: 88mm; width: auto; margin: 0 auto; display: block; }
+  .print-memo .drawing img { max-height: 70mm; }
   .print-memo .sheet:last-child { break-after: auto; }
   .print-memo h1 { font-size: 16pt; margin: 0 0 3mm; }
   .print-memo .sheet-plan { width: 150mm; margin: 3mm auto; }
@@ -423,4 +423,276 @@ details.facts[open] { display: flex; }
 .place tr.clear i { background: var(--clear-line); }
 .gain { margin: 0; font-size: 14.5px; font-weight: 800; color: var(--rule); }
 .save-fold { margin-top: 14px; }
+/* 地図の標高ラベルと水の矢印、層の切り替え（2026-11-06） */
+.place tr.caution i { background: var(--unconfirmed-line); }
+/* 平面図の止水ライン */
+.p-plate { stroke: #1f5f99; stroke-width: 7; stroke-linecap: square; }
 
+/* 画面1：浸水エリアの結論（2026-11-06・7回目） */
+.facts-line .option.small { margin-left: 6px; }
+/* 画面3・A4：クリティカル対策 */
+.critical { border-top: 1px solid var(--line); padding-top: 8px; }
+.critical ol { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.critical li { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; font-size: 14px; }
+.critical li b { font-size: 12px; color: #fff; background: var(--rule); padding: 1px 6px; white-space: nowrap; }
+.critical li:first-child b { background: var(--risk); }
+.critical .c-title { font-weight: 800; }
+.critical li small, .critical .c-meta { grid-column: 2; font-size: 12.5px; color: var(--muted); }
+.critical.print { padding-top: 4px; }
+.critical-line { margin: 0; padding: 8px 10px; border-left: 6px solid var(--risk); background: var(--paper); font-size: 14px; line-height: 1.45; }
+.critical-line b { color: var(--rule); }
+.critical-line span { font-weight: 800; }
+.critical-line small { display: block; color: var(--muted); font-size: 12px; }
+/* あなたの図面の画像とピン */
+.drawing { margin: 8px 0 0; }
+.drawing .d-box { position: relative; border: 1px solid var(--rule); background: #fff; }
+.drawing { text-align: center; }
+.drawing .d-box { display: inline-block; max-width: 100%; }
+.drawing img { display: block; width: auto; max-width: 100%; height: auto; max-height: 320px; }
+.drawing .d-pins { position: absolute; inset: 0; }
+.d-pin { position: absolute; transform: translate(-50%, -50%); min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; background: rgba(19, 41, 75, .85); color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; border: 1.5px solid #fff; }
+.d-pin.main { background: var(--risk); font-size: 13px; }
+.drawing figcaption { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.drawing.small img { max-height: 260px; }
+.read-others { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.read-others span { border: 1px solid var(--line); padding: 0 6px; }
+/* CAD 風の平面図・断面図の上の重ね描き（2026-11-06・7回目） */
+.plan-svg.cad text { font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif; }
+.p-over { stroke: none; transition: fill .35s; }
+.p-over.risk { fill: rgba(179, 38, 30, .22); }
+.p-over.unconfirmed { fill: rgba(196, 128, 0, .22); }
+.p-over.clear { fill: rgba(27, 122, 61, .2); }
+.p-over.wet { fill: rgba(179, 38, 30, .4); }
+.p-over.safe { fill: rgba(27, 122, 61, .35); }
+.p-over.flash { animation: flash 1.1s ease; }
+.p-name.wet { fill: var(--risk); }
+.p-name.safe { fill: var(--clear); }
+.p-badge.wet rect { fill: var(--risk-line); }
+.p-badge.safe rect { fill: var(--clear-line); }
+.p-flood-band { fill: rgba(31, 95, 153, .28); }
+.s-water { fill: rgba(31, 95, 153, .32); }
+.s-level { stroke: #1f5f99; stroke-width: 2.5; stroke-dasharray: 8 5; fill: none; }
+.s-level-label { font-size: 13px; font-weight: 800; fill: #1f5f99; }
+.s-route { stroke-width: 3; stroke-dasharray: 8 5; }
+.s-route.on { stroke-width: 4; stroke-dasharray: none; }
+.p-entry.s-small { font-size: 13px; stroke-width: 3px; }
+.section-box { margin-top: 8px; }
+/* 画面1：水が来る3つの道（掛け算） */
+/* 画面3：模式を1画面に */
+.sim { border: 1px solid var(--rule); background: var(--paper); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.sim-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sim-controls .play { padding: 7px 10px; font-size: 14px; }
+.sim-label { font-size: 12px; font-weight: 800; color: var(--rule); white-space: nowrap; }
+.sim .measures-switch { flex-direction: row; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; }
+.sim .option { padding: 5px 9px; font-size: 13px; }
+.sim-tabs { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+.sim-tabs .tab { padding: 6px 4px; font-size: 13px; }
+.sim-fig .plan-svg { max-height: 40vh; }
+.sim .life li { padding: 5px 4px; }
+.sim .life em { font-size: 14px; }
+.sim .life b { font-size: 12.5px; }
+.sim .life small { display: none; }
+.sim .drawing { margin: 0; }
+.sim .drawing img { max-height: 40vh; object-fit: contain; }
+/* 提案の2段構えと根拠 */
+.tier-head { margin: 8px 0 4px; font-size: 13px; font-weight: 800; color: #fff; background: var(--rule); padding: 3px 8px; }
+.c-depth { font-style: normal; font-weight: 700; font-size: 11.5px; color: #1f5f99; margin-left: 6px; white-space: nowrap; }
+.c-basis { color: var(--ink) !important; }
+.c-facts { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
+/* 土地を横から見た図（2D） */
+.terrain { margin: 0 0 8px; }
+.terrain-svg { display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
+.terrain-svg text { font-family: inherit; }
+.t-sky { fill: #fbfcfe; }
+.t-ground { fill: #d9cfc0; }
+.t-ground-line { fill: none; stroke: #6b5a3e; stroke-width: 2.5; }
+.t-bldg { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
+.t-floor { stroke: var(--ink); stroke-width: 1.2; }
+.t-floor-label { font-size: 11px; font-weight: 700; fill: var(--ink); }
+.t-bldg-label { font-size: 13px; font-weight: 800; fill: var(--navy); }
+.t-elev { font-size: 12px; font-weight: 700; fill: #4a3b24; paint-order: stroke; stroke: #d9cfc0; stroke-width: 3px; }
+.t-dir { font-size: 12px; font-weight: 800; fill: var(--muted); }
+.t-flow { fill: none; stroke: #1f5f99; stroke-width: 5; }
+.t-band { opacity: .22; }
+.t-band.flood { fill: #1f5f99; }
+.t-band.surge { fill: #3f8fd1; }
+.t-band.rain { fill: #5a7fb0; opacity: .35; }
+.t-band-label { font-size: 12px; font-weight: 800; fill: #1f5f99; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.terrain figcaption { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+.portal-line { margin: 0 0 8px; }
+/* 補助＝組合の得 */
+.place-aid.win { border: 2px solid var(--clear); background: #eef7ee; padding: 8px 10px; }
+.place-aid.win .win-head { margin: 0; font-size: 15px; color: var(--clear); }
+.place-aid.win .win-num { margin: 2px 0; font-size: 14px; font-weight: 700; }
+.place-aid.win .win-yen { font-style: normal; font-size: 18px; font-weight: 900; color: var(--clear); }
+.place-aid.win small { display: block; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.cost-sum { display: flex; flex-direction: column; gap: 2px; border: 2px solid var(--rule); padding: 8px 10px; margin: 8px 0 4px; }
+.cost-sum.win { border-color: var(--clear); background: #eef7ee; }
+.cost-sum p { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.cost-before b { font-size: 18px; text-decoration: line-through; color: var(--muted); }
+.cost-after b { font-size: 26px; color: var(--clear); }
+.cost-sum:not(.win) .cost-after b { color: var(--ink); }
+.cost-sum span { font-size: 13px; font-weight: 800; }
+.cost-sum small { font-size: 12px; color: var(--muted); }
+.win-line { font-size: 12.5px; color: var(--clear); font-weight: 700; }
+.aid-cautions { margin: 2px 0 4px; padding-left: 18px; }
+.c-rule { margin: 0 0 4px; font-size: 12.5px; color: var(--rule); font-weight: 700; }
+/* 画面1の①：結論1行＋2行 */
+.risk-head { margin: 0 0 8px; padding: 8px 10px; border-left: 6px solid var(--rule); background: var(--paper); }
+.risk-head p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.risk-head .rh-title { font-size: 19px; font-weight: 900; margin-bottom: 2px; }
+.risk-head.risk { border-left-color: var(--risk); }
+.risk-head.risk .rh-title { color: var(--risk); }
+.risk-head.caution { border-left-color: var(--unconfirmed-line); }
+.risk-head.clear { border-left-color: var(--clear); }
+.risk-head.clear .rh-title { color: var(--clear); }
+.src-line { margin: 0 0 6px; }
+.t-bldg.basement { fill: #f3f1ec; stroke-dasharray: none; }
+.t-bldg.unknown { fill: none; stroke-dasharray: 6 5; stroke-width: 1.8; }
+.t-floor-label.muted { fill: var(--muted); }
+/* 画面1の掛け算：ハザードマップ × 線状降水帯で浸かる型（2026-11-07）。各行は事実と出典、当たるかはサーバーの規則。 */
+.rh-sub { font-weight: 700; }
+.mul { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: stretch; margin: 0 0 8px; }
+.mul-card { border: 1px solid var(--rule); background: #fff; padding: 6px 8px; min-width: 0; }
+.mul-card.hit { border-color: var(--risk); background: #fff7f6; }
+.mul-head { margin: 0 0 3px; font-size: 13px; font-weight: 800; color: var(--navy); }
+.mul-card ul { margin: 0; padding-left: 1.1em; font-size: 12.5px; line-height: 1.5; }
+.mul-card i { font-style: normal; font-size: 11px; font-weight: 800; padding: 0 5px; border-radius: 2px; margin-left: 4px; white-space: nowrap; }
+.mul-card i.hit { background: var(--risk); color: #fff; }
+.mul-card i.miss { background: #e6ebf3; color: var(--navy); }
+.mul-card i.none { background: #eee; color: var(--muted); }
+.mul-x { align-self: center; font-size: 22px; font-weight: 900; color: var(--navy); }
+.mul-fact { margin: 4px 0 0; font-size: 11.5px; line-height: 1.45; color: #33404f; }
+@media (max-width: 600px) { .mul { grid-template-columns: 1fr; } .mul-x { text-align: center; } }
+.t-flow.thin { stroke-width: 3.5; }
+.place-aid.win .win-head { font-size: 13px; color: var(--clear); font-weight: 800; }
+
+
+
+/* === 画面3：止まる札は赤。被害の目安はサーバーの1行。対策は表（各行に理由1行）。2026-11-07 === */
+.impact-banner { margin: 8px 0 0; padding: 8px 12px; border-radius: 2px; font-size: 13.5px; line-height: 1.45; }
+.impact-banner.risk { background: #fff3f2; border-left: 4px solid #b3261e; color: #7f1510; font-weight: 700; }
+.impact-banner.safe { background: #eef7ee; border-left: 4px solid #1c6b3a; color: #14532d; font-weight: 700; }
+.fig-note { margin: 2px 0 0; font-size: 11.5px; }
+.crit-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 4px 0 10px; background: #fff; table-layout: fixed; }
+.crit-table th, .crit-table td { border: 1px solid #cfd5e0; padding: 6px 8px; vertical-align: top; text-align: left; word-break: break-word; }
+.crit-table th { background: #f0f3f8; color: #13294b; font-weight: 800; font-size: 12px; }
+.crit-table col.col-no { width: 64px; }
+.crit-table col.col-cost { width: 110px; }
+.crit-table col.col-dec { width: 150px; }
+.crit-table .c-no { white-space: nowrap; font-weight: 800; color: #b3261e; text-align: center; background: #fff9f8; }
+.crit-table .c-main b { display: inline; font-size: 13.5px; color: #13294b; }
+.crit-table .c-depth { display: inline-block; margin-left: 6px; padding: 1px 6px; font-size: 11px; font-weight: 700; background: #e3ecf8; color: #0b4fa8; border-radius: 2px; }
+.crit-table .c-basis { display: block; margin-top: 2px; color: #4a4e58; font-size: 12px; line-height: 1.4; }
+.crit-table .c-cost { font-weight: 700; }
+.crit-table .c-dec { font-size: 12px; color: #333; }
+.c-facts { margin: 4px 0 6px; font-size: 12.5px; color: #333; background: #f4f6f9; padding: 5px 8px; border-radius: 2px; }
+.c-note { margin: -4px 0 0; }
+
+/* === 理事会A4：縦1枚（左右2段組み）。紙は 794×1123px（A4・96dpi）で組み、画面では fitPapers() が幅に合わせて zoom、印刷では等倍で 210×297mm。2026-11-07 === */
+.paper.a4-single { width: 794px; height: 1123px; aspect-ratio: auto; padding: 36px 38px; box-sizing: border-box; margin: 0; overflow: hidden; font-size: 11px; line-height: 1.4; border: 1px solid var(--rule); }
+.sheet.a4-onepage { display: flex; flex-direction: column; gap: 6px; height: 100%; overflow: hidden; }
+.a4-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; border-bottom: 3px solid #13294b; padding-bottom: 4px; }
+.a4-doc-type { margin: 0; font-size: 11px; font-weight: 800; color: #0b4fa8; letter-spacing: 0.04em; }
+.a4-main-title { margin: 2px 0 0; font-size: 15px; line-height: 1.3; color: #13294b; }
+.a4-meta { font-size: 10.5px; color: #4a4e58; text-align: right; white-space: nowrap; flex: none; }
+.a4-grid { display: grid; grid-template-columns: 47fr 53fr; gap: 8px; align-items: start; flex: none; }
+.a4-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.a4-box { border: 1px solid #cfd5e0; padding: 5px 7px; background: #fff; }
+.a4-box h2 { margin: 0 0 4px; font-size: 11.5px; font-weight: 800; color: #fff; background: #13294b; padding: 2px 6px; border-bottom: 0; }
+.a4-decide-box { border: 2px solid #0b4fa8; background: #f7faff; }
+.a4-decide-box h2 { background: #0b4fa8; }
+.a4-figs { display: flex; flex-direction: column; gap: 3px; }
+.a4-onepage .sheet-plan { margin: 0; }
+.a4-onepage .sheet-plan svg { max-height: 170px; width: auto; max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.a4-onepage .a4-figs .sheet-plan:nth-child(2) svg { max-height: 235px; }
+.a4-onepage .life { gap: 3px; margin: 4px 0 0; }
+.a4-onepage .life li { padding: 3px 2px; }
+.a4-onepage .life b { font-size: 10.5px; }
+.a4-onepage .life em { font-size: 11.5px; }
+.a4-onepage .life small { display: none; }
+.a4-onepage .life-head { font-size: 11px; margin: 4px 0 -2px; }
+.a4-damage-note { margin: 5px 0 0; padding: 4px 7px; background: #fff3f2; border-left: 3px solid #b3261e; font-size: 10px; line-height: 1.4; color: #7f1510; font-weight: 700; }
+.a4-onepage .risk-head { margin: 0; padding: 5px 8px; }
+.a4-onepage .risk-head .rh-title { font-size: 13px; }
+.a4-onepage .risk-head p { font-size: 10.5px; margin: 1px 0; line-height: 1.4; }
+.a4-onepage .own-head { display: none; }
+.a4-onepage .c-facts { font-size: 9.8px; padding: 3px 6px; margin: 0 0 3px; line-height: 1.35; }
+.a4-onepage .tier-head { font-size: 10.5px; margin: 3px 0 2px; padding: 2px 5px; }
+.a4-onepage .crit-table { font-size: 9.8px; margin: 0 0 3px; }
+.a4-onepage .crit-table th, .a4-onepage .crit-table td { padding: 2px 4px; }
+.a4-onepage .crit-table th { font-size: 9.5px; }
+.a4-onepage .crit-table col.col-no { width: 40px; }
+.a4-onepage .crit-table col.col-cost { width: 62px; }
+.a4-onepage .crit-table col.col-dec { width: 68px; }
+.a4-onepage .crit-table .c-no { font-size: 9.5px; }
+.a4-onepage .crit-table .c-cost { white-space: normal; }
+.a4-onepage .crit-table .c-dec { font-size: 9.2px; }
+.a4-onepage .crit-table .c-main b { font-size: 10.2px; }
+.a4-onepage .crit-table .c-depth { font-size: 9px; padding: 0 4px; margin-left: 4px; }
+.a4-onepage .crit-table .c-basis { font-size: 9.2px; line-height: 1.3; margin-top: 1px; }
+.a4-onepage .cost { font-size: 9.8px; margin: 0; }
+.a4-onepage .cost th, .a4-onepage .cost td { padding: 2px 4px; }
+.a4-onepage .cost-sum { padding: 3px 6px; margin: 3px 0 0; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 1px 12px; }
+.a4-onepage .cost-sum .win-line { flex-basis: 100%; }
+.a4-onepage .cost-sum span { font-size: 10px; }
+.a4-onepage .cost-sum small { font-size: 9.5px; }
+.a4-onepage .cost-before b { font-size: 12px; }
+.a4-onepage .cost-after b { font-size: 15px; }
+.a4-onepage .win-line { font-size: 9.5px; margin: 1px 0 0; }
+.a4-onepage .cost-risk, .a4-onepage .a4-box > .hint, .a4-onepage .win-line { display: none; }
+.a4-onepage .decide { margin: 0; padding: 0; border-top: 0; }
+.a4-onepage .decide li { font-size: 10.2px; padding: 2px 0; line-height: 1.25; gap: 6px; }
+.a4-onepage .decide input { width: 12px; height: 12px; margin-top: 1px; }
+.a4-rain { margin: 3px 0 0; font-size: 9.5px; font-weight: 700; line-height: 1.3; }
+.a4-onepage .print-fixed { font-size: 8.3px; line-height: 1.3; margin: 2px 0 0; padding-top: 3px; border-top: 1px solid #999; color: #555; }
+.a4-onepage .print-fixed p { margin: 0; }
+
+@media print {
+  /* 理事会A4は 1 枚：用紙の余白 10mm を引いた 190×277mm（＝画面の 718×1047px と同じ組み）。 */
+  .print-memo .sheet.a4-onepage { width: 190mm; height: 277mm; padding: 0; margin: 0; overflow: hidden; font-size: 11px; line-height: 1.4; break-after: auto; }
+  .print-memo .a4-onepage h1 { font-size: 15px; margin: 2px 0 0; }
+  .print-memo .a4-onepage .sheet-plan { width: auto; margin: 0; }
+  .print-memo .a4-onepage .sheet-plan svg, .print-memo .a4-onepage .plan-svg { max-height: none; }
+  .print-memo .a4-onepage .life { width: auto; margin: 4px 0 0; }
+  .print-memo .a4-onepage .sheet h2, .print-memo .a4-onepage h2 { margin: 0 0 4px; font-size: 11.5px; }
+  .print-memo .a4-onepage .print-fixed { font-size: 8.3px; }
+}
+
+/* 2 確かめる（2026-11-07・13回目：押す面を大きく、答えた瞬間の一行、進み具合） */
+.s3 .title { font-size: 20px; }
+.s3 .hint { font-size: 14px; }
+.s3 .qtitle { font-size: 18px; line-height: 1.4; }
+.s3 .option:not(.small) { min-height: 44px; padding: 10px 18px; font-size: 17px; border: 2px solid var(--navy); color: var(--navy); border-radius: 3px; }
+.s3 .option:not(.small).chosen { background: var(--navy); color: #fff; }
+.s3 .option.small { min-height: 32px; font-size: 14px; border: 1.5px solid var(--navy); color: var(--navy); }
+.options.big { gap: 8px; }
+.progress { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.progress .count { padding: 6px 12px; }
+.progress .count b { font-size: 26px; }
+.prog { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px; border: 2px solid var(--rule); border-radius: 3px; font-size: 15px; font-weight: 700; background: #fff; }
+.prog b { font-size: 16px; }
+.prog.open b { color: var(--muted); }
+.prog.risk { border-color: var(--risk-line); background: var(--risk-bg); }
+.prog.risk b { color: var(--risk); }
+.prog.unconfirmed { border-color: var(--unconfirmed-line); }
+.prog.unconfirmed b { color: var(--unconfirmed); }
+.prog.clear { border-color: var(--clear-line); background: var(--clear-bg); }
+.prog.clear b { color: var(--clear); }
+.qresult.answered { font-size: 16px; font-weight: 800; color: var(--ink); }
+.qresult.answered.risk { color: var(--risk); }
+.qresult.answered.clear { color: var(--clear); }
+.qresult.answered.unconfirmed { color: var(--unconfirmed); }
+.qresult.answered b { font-size: 14px; margin-left: 4px; }
+.check-plan .plan-svg { max-height: 300px; }
+.applied { color: var(--clear); font-weight: 800; font-size: 14px; }
+.proposals { font-size: 15px; }
+.read-more summary { font-size: 14px; }
+.a4-onepage .mul { gap: 4px; margin: 0 0 4px; }
+.a4-onepage .mul-card { padding: 3px 6px; }
+.a4-onepage .mul-head { font-size: 10px; margin: 0 0 1px; }
+.a4-onepage .mul-card ul { font-size: 9.2px; line-height: 1.35; padding-left: 1em; }
+.a4-onepage .mul-card i { font-size: 8.5px; padding: 0 3px; margin-left: 2px; }
+.a4-onepage .mul-x { font-size: 14px; }
+.a4-onepage .mul-fact { font-size: 8.8px; line-height: 1.3; margin: 2px 0 0; }
+.s3 .option[data-choice="none"].chosen { background: #e6ebf3; color: var(--navy); border-color: #b9c3d3; }

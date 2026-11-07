@@ -44,7 +44,7 @@ class PayloadShapeTest(unittest.TestCase):
             hole = next(m for m in data["measures"] if m["key"] == "hole")
             self.assertTrue(hole["owner"])
             self.assertIn("非硬化", hole["note"])
-            tags = [row.get("tags") for row in data["scenarios"]["3:plate"]["table"] if row.get("tags")]
+            tags = [row.get("tags") for row in data["scenarios"]["3:none"]["table"] if row.get("tags")]
             self.assertTrue(tags)
 
     def test_conditional_data(self):

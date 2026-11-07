@@ -26,6 +26,13 @@ WATER_LANDFORM_CODES = {
 }
 
 HAZARD_SOURCE = "出典：「ハザードマップポータルサイト」を加工して作成"
+# 線状降水帯の大雨で、洪水の地図に色がなくても浸かった場所の型（2026年9月の台風25号・千葉県の報道の実数。2026-11-07 原文で確認）。
+RAIN_SOURCE_URL = "https://weathernews.jp/news/202609/220091/"
+RAIN_SOURCE = "出典：ウェザーニューズ 2026/9/22「台風25号 千葉県の浸水・道路冠水447件の分析」"
+RAIN_FACT = "2026年9月の台風25号（千葉県）の浸水・道路冠水447件の内訳：川沿いの低地36%（158件）、海・水路沿いの低地16%（73件）、川から離れた高台のくぼ地48%（216件）。後ろの2つ（足すと64%）は洪水の地図で色のない場所でした。"
+RAIN_FACT_INLAND = "高台で冠水した場所の多くは、内水ハザードマップでは「0.5m未満」の色が付いていました（同じ記事）。"
+# 「低い土地」の型に当たる国土地理院の地形分類（報道の「海・水路沿いの低い土地」に対応）。
+_RAIN_LOW_LANDFORM = re.compile(r"後背低地|湿地|旧河道|三角州|海岸低地|埋立|干拓|旧水部|凹地|低地")
 ELEVATION_SOURCE = "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成"
 # 別紙の出典の欄に、二文に分けて添える。上の文は変えない。
 ELEVATION_SOURCE_MORE = [
@@ -42,6 +49,11 @@ _REPRESENTATIVE_NOTE = (
 _BUILDING_NOTE = "これはピンの位置で読んだ値です。ピンの位置が建物からずれていれば、値も変わります。"
 
 _FLOOD_CONFIRM = "管理会社が、市の洪水ハザードマップで、建物の位置に色があるかを確かめます。"
+# 国の内水データがないときの理由（2026-11-07・13回目）。数字は足さない。仕組みの文は国交省「内水ハザードマップ作成の手引き（案）」（内水＝下水道等に雨水を排水できず地表面に溜まった水）と
+# 市川市水害ハザードマップ（令和8年4月改訂版 p.5「大雨で排水が追いつかない時…内水氾濫が発生」）の範囲で書く。国のポータルに未配信でも市の地図にはある場合がある（市川市がその例）。
+# 線状降水帯のカードの行は短く（理由は国の地図のカードに1回だけ）。
+INLAND_NO_DATA_SHORT = "国のデータなし（市の内水ハザードマップを確認）"
+INLAND_NO_DATA = "国の内水データは未配信（市の地図にはある場合がある）。大雨で下水道や水路の排水が追いつかないときは、洪水の地図に色のない区域でも冠水が起きる。市の内水ハザードマップと、前面道路の下水道の整備状況（合流式・分流式・側溝放流）を確認"
 _INLAND_CONFIRM = (
     "管理会社が市区町村に、大雨で下水や水路があふれる場合の浸水想定区域図があるか、"
     "あればこの住所に色があるかを確かめます。"
@@ -188,7 +200,7 @@ def _hazard_row(
     value, conclusion, accent = _hazard_face(hazards)
     if verdict == CLEAR:
         conclusion = "色なし"
-    return Row(
+    row = Row(
         key,
         label,
         verdict,
@@ -201,6 +213,11 @@ def _hazard_row(
         conclusion=conclusion,
         accent=accent,
     )
+    if nearby and verdict == UNCONFIRMED:
+        row.verdict_label = "注意"
+    if key == "inland" and value == "データなし":
+        row.conclusion = INLAND_NO_DATA
+    return row
 
 
 def _ground_shape(center: float, around: List[float]) -> Optional[str]:
@@ -296,12 +313,16 @@ def _ground_row(reading: dict, basis: str) -> Row:
             details.append(f"地形分類{label}：地図のデータが取れていない（{_LANDFORM_MISSING[landform['status']]}）")
     details.append(ELEVATION_SOURCE)
     details.extend(ELEVATION_SOURCE_MORE)
-    return Row(
+    row = Row(
         "ground", "敷地の高低差", verdict, headline, details, _GROUND_CONFIRM if verdict == UNCONFIRMED else None,
         summary=summary, confirm_short="管理会社が履歴と管理員の記録で" if verdict == UNCONFIRMED else None,
         value=value, conclusion=conclusion,
         accent={"kind": "terrain", "level": "mid", "badges": badges} if badges else None,
     )
+    # データがあって低い土地と分かるときは「注意」（データがなくて分からない未確認とは分ける。2026-11-06）。
+    if verdict == UNCONFIRMED and value != "データなし":
+        row.verdict_label = "注意"
+    return row
 
 
 # 土地の成り立ち（国の地形分類）。低地・埋立地・旧河道などは注意（未確認）、台地・段丘などは問題なし（2026-11-06 本人の決定）。
@@ -332,9 +353,12 @@ def _landform_row(reading: dict) -> Row:
         verdict = UNCONFIRMED
         headline = f"国の地形分類で『{joined}』にあたる地域です。"
         conclusion = joined
-    return Row("landform", "土地の成り立ち（地形分類）", verdict, headline, details, LANDFORM_CONFIRM if verdict == UNCONFIRMED else None,
-               summary=joined, confirm_short="管理会社が履歴と管理員の記録で" if verdict == UNCONFIRMED else None,
-               value=joined, conclusion=conclusion)
+    row = Row("landform", "土地の成り立ち（地形分類）", verdict, headline, details, LANDFORM_CONFIRM if verdict == UNCONFIRMED else None,
+              summary=joined, confirm_short="管理会社が履歴と管理員の記録で" if verdict == UNCONFIRMED else None,
+              value=joined, conclusion=conclusion)
+    if verdict == UNCONFIRMED:
+        row.verdict_label = "注意"
+    return row
 
 
 def _ground_clean(reading: dict) -> bool:
@@ -428,11 +452,79 @@ def _record_row(record: Optional[dict]) -> Row:
     )
 
 
+def _rain_lines(reading: dict) -> List[dict]:
+    """線状降水帯で浸かる型に、この場所の事実が当たるか。name・text（数値つき）・hit（True／False／None＝データなし）。"""
+    names = _landform_names(reading.get("landforms") or [])
+    low_names = [name for name in names if _RAIN_LOW_LANDFORM.search(name)]
+    missing = any(lf.get("status") in _LANDFORM_MISSING for lf in reading.get("landforms") or [])
+    if low_names:
+        landform = {"name": "土地の成り立ち", "text": "・".join(low_names), "hit": True}
+    elif names:
+        landform = {"name": "土地の成り立ち", "text": "・".join(names), "hit": False}
+    else:
+        landform = {"name": "土地の成り立ち", "text": "データなし", "hit": None if missing else False}
+    points = (reading.get("elevation") or {}).get("points") or []
+    center = points[0]["elevation_m"] if points else None
+    around = [pt for pt in points[1:] if pt.get("elevation_m") is not None]
+    if center is None or len(around) < 4:
+        ground = {"name": "土地の高さ", "text": "標高のデータなし", "hit": None}
+    else:
+        order = {"west": 0, "east": 1, "north": 2, "south": 3}
+        around.sort(key=lambda pt: order.get(pt.get("key"), 9))
+        numbers = " ".join(f"{pt['label']}{pt['elevation_m']}" for pt in around)
+        low = reading.get("low_directions") or []
+        basin = bool(reading.get("basin"))
+        shape = "周囲50mに低い向きなし（くぼ地の型）" if basin else f"{'・'.join(low)}が低い" if low else "周囲とほぼ同じ高さ"
+        ground = {"name": "土地の高さ", "text": f"標高{center}m、{shape}。{numbers}", "hit": basin}
+    inland = next((h for h in reading.get("hazards") or [] if h.get("key") == "inland"), None)
+    if inland is None or inland.get("status") not in ("color", "no_color"):
+        inland_line = {"name": "内水の地図", "text": INLAND_NO_DATA_SHORT, "hit": None}
+    elif inland["status"] == "color":
+        inland_line = {"name": "内水の地図", "text": f"色あり（{inland.get('legend') or ''}）", "hit": True}
+    else:
+        inland_line = {"name": "内水の地図", "text": "色なし", "hit": False}
+    return [landform, ground, inland_line]
+
+
+def _rain_hits(reading: dict) -> bool:
+    return any(line["hit"] for line in _rain_lines(reading))
+
+
+def _rainband_row(reading: dict) -> Row:
+    """線状降水帯の大雨で、洪水の地図に色がなくても浸かる型（低い土地・くぼ地・内水の色）に当たるか。規則で判定し、根拠は実数と出典。"""
+    lines = _rain_lines(reading)
+    hits = [line for line in lines if line["hit"]]
+    unknown = [line for line in lines if line["hit"] is None]
+    details = [f"{line['name']}：{line['text']}" for line in lines]
+    details += [RAIN_FACT, RAIN_FACT_INLAND, RAIN_SOURCE, ELEVATION_SOURCE, HAZARD_SOURCE]
+    if hits:
+        what = "・".join(line["name"] for line in hits)
+        verdict = RISK
+        headline = f"線状降水帯の大雨で、洪水の地図に色がなくても浸かった型（{what}）に当たります。"
+        value = "・".join(line["text"].split("、")[0].split("。")[0] for line in hits)
+        conclusion = f"型に当たる（{what}）"
+    elif unknown:
+        verdict = UNCONFIRMED
+        headline = "線状降水帯で浸かる型には今の根拠では当たりませんが、確かめられていない項目があります。"
+        value = "一部データなし"
+        conclusion = f"データなし（{'・'.join(line['name'] for line in unknown)}）"
+    else:
+        verdict = CLEAR
+        headline = "線状降水帯で浸かった型（低い土地・くぼ地・内水の色）のどれにも、今の根拠では当たりません。"
+        value = "型に当たらず"
+        conclusion = "型に当たらず"
+    return Row("rainband", "線状降水帯の大雨（洪水の地図の外で浸かる型）", verdict, headline, details,
+               "管理会社が市区町村の内水ハザードマップと浸水履歴で" if verdict == UNCONFIRMED else None,
+               summary=conclusion, confirm_short="管理会社が市の内水の図で" if verdict == UNCONFIRMED else None,
+               value=value, conclusion=conclusion, accent={"lines": lines, "fact": RAIN_FACT, "fact_inland": RAIN_FACT_INLAND, "source_url": RAIN_SOURCE_URL, "source": "ウェザーニューズ 2026/9/22"})
+
+
 def _all_clear(reading: dict, record: Optional[dict], basis: str) -> bool:
     """一つの層だけでは問題なしにしない。項目がそろったときだけ、全部を問題なしにする（記録の行は、あるときだけ見る）。"""
     return (
         all(hazard["status"] == "no_color" and not hazard.get("nearby_legend") for hazard in reading["hazards"])
         and _ground_clean(reading)
+        and not _rain_hits(reading)
         and (
             record is None
             or (not record["rows"] and not any(neighbor.get("rows") is None or neighbor["rows"] for neighbor in record.get("neighbors") or []))
@@ -478,6 +570,7 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
         ),
         _ground_row(reading, basis),
         _landform_row(reading),
+        _rainband_row(reading),
     ]
     # 浸水の記録の行は、手元に記録がある町丁（見本）だけ。ない住所に「未収録」と出しても参考にならない（2026-11-06 本人の指示）。
     if record is not None:

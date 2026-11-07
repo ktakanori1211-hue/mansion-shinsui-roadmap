@@ -338,8 +338,8 @@ class BulkReceivingTest(unittest.TestCase):
             counts = [sum(1 for i in table[f"{w}:{measure}"]["services"] if i["state"] == "stopped") for w in (1, 2, 3)]
             self.assertEqual(counts, sorted(counts))
             self.assertEqual(len(table[f"3:{measure}"]["services"]), 4)
-        self.assertIn("homes", table["3:plate"]["stopped"])
-        self.assertNotIn("tr", table["3:plate"]["wet"])
+        self.assertIn("homes", table["3:none"]["stopped"])
+        self.assertNotIn("tr", table["3:none"]["wet"])
         self.assertEqual(row(building.judge_equipment(sample, confirmed, True), "tr")["label"], building.BULK_LABEL)
 
     def test_f021_transformer_room_buildings_get_common_only_note(self):
@@ -391,10 +391,10 @@ class HeightTest(unittest.TestCase):
         self.assertEqual(building.heights(sample), {})
 
     def test_f025_tags_on_timeline_rows(self):
-        table = building.scenario(samples.SAMPLES["a"], 3, "plate", [])["table"]
+        table = building.scenario(samples.SAMPLES["a"], 3, "none", [])["table"]
         self.assertEqual(row(table, "water")["tags"], ["位置は図面で未確認", "高さは未確認"])
         sample = samples.apply_answers("a", {"heights": {"panel_bottom": {"cm": 30, "source": "drawing"}}})
-        table = building.scenario(sample, 3, "plate", ["pump"])["table"]
+        table = building.scenario(sample, 3, "none", ["pump"])["table"]
         self.assertEqual(row(table, "water")["tags"], [])
         self.assertIn("note", row(table, "tr"))
 
@@ -455,7 +455,7 @@ class RainTest(unittest.TestCase):
         self.assertNotIn("主遮断器", "".join(b["extra"]))
 
     def test_f032_timeline_keeps_actions_before(self):
-        cell = building.scenario(samples.SAMPLES["a"], 1, "hole")["table"][-1]["cells"][0]
+        cell = building.scenario(samples.SAMPLES["a"], 1, "basic")["table"][-1]["cells"][0]
         self.assertTrue(cell.startswith(building.ACTIONS_BEFORE))
         self.assertIn(building.RAIN_THIRD["engineer"], cell)
 
@@ -500,3 +500,94 @@ class ReportWordsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrawingReadTest(unittest.TestCase):
+    """2026-11-06・7回目：細かい竣工図・断面図の読み取り。階数は断面図・立面図からだけ読み、あり得る値だけ使う。"""
+
+    def test_schema_and_prompt_cover_sections_and_fine_labels(self):
+        from app import assistant
+        props = assistant._ROOM_SCHEMA["properties"]
+        self.assertIn("drawing", props)
+        # 2026-11-07・13回目：電気設備図・給排水設備図・外構図から、引込み・受電・盤の置き方・放流先・逆止弁・雨水ます・スロープ・換気口・管路口も読む。
+        self.assertEqual(
+            set(props["drawing"]["required"]),
+            {"kind", "floors_above", "floors_below", "pit", "entrance_steps", "floor_shown", "feed", "hv", "panel_mount", "drain_outlet", "check_valve", "rain_basin", "slope", "vent", "pipe_opening"},
+        )
+        self.assertEqual(set(props["drawing"]["properties"]["kind"]["enum"]), {"plan", "site_plan", "section", "elevation", "electrical", "plumbing", "exterior", "other"})
+        for word in ("EPS", "PS", "MB", "断面図", "Z1", "通り芯", "屋上", "単線結線図", "給排水衛生設備図", "外構図", "逆止弁", "合流式", "ハンドホール", "架空", "床置き", "壁掛け", "管路口"):
+            self.assertIn(word, assistant.SYSTEM_PLAN)
+        # 明記のないものは null のまま（false にしない）。
+        self.assertIn("「ない」と明記されていないものを false にしません", assistant.SYSTEM_PLAN)
+        for kind in ("eps", "ps", "mb", "stair"):
+            self.assertIn(kind, props["rooms"]["items"]["properties"]["kind"]["enum"])
+
+    def test_drawing_values_are_bounded(self):
+        from app import assistant
+        self.assertEqual(assistant._valid_drawing({"kind": "section", "floors_above": 10, "floors_below": 1, "pit": True, "entrance_steps": 4})["floors_above"], 10)
+        bad = assistant._valid_drawing({"kind": "flying", "floors_above": 200, "floors_below": -1, "pit": "yes", "entrance_steps": 99})
+        empty = {"feed": None, "hv": None, "panel_mount": None, "drain_outlet": None, "check_valve": None, "rain_basin": None, "slope": None, "vent": None, "pipe_opening": None}
+        self.assertEqual(bad, {"kind": "other", "floors_above": None, "floors_below": None, "pit": None, "entrance_steps": None, "floor_shown": "", **empty})
+        self.assertIn("地上10階・地下1階", assistant._read_message(assistant._valid_drawing({"kind": "section", "floors_above": 10, "floors_below": 1})))
+
+    def test_equipment_drawings_yield_feed_hv_mount_and_drain(self):
+        # 電気設備図・給排水設備図・外構図の値は、決まった語だけ通す。それ以外は null。
+        from app import assistant
+        got = assistant._valid_drawing({"kind": "electrical", "feed": "underground", "hv": True, "panel_mount": "wall", "drain_outlet": "sewer", "check_valve": True, "rain_basin": False, "slope": True, "vent": "yes", "pipe_opening": 1})
+        self.assertEqual(got["kind"], "electrical")
+        self.assertEqual((got["feed"], got["hv"], got["panel_mount"], got["drain_outlet"], got["check_valve"], got["rain_basin"], got["slope"]), ("underground", True, "wall", "sewer", True, False, True))
+        self.assertIsNone(got["vent"])
+        self.assertIsNone(got["pipe_opening"])
+        self.assertIsNone(assistant._valid_drawing({"kind": "plumbing", "feed": "空中", "panel_mount": "床", "drain_outlet": "river"})["feed"])
+        self.assertIn("電気設備図・単線結線図から読めた", assistant._read_message(got))
+        self.assertIn("外構図から読めた", assistant._read_message(assistant._valid_drawing({"kind": "exterior"})))
+
+    def test_feed_unknown_is_not_asserted_in_facts_or_measures(self):
+        # 2026-11-07・13回目の不具合：自分の建物で単線結線図を見ていないのに「引込みは電柱から」と出ていた。未確認は未確認と書く。
+        from app import building, samples
+        rows = [{"key": "flood", "verdict": "risk", "value": "3m〜5m"}]
+        unknown = samples.apply_answers(None, {"rooms_floor": "basement", "basement": "yes"}, "千葉県市川市八幡一丁目")
+        self.assertTrue(unknown["feed_unknown"])
+        facts = building._basis_facts(unknown, building.shape_of(unknown), rows)
+        self.assertIn("引込み方式は未確認（地中引込なら管路口の止水が必要）", facts)
+        self.assertNotIn("引込みは電柱から（地中の管路はない）", facts)
+        self.assertNotIn("引込みは歩道のハンドホールから地中", facts)
+        top = building.critical_measures(unknown, rows)["items"][0]
+        self.assertIn("管路口を含む", top["title"])
+        self.assertIn("単線結線図で確かめる", top["why"])
+        self.assertIn("単線結線図で未確認", top["basis"])
+        self.assertNotIn("地中なので", top["basis"])
+        # 図面で地中と読んで人が入れたときだけ断定する。
+        known = samples.apply_answers(None, {"rooms_floor": "basement", "basement": "yes", "feed": "underground"}, "千葉県市川市八幡一丁目")
+        self.assertFalse(known["feed_unknown"])
+        self.assertIn("引込みは歩道のハンドホールから地中", building._basis_facts(known, building.shape_of(known), rows))
+        overhead = samples.apply_answers(None, {"rooms_floor": "basement", "basement": "yes", "feed": "overhead"}, "千葉県市川市八幡一丁目")
+        self.assertIn("引込みは電柱から（地中の管路はない）", building._basis_facts(overhead, building.shape_of(overhead), rows))
+        # 盤の置き方・放流先・逆止弁も、答えで入ったときだけ値になる。
+        self.assertEqual(samples.apply_answers(None, {"panel_foot": "wall"}, "東京都")["panel_mount"], "壁掛け")
+        self.assertEqual(samples.apply_answers(None, {"panel_foot": "stand"}, "東京都")["panel_mount"], "架台の上")
+        self.assertEqual(samples.apply_answers(None, {"panel_foot": "floor"}, "東京都")["panel_mount"], "床置き")
+        self.assertEqual(samples.apply_answers(None, {"panel_foot": "nonsense"}, "東京都")["panel_mount"], "形は未確認")
+        drained = samples.apply_answers(None, {"drain": "sewer", "check_valve": "yes"}, "東京都")
+        self.assertEqual((drained["drain_outlet"], drained["check_valve"]), ("sewer", "yes"))
+        payload = building.building_payload(drained, [], rows, False, {}, [], [], [], False)
+        backflow = next(item for item in payload["equipment"] if item["key"] == "backflow")
+        self.assertEqual(backflow["verdict"], "unconfirmed")
+        self.assertIn("放流先は公共下水道（図面）", backflow["summary"])
+        self.assertIn("逆止弁あり（図面）。平時の動作確認は未確認", backflow["summary"])
+        self.assertIn("下水道の整備状況（合流式・分流式・側溝放流）", building.BACKFLOW_CONFIRM)
+        # 画面にも feed_unknown を渡す（断面図の HH の絵と前提文が食い違わないように）。
+        self.assertTrue(samples.client_view(unknown)["feed_unknown"])
+        self.assertFalse(samples.client_view(known)["feed_unknown"])
+        js = (ROOT / "web" / "start.js").read_text(encoding="utf-8")
+        self.assertIn("feedUnknown: Boolean(sample.feed_unknown)", js)
+        self.assertIn("単線結線図で未確認", js)
+        self.assertNotIn("pickEach", js)
+        self.assertIn('if ((applied.set || []).includes("tr")) delete S.extra.tr;', js)
+        # 階数の自動反映で作った floorsApplied に extra がなくても、一括で入るときに落ちない（2026-11-07 実機で見つけた不具合）。
+        self.assertIn("S.floorsApplied = { source, set: [], extra: [], hv: false };", js)
+        self.assertIn("applied.extra = applied.extra || [];", js)
+        from app import assistant
+        self.assertIn("東京電力の借室（tr）ではありません", assistant.SYSTEM_PLAN)
+        self.assertIn('"HH（未確認）"', (ROOT / "web" / "cad.js").read_text(encoding="utf-8"))
+
