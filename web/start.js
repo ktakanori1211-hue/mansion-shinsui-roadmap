@@ -638,7 +638,7 @@ function measureChips() {
   if (!list.length) return "";
   const chips = list.map((m) => `<button type="button" class="option${S.measure === m.key ? " chosen" : ""}" data-measure="${esc(m.key)}" aria-pressed="${S.measure === m.key}">${esc(m.short)}</button>`).join("");
   // 対策で何が助かるかを1行で（2026-11-06 本人の指示：言い訳の固定文は出さない）。
-  return `<div class="measures-switch big"><span class="sim-label">対策を切り替える</span><div class="options big">${chips}</div></div>`;
+  return `<div class="measures-switch big"><span class="sim-label">対策を切り替えて比べる</span><div class="options big">${chips}</div></div>`;
 }
 
 // 選んだ対策の「だれが決めるか」と「費用の桁」（what-017：切り替えると要る決議と桁が変わる。W1・W5：理事長が知りたいこと）。
@@ -1000,7 +1000,9 @@ function buildingAsk() {
     const question = `<p class="ask-q">この建物ですか？</p>
       <p class="ask-found"><b>${esc(f.building || "（名前なし）")}</b>${floors ? `　${esc(floors)}` : ""}　<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source_title || "出典")}</a></p>
       <div class="options big"><button type="button" class="option chosen" data-at="yes">はい、この建物です</button><button type="button" class="option" data-at="no">違う</button></div>`;
-    return `<div class="ask-bldg">${S.at.answer === "no" ? `<p class="hint">候補は使いません。建物名と階数を入れてください。</p>${ownQuestions(true)}` : question}</div>`;
+    if (S.at.answer === "no") return `<div class="ask-bldg"><p class="hint">候補は使いません。建物名と階数を入れてください。</p>${ownQuestions(true)}</div>`;
+    // ページの一部ではなく、一番前の窓で聞く（2026-11-07・26回目）。Esc と「違う」で閉じて入力欄へ。
+    return `<div class="modal-back" data-act="modal-no"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="ask-q">${question.replace('class="ask-q"', 'class="ask-q" id="ask-q"')}<p class="hint">「はい」で階数・戸数・築年をこの建物の値として使います。違うときは建物名と階数を自分で入れます。</p></div></div>`;
   }
   if (S.at && !S.at.found) {
     return `<div class="ask-bldg none"><p class="hint">${esc(S.at.message || "この住所の建物名と階数は見つかりませんでした。")}${S.fixOpen ? "" : `<button type="button" class="option small" data-act="fix-building">建物名・階数を入力</button>`}</p>${S.fixOpen ? ownQuestions(true) : ""}</div>`;
@@ -1176,12 +1178,11 @@ function waterGauge(playing) {
     <button type="button" class="arrow" data-act="level-down" aria-label="水位を下げる"${lv <= 1 ? " disabled" : ""}>◀</button>
     <div class="segs">${segs}</div>
     <button type="button" class="arrow" data-act="level-up" aria-label="水位を上げる"${lv >= 3 ? " disabled" : ""}>▶</button>
-    <button type="button" class="play small" data-act="play">${playing ? "❚❚ 止める" : "▶ 自動で進める"}</button>
   </div>${what}`;
 }
 
 function simBox(playing, shown) {
-  const figs = [["plan", "平面図"], ["section", "断面図"], ...(S.drawingImages?.length ? [["drawing", "アップロード図面"]] : [])];
+  const figs = [["plan", "▦ 平面図（上から）"], ["section", "▤ 断面図（横から）"], ...(S.drawingImages?.length ? [["drawing", "🖼 アップロード図面"]] : [])];
   const fig = figs.some(([key]) => key === S.fig) ? S.fig : "plan";
   const tabs = figs.map(([key, word]) => `<button type="button" class="option${fig === key ? " chosen" : ""}" data-fig="${key}" aria-pressed="${fig === key}">${word}</button>`).join("");
   const figure = fig === "section" ? sectionFigure(S.play) : fig === "drawing" ? drawingFigure(true) : plan({ level: S.play });
@@ -1189,15 +1190,23 @@ function simBox(playing, shown) {
   const impactLine = allSafe
     ? `<p class="impact-banner safe">✓ 選択中の対策により、水位③でも機械室の浸水・長期停止を回避できる想定です</p>`
     : `<p class="impact-banner risk">⚠ ${esc(S.building?.damage_line || "")}</p>`;
+  // 動線は 1 シミュレーションを始める → 2 対策を切り替えて比べる → 3 図を切り替える（2026-11-07・26回目：手が動く順に番号を振る）。
+  const cue = S.play === 3 && !playing && S.measure === "none" ? `<p class="next-cue">次は <b>2 対策を切り替えて比べる</b> を押して、どこで水が止まるかを見てください ↑</p>` : "";
   return `<div class="sim">
-    ${measureChips()}
+    <div class="sim-step">
+      <span class="step-no">1</span>
+      <button type="button" class="sim-start${playing ? " playing" : ""}" data-act="play">${playing ? "❚❚ シミュレーションを止める" : "▶ 浸水シミュレーションを始める"}</button>
+      <span class="step-note">道路 → 一番低い床 → 機械の部屋の順に水が上がります（速さの予測ではなく順番の模式）</span>
+    </div>
     ${waterGauge(playing)}
-    <div class="fig-switch"><span class="sim-label">図を切り替える</span><div class="options big">${tabs}</div></div>
+    <div class="sim-step"><span class="step-no">2</span>${measureChips()}</div>
+    <div class="sim-step"><span class="step-no">3</span><div class="fig-switch"><span class="sim-label">図を切り替える</span><div class="options big fig-options">${tabs}</div></div></div>
     <div class="plan sim-fig">${figure}</div>
     ${stopList()}
     ${S.building?.sample?.custom && fig !== "drawing" ? `<p class="hint fig-note">${borrowedNote()}</p>` : ""}
     ${lifeChips(S.play)}
     ${impactLine}
+    ${cue}
     ${allSafe ? "" : matsudoLine("hint case-line")}
   </div>`;
 }
@@ -2092,7 +2101,8 @@ function screenFour() {
     <button type="button" class="secondary" data-act="send">文面をコピーする（メール・LINE共有用）</button>
     ${S.sendMsg ? `<p class="hint" role="status">${esc(S.sendMsg)}</p>` : ""}
     ${S.sendText ? `<textarea class="copy-area" rows="6" readonly>${esc(S.sendText)}</textarea>` : ""}
-    <details class="more save-fold"><summary>入力した内容を保存・共有する</summary>${saveBox()}</details>
+    <div class="save-row"><span class="save-title">🔒 入力した内容を保存・共有する</span><button type="button" class="option" data-act="save-open">保存・共有の窓を開く</button></div>
+    ${S.saveOpen ? `<div class="modal-back" data-act="save-close"><div class="modal save-modal" role="dialog" aria-modal="true" aria-label="入力した内容を保存・共有する"><div class="modal-head"><b>入力した内容を保存・共有する</b><button type="button" class="option small" data-act="save-close">閉じる</button></div>${saveBox()}</div></div>` : ""}
   </section>`;
 }
 
@@ -2634,6 +2644,14 @@ function startPlay() {
   render();
 }
 
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && S.at?.found && !S.at.answer) answerBuilding("no");
+  if (event.key === "Escape" && S.saveOpen) {
+    S.saveOpen = false;
+    render();
+  }
+});
+
 screen.addEventListener("submit", async (event) => {
   if (event.target.id !== "find") return;
   event.preventDefault();
@@ -2759,6 +2777,15 @@ screen.addEventListener("click", (event) => {
     const act = target.dataset.act;
     if (act === "see") seeBuilding();
     if (act === "play") (S.timer ? stopPlay() : startPlay());
+    if (act === "modal-no" && target.classList.contains("modal-back")) answerBuilding("no");
+    if (act === "save-open") {
+      S.saveOpen = true;
+      render();
+    }
+    if (act === "save-close" && (target.classList.contains("modal-back") || target.tagName === "BUTTON")) {
+      S.saveOpen = false;
+      render();
+    }
     if (act === "level-up" || act === "level-down") {
       clearInterval(S.timer);
       S.timer = 0;
@@ -2901,17 +2928,18 @@ function savePassword() {
 
 function saveBox() {
   const days = S.saveDays || 30;
+  // パスワードは最初から入れておく（「発行」の操作をなくす。2026-11-07・26回目）。自分の文字に打ち替えてもよい。
+  if (!S.savePass && typeof crypto !== "undefined") S.savePass = randomPassword();
   const chips = SAVE_DAYS.map(([d, word]) => `<button type="button" class="option${days === d ? " chosen" : ""}" data-save-days="${d}" aria-pressed="${days === d}">${word}</button>`).join("");
   return `<div class="save-box">
-    <p class="qsub">パスワードつきで保存します。次に開くとき、場所と答えを入れ直さずに続きから見られます。入れるのは、場所・答え・住んでいる階・選んだ対策・見たこと・費用の個数です。図面・チャット・APIキーは入れません。</p>
+    <p class="qsub">パスワードつきで保存し、次に開くとき続きから見られます（入れるのは場所・答え・階・対策・費用の個数。図面・チャット・APIキーは入れません）。</p>
     <div class="own-row"><span>期限</span><div class="options">${chips}</div></div>
     <label class="save-pass">パスワード<input id="save-pass" type="text" autocomplete="off" spellcheck="false" value="${esc(S.savePass || "")}" placeholder="8文字以上"></label>
-    <div class="options"><button type="button" class="option" data-act="pass-random">ランダムに作る</button><button type="button" class="option" data-act="pass-copy">パスワードをコピー</button></div>
-    <p class="hint">パスワードを忘れると、元に戻せません。リンクやファイルとは別の方法で伝えてください。</p>
+    <div class="options"><button type="button" class="option" data-act="pass-copy">パスワードをコピー</button><button type="button" class="option small" data-act="pass-random">別のパスワードにする</button></div>
     <div class="options"><button type="button" class="option" data-act="save-link">期限つきのリンクを作る</button><button type="button" class="option" data-act="save-file">暗号にしたファイルを保存する</button></div>
     ${S.saveLink ? `<p class="save-link"><input readonly value="${esc(S.saveLink)}"><button type="button" class="option small" data-act="link-copy">リンクをコピー</button></p>` : ""}
     ${S.saveMsg ? `<p class="hint" role="status">${esc(S.saveMsg)}</p>` : ""}
-    <p class="hint">ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。リンクは手元のサーバーに置くので、今は同じパソコンでだけ開けます。ファイルは、期限を過ぎるとこの道具では開けません。受け取った人が保存した写しや印刷した紙は消せません。</p>
+    <p class="hint">ブラウザの中で暗号にしてから置くので、サーバーは中身を読めません。パスワードを忘れると戻せないので、リンクやファイルとは別の方法で伝えてください。リンクは今は同じパソコンでだけ開けます。</p>
   </div>`;
 }
 

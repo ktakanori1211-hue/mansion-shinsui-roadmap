@@ -1040,7 +1040,10 @@ class SurfaceLengthTest(unittest.TestCase):
         self.assertNotIn("subsidyBox(", js)
         four = block(js, "function screenFour()", "\n}\n")
         self.assertIn("${aidSource()}", four)
-        self.assertIn('<details class="more save-fold"><summary>入力した内容を保存・共有する</summary>${saveBox()}</details>', four)
+        # 2026-11-07・26回目：保存の箱は折りたたまず、見出しの下にそのまま出す（プルダウンが分かりにくいという指摘）。
+        self.assertIn('data-act="save-open"', four)
+        self.assertIn("S.saveOpen ?", four)
+        self.assertNotIn("save-fold", four)
         self.assertIn("「2 確かめる」に入れると", js)
         self.assertNotIn("「3 確かめる」", js)
 
