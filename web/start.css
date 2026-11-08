@@ -479,7 +479,9 @@ details.facts[open] { display: flex; }
 .p-water { fill: rgba(31, 95, 153, .38); transition: all .7s ease; }
 .p-water.deep { fill: rgba(31, 95, 153, .5); }
 .p-over.safe { fill: rgba(27, 122, 61, .35); }
-.p-over.flash { animation: flash 1.1s ease; }
+/* チャットの答えで部屋を光らせる。.p-over はふだん線を引かないので、光る間だけ縁取りを付けて数回点滅させる */
+.p-over.flash { stroke: #f5a300; stroke-width: 6; animation: flash-over 1.1s ease-in-out 4; }
+@keyframes flash-over { 0%, 100% { stroke-width: 5; fill: rgba(245, 163, 0, .22); } 50% { stroke-width: 14; fill: rgba(245, 163, 0, .55); } }
 .p-name.wet { fill: var(--risk); }
 .p-name.safe { fill: var(--clear); }
 .p-badge.wet rect { fill: var(--risk-line); }

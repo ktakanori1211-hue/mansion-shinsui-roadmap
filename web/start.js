@@ -3203,6 +3203,19 @@ function chatContext() {
   };
 }
 
+// 光らせた場所が、開いているチャットの窓に隠れないよう、窓より上に来るまでスクロールする。
+function revealAboveChat(el) {
+  if (!el) return;
+  const chat = document.getElementById("chat");
+  const r = el.getBoundingClientRect();
+  const limit = chat && !chat.hidden ? chat.getBoundingClientRect().top - 16 : window.innerHeight - 16;
+  const head = 12;
+  let dy = 0;
+  if (r.bottom > limit) dy = r.bottom - limit;
+  if (r.top - dy < head) dy = r.top - head;
+  if (Math.abs(dy) > 1) window.scrollBy({ top: dy, behavior: "smooth" });
+}
+
 // チャットの答えについてくる画面の操作。平面図の部屋を光らせる・水の順を再生する・費用を開く・聞き取りを記録する。
 async function applyAction(action) {
   if (!S.building) return;
@@ -3211,6 +3224,7 @@ async function applyAction(action) {
     if (S.screen === 4) S.tab = "memo";
     S.flash = [action.target];
     render();
+    revealAboveChat(document.querySelector(".flash"));
   } else if (action.type === "water") {
     go(3);
     startPlay();

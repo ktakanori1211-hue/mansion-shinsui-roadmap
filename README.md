@@ -2,7 +2,7 @@
 
 （リポジトリ名 mansion-shinsui-roadmap。旧称：マンション浸水ロードマップ）
 
-浸水のあとに水と電気がどれだけ止まりうるかを、住所と手元の情報から整理し、理事会に出せるA4一枚を作るWebアプリです。Built with Claude: Japan 2026（2026-11-02〜11-08）の期間中に作りました。
+東京電力管内のマンション向けに、浸水のあとに水と電気がどれだけ止まりうるかを、住所と手元の情報から整理し、理事会に出せるA4一枚を作るWebアプリです。Built with Claude: Japan 2026（2026-11-02〜11-08）の期間中に作りました。
 
 - 説明書：[docs/MANUAL.md](docs/MANUAL.md)
 - 要件定義と決定の記録：[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
