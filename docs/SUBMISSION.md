@@ -37,9 +37,9 @@ https://github.com/ktakanori1211-hue/mansion-shinsui-roadmap
 
 ## 5. デモ動画（3分以内・アクセス可）（URL・必須）
 
-貼る値：（2026-11-08 に撮影して YouTube に限定公開または公開でアップロードし、URL をここと README の「デモ動画」の行に入れる）
+貼る値：（2026-11-08 に YouTube へアップロード。2分58秒）
 
-https://youtube.com/watch?v=（撮影後に記入）
+https://youtu.be/v1ni6wQErFI
 
 ## 6. 使用した Claude の製品・機能（複数選択・必須）
 
