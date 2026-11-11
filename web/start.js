@@ -102,7 +102,7 @@ const CHECK_LEAD = "機械室の階によって、浸水時に止まる設備が
 // 図面がない人向けの一文（見て分かる3つで建物の形を仮に決め、確認は管理会社に頼む）。
 const CHECK_LEAD_NO_DRAWING = "竣工図がなくても進められます。外観から分かる3項目で建物の形を仮設定し、確認事項は管理会社への依頼メモにまとめます。";
 // 立地の行の短い名前。
-const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", ground: "土地の高さ", landform: "土地の成り立ち", rainband: "線状降水帯", record: "浸水の記録" };
+const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", tsunami: "津波", ground: "土地の高さ", landform: "土地の成り立ち", rainband: "線状降水帯", record: "浸水の記録" };
 // 対策の短い名前（サーバーの measures の key ごと。くわしい文は折りたたみに入れる）。
 const MEASURE_SHORT = {
   hole: "壁の穴をふさぐ",
@@ -599,7 +599,7 @@ function lifeChips(level = 0) {
 
 // ---- 地図の深さの帯（立地の行の value のまま） ----
 // 一番深い帯は、画面1の地図に重ねる層と、土地の一行に使うだけ。建物の階には置き換えない（深さを主役にしない。CLAUDE.md の6）。
-const HAZARD_WORDS = { flood: "川があふれると", inland: "下水や水路があふれると", surge: "高潮のとき" };
+const HAZARD_WORDS = { flood: "川があふれると", inland: "下水や水路があふれると", surge: "高潮のとき", tsunami: "津波のとき" };
 
 function parseBand(value) {
   const m = String(value || "").match(/^(\d+(?:\.\d+)?)?m?〜(\d+(?:\.\d+)?)?m?$/);
@@ -743,6 +743,7 @@ const PLACE_PLAIN = {
   flood: "川があふれると、水につかる想定の場所です",
   inland: "下水や水路があふれると、水につかる想定の場所です",
   surge: "高潮のとき、水につかる想定の場所です",
+  tsunami: "津波のとき、水につかる想定の場所です",
 };
 
 // 5項目の表の「短い理由」（2026-11-06 本人の指示：判定は国のデータから一発で出し、数値も表に出す）。html は表に入れる形。
@@ -750,10 +751,37 @@ function hazardPlain(item) {
   if (/数m先/.test(item.conclusion || "")) return esc("数m先に色あり");
   if (parseBand(item.value)) return esc(`${item.value}の想定`);
   if (item.value === "色なし") return esc("色なし");
-  // 内水は国の地図にない市区町村が多い。市区町村の地図の案内を短く添える。
-  // 内水のデータなしの理由は、カードでは「国のデータなし」だけにして、ここに全文を置く（2026-11-07・14回目）。
-  if (item.key === "inland") return `${esc(item.conclusion || "データなし")}（<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ</a>）`;
-  return esc("データなし");
+  // 色がない理由を一言でまとめず、サーバーの言い方のまま出す（2026-11-11 本人の指摘：国の地図にないのか、区域の外なのか、読めなかったのかが見て分かるように）。
+  // 区域の境目が近いとき（サーバーが「注意」にした行）は、次にすることを添える。
+  if (item.value === "想定区域の外") return esc(`想定区域の外（${item.conclusion}）${item.verdict_label === "注意" ? "。区域が近いので、建物の位置で確かめます" : ""}`);
+  const link = `（<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ</a>）`;
+  // 内水は国の地図にない市区町村が多い。カードでは「国の地図になし」だけにして、ここに理由の全文を置く（2026-11-07・14回目）。
+  if (item.key === "inland" && item.value === "国の地図に載っていません") return `${esc(item.conclusion || item.value)}${link}`;
+  if (/載っていません|読み取れません/.test(item.value || "")) return `${esc(`${item.value}。${item.conclusion}`)}${link}`;
+  if (item.value) return esc(`${item.value}。${item.conclusion || ""}`);
+  return esc("国の地図に載っていません");
+}
+
+// 国の地図の行の短い言い方（カードと A4 用）。サーバーの値のまま、長い文だけ縮める。
+function mapShort(line) {
+  if (!line) return "国の地図になし";
+  if (line.verdict === "risk") return line.value || line.conclusion || "色あり";
+  if (line.verdict === "caution" && /色/.test(line.conclusion || "")) return line.conclusion;
+  if (line.value === "色なし") return "色なし";
+  // 内水は区域の外でも未確認（市の地図が国の地図にない場合があるため。2026-11-11 本人が決定）。短い言い方では距離と「市の図で確認」だけにする。
+  if (line.value === "想定区域の外" && /内水ハザードマップ/.test(line.conclusion || "")) return `区域の外（最寄り${String(line.conclusion).split("一番近い区域まで")[1].split("。")[0]}）・市の図で確認`;
+  if (line.value === "想定区域の外") return `区域の外（${String(line.conclusion || "").replace("一番近い区域まで", "最寄り")}）`;
+  if (/一部/.test(line.value || "")) return "一部が国の地図になし";
+  if (/載っていません/.test(line.value || "")) return "国の地図になし";
+  if (/読み込めません/.test(line.value || "")) return "読み込めず";
+  if (/読み取れません/.test(line.value || "")) return "読み取れず";
+  return line.verdict === "clear" ? "色なし" : "未確認";
+}
+// 国の地図の行（川の洪水・高潮・津波・内水）。津波の行は、前に保存したデータにはないので、あるときだけ出す。
+const MAP_KEYS = ["flood", "surge", "tsunami", "inland"];
+const MAP_NAMES = { flood: "川の洪水", surge: "高潮", tsunami: "津波", inland: "内水" };
+function mapPairs(by) {
+  return MAP_KEYS.filter((key) => key !== "tsunami" || by.tsunami).map((key) => [MAP_NAMES[key], by[key]]);
 }
 
 // 線状降水帯の行の理由（折りたたみ）：結論と、3つの型の全文（4方向の標高の数値を含む）。
@@ -974,7 +1002,8 @@ function screenOne() {
         <details class="more"><summary>根拠の数値（判定と出典）</summary>
           <table class="place"><thead><tr><th>項目</th><th>判定</th><th>理由</th></tr></thead><tbody>${lines.map((line) => `<tr class="${line.verdict}"><td>${esc(line.name)}</td><td><i>${line.word}</i></td><td>${line.html}</td></tr>`).join("")}</tbody></table>
           ${rainFactLine(lines)}
-          <p class="hint">出典：ハザードマップポータルサイト、国土地理院（標高API・地形分類）を加工。${representative ? "町丁の代表点の値です。" : ""}高さと色は地図のデータの値で、敷地を測ったものではありません。国の地図そのものは <a href="https://disaportal.gsi.go.jp/" target="_blank" rel="noopener">ハザードマップポータルサイト</a> で。</p>
+          <p class="hint">出典：「<a href="https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html" target="_blank" rel="noopener">ハザードマップポータルサイト</a>」、国土地理院ウェブサイト（<a href="https://maps.gsi.go.jp/development/elevation_s.html" target="_blank" rel="noopener">標高 API</a>・住所検索）、国土地理院ベクトルタイル提供実験（<a href="https://www.gsi.go.jp/bousaichiri/lfc_index.html" target="_blank" rel="noopener">地形分類</a>）。「ハザードマップポータルサイト」と国土地理院のデータを加工して作成。${representative ? "町丁の代表点の値です。" : ""}高さと色は地図のデータの値で、敷地を測ったものではありません。</p>
+          <p class="hint">この判定は、国の地図を読み取って加工した目安です。国や自治体の公式の判定ではありません。最新の詳しい内容は、市区町村のハザードマップ（<a href="${WAGAMACHI}" target="_blank" rel="noopener">わがまちハザードマップ</a>）で確かめます。宅地建物取引業者の重要事項説明には使えません。</p>
         </details>
         ${placeAid()}
         <label class="floor">住んでいる階<input id="floor" type="number" inputmode="numeric" min="1" max="80" value="${esc(S.floor)}" placeholder="8">階<small>（なくても進めます）</small></label>
@@ -995,6 +1024,7 @@ function screenOne() {
     ${S.error ? `<p class="error" role="alert">${esc(S.error)}</p>` : ""}
     ${S.message ? `<p class="hint">${esc(S.message)}</p>` : ""}
     ${candidates ? `<div class="candidates">${candidates}</div>` : ""}
+    ${S.candidates.some((c) => c.source === "OpenStreetMap") ? `<p class="hint">地図データ：<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a></p>` : ""}
     <p class="or">または、見本（架空の建物）で試す</p>
     <div class="samples">${samples}</div>
     ${S.openId ? "" : openBox()}
@@ -1660,49 +1690,41 @@ function riskWords(mapHit, mapClear, rainHit, rainClear) {
   // 国の地図が「色なし」か「データなし」かで言い分ける（データなしを色なしと言わない。2026-11-07・15回目）。
   if (rainHit) return [["risk", "浸水リスクあり"], mapClear ? "国の浸水想定に色はありませんが、台風・大雨で浸かりやすい地形です" : "国の浸水想定は確かめられませんが、台風・大雨で浸かりやすい地形です"];
   if (mapClear && rainClear) return [["clear", "国の浸水想定にも、浸かりやすい地形にも該当しません"], "今の根拠では色のない場所（現地は見ていません）"];
-  return [["unconfirmed", "浸水リスクは、まだ確かめられていない"], "データの取れていない項目があります"];
+  return [["unconfirmed", "浸水リスクは、まだ確かめられていない"], "確かめられていない項目があります"];
 }
 
 // A4 の立地は2行だけ（結論と、国の地図×地形の内訳。2026-11-07・24回目）。
 function placeTwoLines(lines) {
   const by = Object.fromEntries(lines.map((line) => [line.key, line]));
-  const mapRows = ["flood", "surge", "inland"].map((key) => by[key]).filter(Boolean);
+  const mapRows = MAP_KEYS.map((key) => by[key]).filter(Boolean);
   const mapHit = mapRows.some((line) => line.verdict === "risk");
   const mapClear = mapRows.length && mapRows.every((line) => line.verdict === "clear");
   const rain = by.rainband;
   const [head, sub] = riskWords(mapHit, mapClear, rain?.verdict === "risk", rain?.verdict === "clear");
-  const word = (line) => !line ? "データなし" : line.verdict === "risk" ? (line.value || "色あり") : line.verdict === "clear" ? "色なし" : "データなし";
-  const map = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]].map(([name, line]) => `${name}：${word(line)}`).join("／");
+  const map = mapPairs(by).map(([name, line]) => `${name}：${mapShort(line)}`).join("／");
   const hits = (rain?.accent?.lines || []).filter((line) => line.hit === true).map((line) => line.name).join("・");
   return `<p class="a4-place-head ${head[0]}"><b>${esc(head[1])}</b>${esc(sub)}</p>
-  <p class="a4-place-sub">国の浸水想定：${esc(map)}　×　台風・大雨で浸かりやすい地形：${hits ? `該当（${esc(hits)}）` : rain?.verdict === "clear" ? "該当なし" : "データなし"}</p>`;
+  <p class="a4-place-sub">国の浸水想定：${esc(map)}　×　台風・大雨で浸かりやすい地形：${hits ? `該当（${esc(hits)}）` : rain?.verdict === "clear" ? "該当なし" : "未確認"}</p>`;
 }
 
 function riskHead(lines, compact = false) {
   // 画面1の結論は「ハザードマップ（国の地図）× 線状降水帯で浸かる型」の掛け算（2026-11-07 本人の指示）。
   // どちらも事実（国の地図の色・国土地理院の数値・報道の実数）で、当たるかはサーバーの規則（rainband の行）。この画面では言葉を足さない。
   const by = Object.fromEntries(lines.map((line) => [line.key, line]));
-  const mapRows = ["flood", "surge", "inland"].map((key) => by[key]).filter(Boolean);
+  const mapRows = MAP_KEYS.map((key) => by[key]).filter(Boolean);
   const mapHit = mapRows.some((line) => line.verdict === "risk");
   const mapClear = mapRows.length && mapRows.every((line) => line.verdict === "clear");
   const rain = by.rainband;
   const rainHit = rain?.verdict === "risk";
   const rainClear = rain?.verdict === "clear";
   const [head, sub] = riskWords(mapHit, mapClear, rainHit, rainClear);
-  const mapWord = (line) => {
-    if (!line) return "データなし";
-    if (line.verdict === "risk") return line.value || line.conclusion || "色あり";
-    if (line.verdict === "caution" && /色/.test(line.conclusion || "")) return line.conclusion;
-    if (line.verdict === "clear") return "色なし";
-    return "データなし";
-  };
-  const mark = (hit) => hit === true ? `<i class="hit">該当</i>` : hit === false ? `<i class="miss">該当なし</i>` : `<i class="none">データなし</i>`;
+  // 印は「該当／該当なし／未確認」。未確認の理由（国の地図になし・区域の外で境目が近い・読み込めず）は、右の言葉で言う（2026-11-11）。
+  const mark = (hit) => hit === true ? `<i class="hit">該当</i>` : hit === false ? `<i class="miss">該当なし</i>` : `<i class="none">未確認</i>`;
   // カードの中は1行ずつ短く（2026-11-07・14回目）。内水の理由・4方向の標高・記事の全文は、折りたたみの表に置く。
-  const mapLines = [["川の洪水", by.flood], ["高潮", by.surge], ["内水", by.inland]]
+  const mapLines = mapPairs(by)
     .map(([name, line]) => {
-      const inlandNone = line?.key === "inland" && line.verdict !== "risk" && line.verdict !== "clear";
       const hit = line?.verdict === "risk" ? true : line?.verdict === "clear" ? false : null;
-      return `<li>${mark(hit)}${name}：${inlandNone ? "国のデータなし" : esc(mapWord(line))}</li>`;
+      return `<li>${mark(hit)}${name}：${esc(mapShort(line))}</li>`;
     }).join("");
   const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${mark(line.hit)}${esc(line.name)}：${esc(shortRainText(line))}</li>`).join("");
   // この道具の売り：ハザードマップ × 地形。2枚のカードを1つの比較枠で包み、見出しに 64% を置く（2026-11-07・31回目。数字は出典のまま）。
@@ -1723,7 +1745,7 @@ function riskHead(lines, compact = false) {
 // 線状降水帯のカードの1行（サーバーの文の最初の句だけ。数値の内訳は折りたたみへ）。
 function shortRainText(line) {
   const text = String(line.text || "");
-  if (line.name === "内水の地図") return text.startsWith("国の") ? "国のデータなし" : text;
+  if (line.name === "内水の地図") return text.startsWith("国の") ? "国の地図になし" : text.startsWith("想定区域の外") ? text.replace("想定区域の外（一番近い区域まで", "区域の外（最寄り").replace("。市の内水の図で確認", "・市の図で確認") : text.split("（")[0];
   return text.split("。")[0].replace("（くぼ地の型）", "（くぼ地）");
 }
 
@@ -1760,9 +1782,11 @@ function terrainFigure(lines) {
   const bands = [];
   const flood = by.flood?.verdict === "risk" ? parseBand(by.flood.value) : null;
   const surge = by.surge?.verdict === "risk" ? parseBand(by.surge.value) : null;
+  const tsunami = by.tsunami?.verdict === "risk" ? parseBand(by.tsunami.value) : null;
   const inland = by.inland?.verdict === "risk" ? parseBand(by.inland.value) : null;
   if (flood) bands.push({ ...flood, name: `川の洪水 ${by.flood.value}`, cls: "flood" });
   if (surge) bands.push({ ...surge, name: `高潮 ${by.surge.value}`, cls: "surge" });
+  if (tsunami) bands.push({ ...tsunami, name: `津波 ${by.tsunami.value}`, cls: "tsunami" });
   // 内水の帯は、国の内水の地図に色があるときだけ（固定の深さを描かない。2026-11-07）。
   if (inland) bands.push({ ...inland, name: `内水 ${by.inland.value}`, cls: "rain" });
   const used = [];

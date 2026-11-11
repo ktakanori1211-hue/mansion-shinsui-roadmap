@@ -1,6 +1,8 @@
 import struct
 import unittest
+import urllib.error
 import zlib
+from unittest import mock
 
 from app import location, png
 
@@ -98,3 +100,101 @@ class SceneLayerTest(unittest.TestCase):
 
     def test_tsunami_is_read(self):
         self.assertIn("tsunami", [key for key, _, _ in location.HAZARD_LAYERS])
+
+
+def tile(colored=()) -> bytes:
+    """256×256 の透明なタイル。colored の (x, y) だけに洪水の凡例の色（0.5m〜3m）を置く。"""
+    rows = []
+    marks = set(colored)
+    for y in range(256):
+        line = bytearray([0])
+        for x in range(256):
+            line += bytes([255, 216, 192, 255]) if (x, y) in marks else bytes([0, 0, 0, 0])
+        rows.append(bytes(line))
+    return make_png(256, 256, 6, b"".join(rows))
+
+
+def aside(px, pixels):
+    """同じタイルの中で、px から pixels だけ横にずらした位置。"""
+    return px + pixels if px + pixels < 256 else px - pixels
+
+
+def not_found(url):
+    return urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+
+class SurroundingsTest(unittest.TestCase):
+    """縮尺17 にタイルがないとき、周りに国の地図があるかを粗い縮尺で確かめる（2026-11-11）。ネットワークには出ない。"""
+
+    LON, LAT = 135.47569, 34.67482
+
+    def read(self, responses, **kwargs):
+        """responses: 縮尺 → タイルの中身（bytes）か、例外。呼ばれた縮尺の順も返す。"""
+        asked = []
+
+        def fake(url):
+            zoom = int(url.split("/")[-3])
+            asked.append(zoom)
+            answer = responses.get(zoom, not_found(url))
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        with mock.patch.object(location, "_get", side_effect=fake):
+            result = location._read_hazard("flood_max", "洪水(想定最大規模)", "01_flood_l2_shinsuishin_data", self.LON, self.LAT, **kwargs)
+        return result, asked
+
+    def point(self, zoom):
+        return location.pixel_position(self.LON, self.LAT, zoom)[2:]
+
+    def test_tile_at_17_is_read_without_extra_requests(self):
+        px, py = self.point(17)
+        result, asked = self.read({17: tile([(px, py)])})
+        self.assertEqual((result["status"], result["legend"]), ("color", "0.5m〜3m"))
+        self.assertEqual(asked, [17])
+
+    def test_no_tile_at_17_but_color_far_away_is_outside_with_distance(self):
+        px, py = self.point(13)
+        result, asked = self.read({13: tile([(aside(px, 60), py)])})
+        self.assertEqual(result["status"], "outside")
+        self.assertEqual(result["nearest_zoom"], 13)
+        # 縮尺13 の1画素は、この緯度で約15.7m。60画素で約940m。
+        self.assertAlmostEqual(result["nearest_m"], 60 * 156543.03392 * 0.8224 / 2**13, delta=5)
+        self.assertEqual(asked, [17, 13])
+        self.assertIsNone(result["legend"])
+
+    def test_near_color_is_measured_again_at_the_finer_zoom(self):
+        px13, py13 = self.point(13)
+        px15, py15 = self.point(15)
+        result, asked = self.read({13: tile([(aside(px13, 8), py13)]), 15: tile([(aside(px15, 30), py15)])})
+        self.assertEqual(asked, [17, 13, 15])
+        self.assertEqual((result["status"], result["nearest_zoom"]), ("outside", 15))
+        self.assertAlmostEqual(result["nearest_m"], 30 * 156543.03392 * 0.8224 / 2**15, delta=3)
+
+    def test_finer_zoom_missing_keeps_the_coarse_distance(self):
+        px, py = self.point(13)
+        result, asked = self.read({13: tile([(aside(px, 8), py)])})
+        self.assertEqual(asked, [17, 13, 15])
+        self.assertEqual((result["status"], result["nearest_zoom"]), ("outside", 13))
+
+    def test_no_tile_at_13_either_means_not_on_the_national_map(self):
+        result, asked = self.read({})
+        self.assertEqual(result["status"], "no_tile")
+        self.assertNotIn("nearest_m", result)
+        self.assertEqual(asked, [17, 13])
+
+    def test_empty_tile_at_13_means_not_on_the_national_map(self):
+        result, _ = self.read({13: tile()})
+        self.assertEqual(result["status"], "no_tile")
+
+    def test_server_error_is_a_fetch_failure_not_a_missing_map(self):
+        result, asked = self.read({17: urllib.error.HTTPError("u", 503, "x", None, None)})
+        self.assertEqual(result["status"], "fetch_failed")
+        self.assertEqual(asked, [17])
+        result, _ = self.read({13: urllib.error.URLError("down")})
+        self.assertEqual(result["status"], "fetch_failed")
+
+    def test_duration_layer_does_not_ask_for_coarser_tiles(self):
+        result, asked = self.read({}, surroundings=False)
+        self.assertEqual(result["status"], "no_tile")
+        self.assertEqual(asked, [17])

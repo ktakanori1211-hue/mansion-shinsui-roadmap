@@ -219,8 +219,16 @@ SYSTEM_INFER = """入力されたマンション名や説明文から、建物�
 {"address": "都道府県から、分かる所まで", "building": "確かめた建物名", "source_url": "確かめたページの URL。入力に書かれていたときは空", "source_title": "そのページの題名", "from_input": 入力に書かれていたら true, "floors": 入力に書かれた階数か null, "built_year": 築年の西暦4桁か null, "floors_above": 地上の階数か null, "floors_below": 地下の階数か null, "units": 総戸数の整数か null, "parking": "機械式"か"地下"か"平置き"か null, "basement_parking": true か false か null, "water_supply": "受水槽"か"直結"か null, "quote": "階数が書かれた部分の短い抜き書き（30字まで）", "confident": 建物名が一致するページで確かめられたら true}"""
 
 # 名前の一致を確かめたいので、結果の本文を読める基本の版にする。検索は 1 回の押下で 2 回まで。
-WEB_SEARCH = {"type": "web_search_20250305", "name": "web_search", "max_uses": 2, "user_location": {"type": "approximate", "country": "JP", "timezone": "Asia/Tokyo"}}
+# 利用規約で、私的な利用を超える使い方・営利目的の利用を禁じている不動産情報サイトは、検索の対象から外す（2026-11-11 に各社の規約の原文で確認）。
+BLOCKED_DOMAINS = ["suumo.jp", "homes.co.jp", "athome.co.jp"]
+WEB_SEARCH = {"type": "web_search_20250305", "name": "web_search", "max_uses": 2, "blocked_domains": BLOCKED_DOMAINS, "user_location": {"type": "approximate", "country": "JP", "timezone": "Asia/Tokyo"}}
 _MAX_RESUMES = 2
+
+
+def blocked_source(url: str) -> bool:
+    """出典が、検索から外したサイト（とその下のホスト）か。前に保存した答えや、外したはずのサイトが返ってきたときにも使わないための確認。"""
+    host = (urllib.parse.urlparse(str(url or "")).hostname or "").lower()
+    return any(host == domain or host.endswith("." + domain) for domain in BLOCKED_DOMAINS)
 
 
 def _last_json(text: str) -> Optional[dict]:
@@ -274,6 +282,8 @@ def _trusted(inferred: Optional[dict], query: str = "") -> bool:
         return False
     if inferred.get("from_input"):
         return _has_address(query) if query else True
+    if blocked_source(inferred.get("source_url")):
+        return False
     return bool(str(inferred.get("source_url", "")).startswith("http") and inferred.get("confident"))
 
 
@@ -416,6 +426,8 @@ def building_at(address: str) -> dict:
 def _valid_facts(found: Optional[dict]) -> Optional[dict]:
     """使える値だけを残す。出典がない・一致を確かめていない・あり得ない階数は捨てる。"""
     if not found or not found.get("matched") or not str(found.get("source_url") or "").startswith(("http://", "https://")):
+        return None
+    if blocked_source(found["source_url"]):
         return None
     above = found.get("floors_above")
     below = found.get("floors_below")

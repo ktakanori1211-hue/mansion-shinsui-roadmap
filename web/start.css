@@ -538,6 +538,7 @@ details.facts[open] { display: flex; }
 .t-band { opacity: .22; }
 .t-band.flood { fill: #1f5f99; }
 .t-band.surge { fill: #3f8fd1; }
+.t-band.tsunami { fill: #2f6f8f; }
 .t-band.rain { fill: #5a7fb0; opacity: .35; }
 .t-band-label { font-size: 12px; font-weight: 800; fill: #1f5f99; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .terrain figcaption { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }

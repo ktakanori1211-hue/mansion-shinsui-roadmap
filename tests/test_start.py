@@ -1049,3 +1049,41 @@ class SurfaceLengthTest(unittest.TestCase):
         self.assertIn("「2 確かめる」に入れると", js)
         self.assertNotIn("「3 確かめる」", js)
 
+
+
+class MapWordingAndSourcesTest(unittest.TestCase):
+    """国の地図の行の言い方・津波の行・出典と断り書き（2026-11-11）。"""
+
+    def test_map_lines_include_tsunami_only_when_the_row_exists(self):
+        js = read("start.js")
+        self.assertIn('const MAP_KEYS = ["flood", "surge", "tsunami", "inland"];', js)
+        pairs = block(js, "function mapPairs(by)", "\n}\n")
+        self.assertIn('key !== "tsunami" || by.tsunami', pairs)
+        self.assertIn('tsunami: "津波"', js)
+        self.assertIn(".t-band.tsunami", read("start.css"))
+
+    def test_no_data_is_split_into_the_reasons(self):
+        js = read("start.js")
+        short = block(js, "function mapShort(line)", "\n}\n")
+        for word in ("区域の外（", "国の地図になし", "読み込めず", "一部が国の地図になし"):
+            self.assertIn(word, short)
+        self.assertNotIn("データなし", short)
+        head = block(js, "function riskHead(", "\n}\n")
+        self.assertIn('<i class="none">未確認</i>', head)
+        self.assertNotIn("データなし", head)
+        self.assertNotIn("データなし", block(js, "function placeTwoLines(", "\n}\n"))
+        self.assertNotIn("データなし", block(js, "function hazardPlain(", "\n}\n"))
+
+    def test_sources_and_disclaimers_are_shown_with_the_evidence(self):
+        one = block(read("start.js"), "function screenOne()", "\n}\n")
+        for word in (
+            "出典：「<a href=\"https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html\"",
+            "国土地理院ウェブサイト",
+            "国土地理院ベクトルタイル提供実験",
+            "「ハザードマップポータルサイト」と国土地理院のデータを加工して作成",
+            "国や自治体の公式の判定ではありません",
+            "市区町村のハザードマップ",
+            "宅地建物取引業者の重要事項説明には使えません",
+            "https://www.openstreetmap.org/copyright",
+        ):
+            self.assertIn(word, one)

@@ -67,7 +67,8 @@ class BuildingPositionTest(unittest.TestCase):
         rows = judge.judge_location(reading({"inland": hazard("inland", "no_tile")}), state.BUILDING, NO_RECORD)
         inland = row(rows, "inland")
         self.assertEqual(inland.verdict, state.UNCONFIRMED)
-        self.assertIn("データが取れて", inland.headline)
+        # 2026-11-11：「データなし」とまとめず、国の地図に載っていないと言う。
+        self.assertIn("国の地図に載っていません", inland.headline)
         self.assertNotIn("色がありません", inland.headline)
         self.assertTrue(inland.confirm_by)
 
@@ -249,7 +250,7 @@ class CardFaceTest(unittest.TestCase):
 
     def test_no_data_is_not_called_no_color(self):
         row = self.rows(reading({"inland": hazard("inland", "no_tile")}))["inland"]
-        self.assertEqual(row.value, "データなし")
+        self.assertEqual(row.value, judge.VALUE_NOT_ON_MAP)
         self.assertIsNone(row.accent)
 
     def test_nearby_color_is_accented(self):
@@ -333,7 +334,7 @@ class RainbandTest(unittest.TestCase):
         # 2026-11-07・13回目：データなしの理由（下水道未整備・側溝排水・処理能力超過）と、市の地図・下水道整備状況の確認を添える。数字は足さない。
         self.assertEqual(rain.accent["lines"][2]["text"], judge.INLAND_NO_DATA_SHORT)
         inland = row(rows, "inland")
-        self.assertEqual(inland.value, "データなし")
+        self.assertEqual(inland.value, judge.VALUE_NOT_ON_MAP)
         self.assertEqual(inland.conclusion, judge.INLAND_NO_DATA)
         for word in ("市の地図にはある場合がある", "排水が追いつかない", "洪水の地図に色のない区域でも冠水", "下水道の整備状況（合流式・分流式・側溝放流）"):
             self.assertIn(word, judge.INLAND_NO_DATA)
@@ -342,3 +343,168 @@ class RainbandTest(unittest.TestCase):
     def test_clear_when_no_type_matches(self):
         rows = judge.judge_location(reading(), state.BUILDING, None)
         self.assertEqual(row(rows, "rainband").verdict, state.CLEAR)
+
+
+def outside(key, nearest_m):
+    return {**hazard(key, "outside"), "nearest_m": nearest_m, "nearest_zoom": 13}
+
+
+class FourWordingsTest(unittest.TestCase):
+    """「データなし」を、分かっている理由ごとに言い分ける（2026-11-11 本人の指摘）。"""
+
+    def rows(self, data, basis=state.BUILDING, record=None):
+        return {item.key: item for item in judge.judge_location(data, basis, record)}
+
+    def test_outside_far_from_zone_is_clear_with_distance(self):
+        flood = self.rows(reading({"flood_planned": outside("flood_planned", 3402), "flood_max": outside("flood_max", 741)}))["flood"]
+        self.assertEqual(flood.verdict, state.CLEAR)
+        self.assertEqual(flood.value, "想定区域の外")
+        self.assertEqual(flood.conclusion, "一番近い区域まで約740m")
+        self.assertIn("想定区域の外です（一番近い区域まで約740m）", flood.headline)
+        self.assertIn("安全という意味ではありません", flood.headline)
+        self.assertIsNone(flood.confirm_by)
+
+    def test_outside_near_zone_is_unconfirmed_and_asks_to_check_the_building_position(self):
+        flood = self.rows(reading({"flood_planned": outside("flood_planned", 2256), "flood_max": outside("flood_max", 135)}), state.REPRESENTATIVE)["flood"]
+        self.assertEqual(flood.verdict, state.UNCONFIRMED)
+        self.assertEqual(flood.verdict_label, "注意")
+        self.assertEqual(flood.conclusion, "一番近い区域まで約140m")
+        self.assertTrue(flood.confirm_by)
+        self.assertTrue(any("建物の位置で確かめます" in line for line in flood.details))
+
+    def test_threshold_is_two_hundred_meters(self):
+        self.assertEqual(judge.NEAR_ZONE_M, 200)
+        at = self.rows(reading({"storm_surge": outside("storm_surge", 200)}))["surge"]
+        over = self.rows(reading({"storm_surge": outside("storm_surge", 201)}))["surge"]
+        self.assertEqual((at.verdict, over.verdict), (state.UNCONFIRMED, state.CLEAR))
+
+    def test_not_on_the_national_map_says_so_and_points_to_the_city_map(self):
+        surge = self.rows(reading({"storm_surge": hazard("storm_surge", "no_tile")}))["surge"]
+        self.assertEqual(surge.verdict, state.UNCONFIRMED)
+        self.assertEqual(surge.value, "国の地図に載っていません")
+        self.assertEqual(surge.conclusion, "市区町村のハザードマップで確かめます")
+        self.assertIn(judge.NOT_ON_MAP_NOTE, surge.details)
+        self.assertEqual(surge.summary, "国の地図になし")
+
+    def test_fetch_failure_says_try_again(self):
+        surge = self.rows(reading({"storm_surge": hazard("storm_surge", "fetch_failed")}))["surge"]
+        self.assertEqual(surge.verdict, state.UNCONFIRMED)
+        self.assertEqual(surge.value, "読み込めませんでした")
+        self.assertEqual(surge.conclusion, "もう一度試します")
+        self.assertIn("もう一度試します", surge.headline)
+
+    def test_inland_outside_is_unconfirmed_even_far_from_zone(self):
+        # 内水は市区町村ごとの地図なので、周りの市の色があるだけの「区域の外」を問題なしにしない（2026-11-11 本人が決定）。
+        inland = self.rows(reading({"inland": outside("inland", 1300)}))["inland"]
+        self.assertEqual(inland.verdict, state.UNCONFIRMED)
+        self.assertNotEqual(inland.verdict_label, "注意")
+        self.assertEqual(inland.value, "想定区域の外")
+        self.assertEqual(inland.conclusion, "一番近い区域まで約1.3km。市区町村の内水ハザードマップで確かめます")
+        self.assertIn("国の地図では", inland.headline)
+        self.assertIn("市区町村の内水ハザードマップで確かめます", inland.headline)
+        self.assertIn(judge.INLAND_OUTSIDE_NOTE, inland.details)
+        self.assertTrue(inland.confirm_by)
+
+    def test_inland_outside_near_zone_is_still_caution(self):
+        inland = self.rows(reading({"inland": outside("inland", 150)}))["inland"]
+        self.assertEqual((inland.verdict, inland.verdict_label), (state.UNCONFIRMED, "注意"))
+
+    def test_inland_with_no_color_at_the_point_stays_clear(self):
+        # 縮尺17 に市の地図があって色がない場合は、これまでどおり問題なし。
+        inland = self.rows(reading({"inland": hazard("inland", "no_color")}))["inland"]
+        self.assertEqual(inland.verdict, state.CLEAR)
+
+    def test_other_layers_outside_far_stay_clear(self):
+        surge = self.rows(reading({"storm_surge": outside("storm_surge", 1300)}))["surge"]
+        self.assertEqual(surge.verdict, state.CLEAR)
+
+    def test_inland_outside_is_unknown_in_rainband_and_blocks_all_clear(self):
+        rows = self.rows(reading({"inland": outside("inland", 1300)}))
+        line = next(l for l in rows["rainband"].accent["lines"] if l["name"] == "内水の地図")
+        self.assertIsNone(line["hit"])
+        self.assertIn("市の内水の図で確認", line["text"])
+        self.assertNotEqual(rows["rainband"].verdict, state.CLEAR)
+
+    def test_unreadable_color_is_not_called_a_fetch_failure(self):
+        surge = self.rows(reading({"storm_surge": hazard("storm_surge", "unknown_color")}))["surge"]
+        self.assertEqual(surge.value, "色を読み取れませんでした")
+        self.assertEqual(surge.verdict, state.UNCONFIRMED)
+
+    def test_one_layer_missing_from_the_map_keeps_the_row_unconfirmed(self):
+        # 計画規模が国の地図になく、想定最大は区域の外：一つの層だけでは問題なしにしない（これまでの決まりのまま）。
+        flood = self.rows(reading({"flood_planned": hazard("flood_planned", "no_tile"), "flood_max": outside("flood_max", 368)}))["flood"]
+        self.assertEqual(flood.verdict, state.UNCONFIRMED)
+        self.assertEqual(flood.value, "一部が国の地図に載っていません")
+        self.assertIn("約370m", flood.conclusion)
+        self.assertIn("計画規模：国の地図になし／想定最大：想定区域の外（一番近い区域まで約370m）", flood.summary)
+
+    def test_color_wins_over_a_layer_outside_the_zone(self):
+        flood = self.rows(reading({"flood_planned": outside("flood_planned", 194), "flood_max": hazard("flood_max", "color", "0.5m〜3m")}))["flood"]
+        self.assertEqual(flood.verdict, state.RISK)
+        self.assertEqual(flood.value, "0.5m〜3m")
+
+    def test_all_clear_counts_outside_only_when_the_zone_is_far(self):
+        far = judge.judge_location(reading({"storm_surge": outside("storm_surge", 1682)}), state.BUILDING, NO_RECORD)
+        self.assertTrue(all(item.verdict == state.CLEAR for item in far))
+        near = judge.judge_location(reading({"storm_surge": outside("storm_surge", 150)}), state.BUILDING, NO_RECORD)
+        self.assertEqual(row(near, "surge").verdict, state.UNCONFIRMED)
+        self.assertEqual(row(near, "flood").verdict, state.CLEAR)
+
+    def test_rainband_reads_inland_outside_as_unknown(self):
+        rain = self.rows(reading({"inland": outside("inland", 900)}))["rainband"]
+        # 2026-11-11：内水の区域の外は「当たらない」でなく「確かめられていない」にした（本人が決定）。
+        self.assertEqual(rain.accent["lines"][2], {"name": "内水の地図", "text": "想定区域の外（一番近い区域まで約900m）。市の内水の図で確認", "hit": None})
+        failed = self.rows(reading({"inland": hazard("inland", "fetch_failed")}))["rainband"]
+        self.assertIsNone(failed.accent["lines"][2]["hit"])
+        self.assertIn("読み込めませんでした", failed.accent["lines"][2]["text"])
+
+    def test_distance_is_rounded_to_ten_meters(self):
+        self.assertEqual([judge.distance_text(m) for m in (4, 135, 741, 1268)], ["10m未満", "約140m", "約740m", "約1.3km"])
+
+
+class TsunamiRowTest(unittest.TestCase):
+    """津波の地図を判定に入れる（2026-11-11。高潮の行と同じ作り）。"""
+
+    def with_tsunami(self, tsunami, **kwargs):
+        data = reading(**kwargs)
+        data["hazards"].append(tsunami)
+        return data
+
+    def test_row_comes_after_surge_and_is_risk_when_colored(self):
+        rows = judge.judge_location(self.with_tsunami(hazard("tsunami", "color", "3m〜5m")), state.BUILDING, None)
+        self.assertEqual([item.key for item in rows], ["flood", "inland", "surge", "tsunami", "ground", "landform", "rainband"])
+        tsunami = row(rows, "tsunami")
+        self.assertEqual((tsunami.verdict, tsunami.value, tsunami.label), (state.RISK, "3m〜5m", "津波"))
+        self.assertIn("津波の想定に色があります（3m〜5m）", tsunami.headline)
+
+    def test_not_on_the_map_is_unconfirmed_with_a_confirmer(self):
+        tsunami = row(judge.judge_location(self.with_tsunami(hazard("tsunami", "no_tile")), state.BUILDING, None), "tsunami")
+        self.assertEqual((tsunami.verdict, tsunami.value), (state.UNCONFIRMED, "国の地図に載っていません"))
+        self.assertIn("津波", tsunami.confirm_by)
+
+    def test_old_reading_without_the_layer_has_no_row(self):
+        self.assertNotIn("tsunami", [item.key for item in judge.judge_location(reading(), state.BUILDING, None)])
+
+    def test_deep_tsunami_counts_as_deep_water_for_the_building(self):
+        from app import building
+        rows = [{"key": "tsunami", "verdict": "risk", "value": "3m〜5m", "conclusion": ""}]
+        self.assertTrue(building._deep_flood(rows))
+        self.assertEqual(building._depth_label(rows), "津波 3m〜5m")
+        self.assertFalse(building._deep_flood([{"key": "tsunami", "verdict": "risk", "value": "0.5m〜3m", "conclusion": ""}]))
+
+
+class SourceLinesTest(unittest.TestCase):
+    """出典と、加工した旨は分けて書く。国の公式の判定に見せない（規約の確認 2026-11-11）。"""
+
+    def test_hazard_rows_carry_source_processing_note_and_disclaimers(self):
+        flood = row(judge.judge_location(reading(), state.BUILDING, None), "flood")
+        self.assertIn("出典：「ハザードマップポータルサイト」（https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html）", flood.details)
+        self.assertIn("「ハザードマップポータルサイト」を加工して作成", flood.details)
+        text = "".join(flood.details)
+        for word in ("公式の判定ではありません", "市区町村のハザードマップで確かめます", "宅地建物取引業者の重要事項説明には使えません"):
+            self.assertIn(word, text)
+
+    def test_elevation_and_landform_sources_are_named_as_the_terms_ask(self):
+        more = "".join(judge.ELEVATION_SOURCE_MORE)
+        self.assertIn("出典：国土地理院ウェブサイト", more)
+        self.assertIn("国土地理院ベクトルタイル提供実験", more)

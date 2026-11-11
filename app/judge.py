@@ -25,7 +25,32 @@ WATER_LANDFORM_CODES = {
     "2010301", "3030201", "3040201", "3040202", "5010301", "4010101", "4010201",
 }
 
-HAZARD_SOURCE = "出典：「ハザードマップポータルサイト」を加工して作成"
+# 出典と、加工した旨は分けて書く（ハザードマップポータルサイトの利用規約の「出典」の書き方。2026-11-11 に原文で確認）。
+HAZARD_SOURCE_URL = "https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html"
+HAZARD_SOURCE = f"出典：「ハザードマップポータルサイト」（{HAZARD_SOURCE_URL}）"
+HAZARD_PROCESSED = "「ハザードマップポータルサイト」を加工して作成"
+# 国が作った判定に見せない。規約の注意（重要事項説明には使えない、最新・詳細は市町村のハザードマップで）をそのまま添える。
+HAZARD_DISCLAIMER = [
+    "この判定は、国の地図を読み取って加工した目安です。国や自治体の公式の判定ではありません。",
+    "最新の詳しい内容は、市区町村のハザードマップで確かめます。",
+    "宅地建物取引業者の重要事項説明には使えません。",
+]
+# 国の地図の区域の外でも、一番近い区域までがこの距離以内なら「未確認（注意）」にして、建物の位置で確かめてもらう。
+# 仮の値（町丁の代表点と建物の位置のずれを見込んだもの。検証前）。
+NEAR_ZONE_M = 200
+VALUE_OUTSIDE = "想定区域の外"
+VALUE_NOT_ON_MAP = "国の地図に載っていません"
+VALUE_PARTLY_NOT_ON_MAP = "一部が国の地図に載っていません"
+VALUE_FAILED = "読み込めませんでした"
+VALUE_UNREADABLE = "色を読み取れませんでした"
+NOT_ON_MAP_NEXT = "市区町村のハザードマップで確かめます"
+FAILED_NEXT = "もう一度試します"
+NOT_ON_MAP_NOTE = "国の地図に載っていないことは、浸水の想定がないという意味ではありません。市区町村が別に地図を出している場合があります。"
+OUTSIDE_NOTE = "想定区域の外であることは、安全という意味ではありません。"
+# 内水の地図は市区町村ごとに作られる。周りの市の色が数km先にあるだけで「区域の外」になり、この市の地図が載っていなくても問題なしに見えてしまう。
+# そのため内水だけは、国の地図の「区域の外」を問題なしにせず、未確認にする（2026-11-11 本人が決定）。
+INLAND_OUTSIDE_NOTE = "内水の地図は市区町村ごとに作られます。国の地図で区域の外でも、この市区町村の内水の地図が国の地図に載っていない場合があります。"
+INLAND_OUTSIDE_NEXT = "市区町村の内水ハザードマップで確かめます"
 # 線状降水帯の大雨で、洪水の地図に色がなくても浸かった場所の型（2026年9月の台風25号・千葉県の報道の実数。2026-11-07 原文で確認）。
 RAIN_SOURCE_URL = "https://weathernews.jp/news/202609/220091/"
 RAIN_SOURCE = "出典：ウェザーニューズ 2026/9/22「台風25号 千葉県の浸水・道路冠水447件の分析」"
@@ -36,7 +61,8 @@ _RAIN_LOW_LANDFORM = re.compile(r"後背低地|湿地|旧河道|三角州|海岸
 ELEVATION_SOURCE = "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成"
 # 別紙の出典の欄に、二文に分けて添える。上の文は変えない。
 ELEVATION_SOURCE_MORE = [
-    "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/bousaichiri/lfc_index.html、標高 API）",
+    "出典：国土地理院ウェブサイト（標高 API：https://maps.gsi.go.jp/development/elevation_s.html）",
+    "出典：国土地理院ベクトルタイル提供実験（地形分類：https://www.gsi.go.jp/bousaichiri/lfc_index.html）",
     "この値は、上のデータを読み取って加工したものです。",
 ]
 # 地形分類の層が取れないときの言い方。判定はもとから未確認なので変えない。
@@ -52,7 +78,7 @@ _FLOOD_CONFIRM = "管理会社が、市の洪水ハザードマップで、建�
 # 国の内水データがないときの理由（2026-11-07・13回目）。数字は足さない。仕組みの文は国交省「内水ハザードマップ作成の手引き（案）」（内水＝下水道等に雨水を排水できず地表面に溜まった水）と
 # 市川市水害ハザードマップ（令和8年4月改訂版 p.5「大雨で排水が追いつかない時…内水氾濫が発生」）の範囲で書く。国のポータルに未配信でも市の地図にはある場合がある（市川市がその例）。
 # 線状降水帯のカードの行は短く（理由は国の地図のカードに1回だけ）。
-INLAND_NO_DATA_SHORT = "国のデータなし（市の内水ハザードマップを確認）"
+INLAND_NO_DATA_SHORT = "国の地図に載っていません（市の内水ハザードマップを確認）"
 INLAND_NO_DATA = "国の内水データは未配信（市の地図にはある場合がある）。大雨で下水道や水路の排水が追いつかないときは、洪水の地図に色のない区域でも冠水が起きる。市の内水ハザードマップと、前面道路の下水道の整備状況（合流式・分流式・側溝放流）を確認"
 _INLAND_CONFIRM = (
     "管理会社が市区町村に、大雨で下水や水路があふれる場合の浸水想定区域図があるか、"
@@ -61,6 +87,10 @@ _INLAND_CONFIRM = (
 _SURGE_CONFIRM = (
     "管理会社が、県の高潮浸水想定区域図か市の高潮ハザードマップで、"
     "建物の位置の想定の深さと、その想定の条件を確かめます。"
+)
+_TSUNAMI_CONFIRM = (
+    "管理会社が、県の津波浸水想定か市の津波ハザードマップで、"
+    "建物の位置の想定の深さを確かめます。"
 )
 _GROUND_CONFIRM = "管理会社が、自治体の浸水履歴と内水の想定、管理員の記録で、敷地のまわりが冠水したことがあるかを確かめます。"
 _RECORD_CONFIRM = "管理会社から市区町村の窓口へ、この町丁と隣の町丁で過去に浸水や道路冠水の記録があるかを問い合わせます。"
@@ -75,6 +105,39 @@ def basis_note(basis: str) -> str:
     return _REPRESENTATIVE_NOTE if basis == REPRESENTATIVE else _BUILDING_NOTE
 
 
+def distance_text(meters: float) -> str:
+    """一番近い区域までの距離。10m 単位に丸める（粗い縮尺の1画素は十数m）。"""
+    if meters < 10:
+        return "10m未満"
+    if meters < 1000:
+        return f"約{int(round(meters, -1))}m"
+    return f"約{meters / 1000:.1f}km"
+
+
+def _outside_text(hazard: dict) -> str:
+    return f"{VALUE_OUTSIDE}（一番近い区域まで{distance_text(hazard['nearest_m'])}）"
+
+
+def _is_outside(hazard: dict) -> bool:
+    """地図はあるが、この点は想定区域の外（縮尺17 にタイルがなく、粗い縮尺で周りに色がある）。"""
+    return hazard["status"] == "outside" and hazard.get("nearest_m") is not None
+
+
+def _is_inland_outside(hazard: dict) -> bool:
+    """内水の「区域の外」。周りの市の地図があるだけかもしれないので、問題なしの根拠にしない。"""
+    return hazard.get("key") == "inland" and _is_outside(hazard)
+
+
+def _is_mapped(hazard: dict) -> bool:
+    """国の地図があり、この点に色がないと分かっている（縮尺17 で色なし、または想定区域の外）。"""
+    return hazard["status"] == "no_color" or _is_outside(hazard)
+
+
+def _nearest_zone_m(hazards: List[dict]) -> Optional[float]:
+    distances = [h["nearest_m"] for h in hazards if _is_outside(h)]
+    return min(distances) if distances else None
+
+
 def _status_text(hazard: dict) -> str:
     status = hazard["status"]
     if status == "color":
@@ -83,11 +146,13 @@ def _status_text(hazard: dict) -> str:
         if hazard.get("nearby_legend"):
             return f"色がない（すぐ近く（数m先）に「{hazard['nearby_legend']}」の色）"
         return "色がない"
+    if _is_outside(hazard):
+        return _outside_text(hazard)
     if status == "no_tile":
-        return "地図のデータが取れていない"
+        return VALUE_NOT_ON_MAP
     if status == "unknown_color":
         return "凡例にない色で、読み取れていない"
-    return "地図のデータが取れていない（接続できず）"
+    return VALUE_FAILED
 
 
 def _short_status(hazard: dict) -> str:
@@ -96,9 +161,13 @@ def _short_status(hazard: dict) -> str:
         return f"色あり（{hazard['legend']}）"
     if status == "no_color":
         return f"色なし（数m先に{hazard['nearby_legend']}）" if hazard.get("nearby_legend") else "色なし"
+    if _is_outside(hazard):
+        return _outside_text(hazard)
+    if status == "no_tile":
+        return "国の地図になし"
     if status == "unknown_color":
         return "読み取れず"
-    return "データが取れず"
+    return "読み込めず"
 
 
 _LAYER_SHORT = {"flood_planned": "計画規模", "flood_max": "想定最大"}
@@ -159,9 +228,18 @@ def _hazard_face(hazards: List[dict]) -> tuple:
         return legend, "ピンの点に色はなく、数m先に色あり", {"kind": "nearby", "level": "low", "badges": ["すぐ近くに色あり"]}
     if all(h["status"] == "no_color" for h in hazards):
         return "色なし", "色がないことは安全という意味ではありません", None
-    if any(h["status"] == "no_color" for h in hazards):
-        return "一部データなし", "色があるかどうかを確かめます", None
-    return "データなし", "色があるかどうかも分かりません", None
+    nearest = _nearest_zone_m(hazards)
+    if all(_is_mapped(h) for h in hazards):
+        return VALUE_OUTSIDE, f"一番近い区域まで{distance_text(nearest)}", None
+    # 「データなし」とまとめず、分かっている理由を言う（2026-11-11 本人の指摘：国の地図にないのか、読めなかったのかが見て分かるように）。
+    if any(h["status"] == "unknown_color" for h in hazards):
+        return VALUE_UNREADABLE, NOT_ON_MAP_NEXT, None
+    if any(h["status"] not in ("no_color", "outside", "no_tile") for h in hazards):
+        return VALUE_FAILED, FAILED_NEXT, None
+    if any(_is_mapped(h) for h in hazards):
+        known = f"載っている地図では{VALUE_OUTSIDE}（一番近い区域まで{distance_text(nearest)}）" if nearest is not None else "載っている地図では色なし"
+        return VALUE_PARTLY_NOT_ON_MAP, f"{known}。{NOT_ON_MAP_NEXT}", None
+    return VALUE_NOT_ON_MAP, NOT_ON_MAP_NEXT, None
 
 
 def _hazard_summary(hazards: List[dict]) -> str:
@@ -184,21 +262,43 @@ def _hazard_row(
     elif nearby:
         legends = "、".join(dict.fromkeys(h["nearby_legend"] for h in nearby))
         headline = f"{place}では{what}の地図に色がありませんが、すぐ近く（数m先）に色があります（{legends}）。"
+    elif any(_is_inland_outside(h) for h in hazards) and all(_is_mapped(h) for h in hazards):
+        headline = f"{place}は、国の地図では{what}の想定区域の外です（一番近い区域まで{distance_text(_nearest_zone_m(hazards))}）。{INLAND_OUTSIDE_NOTE}{INLAND_OUTSIDE_NEXT}。"
+    elif all(_is_mapped(h) for h in hazards):
+        headline = f"{place}は、{what}の想定区域の外です（一番近い区域まで{distance_text(_nearest_zone_m(hazards))}）。{OUTSIDE_NOTE}"
+    elif any(h["status"] == "unknown_color" for h in hazards):
+        headline = f"{place}の{what}の地図の色を読み取れませんでした。市区町村のハザードマップで確かめます。"
+    elif any(h["status"] not in ("no_color", "outside", "no_tile") for h in hazards):
+        headline = f"{what}の地図を読み込めませんでした。もう一度試します。"
+    elif any(_is_mapped(h) for h in hazards):
+        headline = f"{what}の地図の一部が、国の地図に載っていません。市区町村のハザードマップで確かめます。"
     else:
-        headline = f"{place}では、{what}の地図のデータが取れておらず、色があるかどうかも分かりません。"
+        headline = f"{what}の想定は、国の地図に載っていません。市区町村のハザードマップで確かめます。"
 
-    no_color = all(h["status"] == "no_color" for h in hazards) and not nearby
+    # 地図があって色がない（色なし・想定区域の外）なら問題なし。ただし区域の境目が近いときは、建物の位置で確かめるまで未確認にする。
+    nearest = _nearest_zone_m(hazards)
+    near_zone = nearest is not None and nearest <= NEAR_ZONE_M
+    inland_outside = any(_is_inland_outside(h) for h in hazards)
+    no_color = all(_is_mapped(h) for h in hazards) and not nearby and not near_zone and not inland_outside
     verdict = RISK if colored else CLEAR if no_color else UNCONFIRMED
     details = [f"{h['label']}：{_status_text(h)}" for h in hazards]
+    if not colored and nearest is not None:
+        details.append(OUTSIDE_NOTE)
+        if inland_outside:
+            details.append(INLAND_OUTSIDE_NOTE)
+        if near_zone:
+            details.append(f"区域の境目が近いので（{NEAR_ZONE_M}m以内。検証前の仮の目安）、建物の位置で確かめます。{place}と建物の位置がずれていると、区域に入ることがあります。")
+    if not colored and any(h["status"] == "no_tile" for h in hazards):
+        details.append(NOT_ON_MAP_NOTE)
     if colored and basis == REPRESENTATIVE:
         details.append("この色は町丁の代表点の値です。地図を押すと、建物の位置で読み直します。")
     if colored and _legend_band(_deepest([h["legend"] for h in colored])) == "shallow":
         details.append(BAND_SHALLOW_NOTE)
     details.extend(extra)
-    details.append(HAZARD_SOURCE)
+    details.extend([HAZARD_SOURCE, HAZARD_PROCESSED, *HAZARD_DISCLAIMER])
     open_item = verdict != RISK
     value, conclusion, accent = _hazard_face(hazards)
-    if verdict == CLEAR:
+    if verdict == CLEAR and value == "色なし":
         conclusion = "色なし"
     row = Row(
         key,
@@ -213,10 +313,12 @@ def _hazard_row(
         conclusion=conclusion,
         accent=accent,
     )
-    if nearby and verdict == UNCONFIRMED:
+    if (nearby or (near_zone and value == VALUE_OUTSIDE)) and verdict == UNCONFIRMED:
         row.verdict_label = "注意"
-    if key == "inland" and value == "データなし":
+    if key == "inland" and value == VALUE_NOT_ON_MAP:
         row.conclusion = INLAND_NO_DATA
+    if inland_outside and value == VALUE_OUTSIDE:
+        row.conclusion = f"{conclusion}。{INLAND_OUTSIDE_NEXT}"
     return row
 
 
@@ -477,12 +579,16 @@ def _rain_lines(reading: dict) -> List[dict]:
         shape = "周囲50mに低い向きなし（くぼ地の型）" if basin else f"{'・'.join(low)}が低い" if low else "周囲とほぼ同じ高さ"
         ground = {"name": "土地の高さ", "text": f"標高{center}m、{shape}。{numbers}", "hit": basin}
     inland = next((h for h in reading.get("hazards") or [] if h.get("key") == "inland"), None)
-    if inland is None or inland.get("status") not in ("color", "no_color"):
-        inland_line = {"name": "内水の地図", "text": INLAND_NO_DATA_SHORT, "hit": None}
-    elif inland["status"] == "color":
+    if inland is not None and inland.get("status") == "color":
         inland_line = {"name": "内水の地図", "text": f"色あり（{inland.get('legend') or ''}）", "hit": True}
-    else:
+    elif inland is not None and inland.get("status") == "no_color":
         inland_line = {"name": "内水の地図", "text": "色なし", "hit": False}
+    elif inland is not None and _is_outside(inland):
+        inland_line = {"name": "内水の地図", "text": f"{_outside_text(inland)}。市の内水の図で確認", "hit": None}
+    elif inland is None or inland.get("status") == "no_tile":
+        inland_line = {"name": "内水の地図", "text": INLAND_NO_DATA_SHORT, "hit": None}
+    else:
+        inland_line = {"name": "内水の地図", "text": f"{VALUE_FAILED}（{FAILED_NEXT}）", "hit": None}
     return [landform, ground, inland_line]
 
 
@@ -496,7 +602,7 @@ def _rainband_row(reading: dict) -> Row:
     hits = [line for line in lines if line["hit"]]
     unknown = [line for line in lines if line["hit"] is None]
     details = [f"{line['name']}：{line['text']}" for line in lines]
-    details += [RAIN_FACT, RAIN_FACT_INLAND, RAIN_SOURCE, ELEVATION_SOURCE, HAZARD_SOURCE]
+    details += [RAIN_FACT, RAIN_FACT_INLAND, RAIN_SOURCE, ELEVATION_SOURCE, *ELEVATION_SOURCE_MORE, HAZARD_SOURCE, HAZARD_PROCESSED]
     if hits:
         what = "・".join(line["name"] for line in hits)
         verdict = RISK
@@ -506,8 +612,8 @@ def _rainband_row(reading: dict) -> Row:
     elif unknown:
         verdict = UNCONFIRMED
         headline = "線状降水帯で浸かる型には今の根拠では当たりませんが、確かめられていない項目があります。"
-        value = "一部データなし"
-        conclusion = f"データなし（{'・'.join(line['name'] for line in unknown)}）"
+        value = "一部が未確認"
+        conclusion = f"確かめられていない項目（{'・'.join(line['name'] for line in unknown)}）"
     else:
         verdict = CLEAR
         headline = "線状降水帯で浸かった型（低い土地・くぼ地・内水の色）のどれにも、今の根拠では当たりません。"
@@ -522,7 +628,8 @@ def _rainband_row(reading: dict) -> Row:
 def _all_clear(reading: dict, record: Optional[dict], basis: str) -> bool:
     """一つの層だけでは問題なしにしない。項目がそろったときだけ、全部を問題なしにする（記録の行は、あるときだけ見る）。"""
     return (
-        all(hazard["status"] == "no_color" and not hazard.get("nearby_legend") for hazard in reading["hazards"])
+        all(_is_mapped(hazard) and not hazard.get("nearby_legend") and not _is_inland_outside(hazard) for hazard in reading["hazards"])
+        and (_nearest_zone_m(reading["hazards"]) is None or _nearest_zone_m(reading["hazards"]) > NEAR_ZONE_M)
         and _ground_clean(reading)
         and not _rain_hits(reading)
         and (
@@ -568,6 +675,22 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             ["どんな条件の高潮を想定した色かは、地図の案内に書かれていません。"],
             "管理会社が県・市の高潮の図で",
         ),
+    ]
+    # 津波（2026-11-11：全国で使うために判定に入れた。高潮と同じ作り）。古い保存データには津波の層がないので、あるときだけ行を出す。
+    if "tsunami" in by_key:
+        rows.append(
+            _hazard_row(
+                "tsunami",
+                "津波",
+                "津波",
+                [by_key["tsunami"]],
+                basis,
+                _TSUNAMI_CONFIRM,
+                ["どんな地震の津波を想定した色かは、地図の案内に書かれていません。県の津波浸水想定で確かめます。"],
+                "管理会社が県・市の津波の図で",
+            )
+        )
+    rows += [
         _ground_row(reading, basis),
         _landform_row(reading),
         _rainband_row(reading),
@@ -581,5 +704,5 @@ def judge_location(reading: dict, basis: str, record: Optional[dict]) -> List[Ro
             row.verdict_label = "問題なし"
             row.confirm_by = None
             row.confirm_short = None
-            row.details.append("五つの項目のどれにも当たらなかったので、問題なしとしています。現地は見ていません。")
+            row.details.append("どの項目にも当たらなかったので、問題なしとしています。現地は見ていません。")
     return rows

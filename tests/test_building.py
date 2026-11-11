@@ -905,6 +905,24 @@ class SearchTest(unittest.TestCase):
         self.assertEqual(create.call_count, 2)
         self.assertEqual(create.call_args.kwargs["tools"], [search.WEB_SEARCH])
 
+    def test_real_estate_portals_are_kept_out_of_the_web_search(self):
+        # 利用規約で営利目的の利用を禁じている3サイトは、検索の対象から外す（2026-11-11 に規約の原文で確認）。
+        self.assertEqual(search.WEB_SEARCH["blocked_domains"], ["suumo.jp", "homes.co.jp", "athome.co.jp"])
+        self.assertNotIn("allowed_domains", search.WEB_SEARCH)
+        for url in ("https://suumo.jp/library/x/", "https://www.homes.co.jp/archive/b-1/", "http://WWW.ATHOME.CO.JP/mansion/1/"):
+            self.assertTrue(search.blocked_source(url), url)
+        for url in ("https://example.com/suumo.jp/", "https://notsuumo.jp/", "https://www.city.chiba.jp/", ""):
+            self.assertFalse(search.blocked_source(url), url)
+
+    def test_answers_sourced_from_a_blocked_site_are_not_used(self):
+        # 前に保存した答えや、外したはずのサイトが返ってきたときも使わない。
+        facts = {"matched": True, "building": "見本タワー", "floors_above": 10, "floors_below": 1, "source_url": "https://suumo.jp/library/x/"}
+        self.assertIsNone(search._valid_facts(facts))
+        self.assertIsNotNone(search._valid_facts({**facts, "source_url": "https://example.com/x"}))
+        inferred = {"address": "東京都港区", "from_input": False, "confident": True, "source_url": "https://www.homes.co.jp/archive/b-1/"}
+        self.assertFalse(search._trusted(inferred))
+        self.assertTrue(search._trusted({**inferred, "source_url": "https://example.com/x"}))
+
     def test_osm_is_only_used_when_address_search_fails(self):
         with mock.patch.object(search, "_gsi", return_value=[{"label": "x"}]) as gsi, mock.patch.object(search, "_osm") as osm:
             search.search("東京都江東区大島2丁目")

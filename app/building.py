@@ -100,7 +100,7 @@ HEIGHT_FIELDS = {
     "elec_floor": ("電気の部屋の床（外の地面との差）", "外の地面との差"),
 }
 WATER_MEASURED_CONFIRM = "盤の下の端と部屋の床の高さは、実測の入力値があります。付け替えが要るかは、管理会社がポンプの保守業者と見積りで確かめます。"
-TOP_NOTE_LOCATION_CLEAR = "立地の五項目を、建物の位置の公開データで確かめました（出典は別紙）。"
+TOP_NOTE_LOCATION_CLEAR = "立地の項目を、建物の位置の公開データで確かめました（出典は別紙）。"
 # 規模（総戸数の区分）ごとの重点。戸数の区切りは仮の目安で済の出典がないので、画面に数字を出さない。
 # 戸数から受電の形や主任技術者の有無は推定しない。重点は確かめる候補で、網羅ではない。
 SCALE_LABELS = {"small": "小さめ", "mid": "中くらい", "large": "大きめ", "unknown": "分からない"}
@@ -1076,9 +1076,9 @@ def shape_of(sample: dict) -> str:
 
 
 def _deep_flood(location_rows: Optional[List[dict]]) -> bool:
-    """洪水か高潮の想定が3m以上か（公的な凡例の区分のまま。新しい閾値は作らない）。"""
+    """洪水・高潮・津波の想定が3m以上か（公的な凡例の区分のまま。新しい閾値は作らない）。"""
     for row in location_rows or []:
-        if row.get("key") not in ("flood", "surge") or row.get("verdict") != "risk":
+        if row.get("key") not in ("flood", "surge", "tsunami") or row.get("verdict") != "risk":
             continue
         numbers = [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)\s*m", f"{row.get('value', '')} {row.get('conclusion', '')}")]
         # 凡例の帯の下の端で見る（「3m〜5m」は3m以上、「0.5m〜3m」は違う）。
@@ -1113,8 +1113,8 @@ _MOUNT_WORDS = {"床置き": "盤は床置き", "壁掛け": "盤は壁掛け", 
 
 
 def _depth_label(location_rows: Optional[List[dict]]) -> str:
-    """この場所の洪水・高潮の想定（公的な凡例の帯のまま）。色がなければ空。"""
-    names = {"flood": "川の洪水", "surge": "高潮"}
+    """この場所の洪水・高潮・津波の想定（公的な凡例の帯のまま）。色がなければ空。"""
+    names = {"flood": "川の洪水", "surge": "高潮", "tsunami": "津波"}
     found = []
     for row in location_rows or []:
         if row.get("key") in names and row.get("verdict") == "risk" and row.get("value"):

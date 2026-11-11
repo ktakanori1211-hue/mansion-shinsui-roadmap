@@ -24,6 +24,11 @@ HAZARD_URL = "https://disaportaldata.gsi.go.jp/raster/{layer}/{z}/{x}/{y}.png"
 LANDFORM_URL = "https://cyberjapandata.gsi.go.jp/xyz/{layer}/{z}/{x}/{y}.geojson"
 
 HAZARD_ZOOM = 17
+# 縮尺17 にタイルがないとき、周りに国の地図があるかを確かめる粗い縮尺。深さは読まない（粗い縮尺の色は縮尺17 と食い違うことがある）。
+SURROUND_ZOOM = 13
+SURROUND_REFINE_ZOOM = 15
+# 粗い縮尺で一番近い色がこの距離より近いときだけ、一段細かい縮尺で距離を測り直す。仮の値。
+SURROUND_REFINE_WITHIN_M = 400
 LANDFORM_ZOOM = 16
 # 「すぐ近く（数m先）」として見る範囲。ズーム 17 の 1 ピクセルは東京付近で約 1m。仮の値。
 NEARBY_PIXELS = 8
@@ -252,7 +257,56 @@ def nearest_legend(image: png.Image, px: int, py: int, radius: int = NEARBY_PIXE
     return nearest[1] if nearest else None
 
 
-def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: float, legend: Optional[dict] = None) -> dict:
+def nearest_colored_m(image: png.Image, px: int, py: int, latitude: float, zoom: int) -> Optional[int]:
+    """点から一番近い、色のついた画素までの距離（m）。タイルに色が一つもなければ None。"""
+    best = None
+    for y in range(image.height):
+        for x in range(image.width):
+            if image.rgba(x, y)[3]:
+                distance = (x - px) ** 2 + (y - py) ** 2
+                if best is None or distance < best:
+                    best = distance
+    if best is None:
+        return None
+    meters_per_pixel = 156543.03392 * math.cos(math.radians(latitude)) / 2**zoom
+    return round(math.sqrt(best) * meters_per_pixel)
+
+
+def _surround_distance(layer: str, longitude: float, latitude: float, zoom: int) -> Optional[int]:
+    """粗い縮尺のタイル1枚で、一番近い色までの距離を測る。タイルがなければ HTTPError(404) がそのまま上がる。"""
+    tile_x, tile_y, px, py = pixel_position(longitude, latitude, zoom)
+    image = png.decode(_get(HAZARD_URL.format(layer=layer, z=zoom, x=tile_x, y=tile_y)))
+    return nearest_colored_m(image, px, py, latitude, zoom)
+
+
+def _read_surroundings(layer: str, longitude: float, latitude: float) -> dict:
+    """縮尺17 にタイルがない層について、周りに国の地図があるかを確かめる（追加の取得は、このときだけ）。
+
+    outside＝地図はあるが、この点は想定区域の外（nearest_m に一番近い区域までの距離）。
+    no_tile＝粗い縮尺にもタイルがない、または色が一つもない（国の地図に載っていない）。
+    fetch_failed＝読み込めなかった。
+    見るのは点を含むタイル1枚（縮尺13 で約4km四方）なので、タイルの端に近い点は周りを見落とすことがある。
+    """
+    try:
+        nearest = _surround_distance(layer, longitude, latitude, SURROUND_ZOOM)
+    except urllib.error.HTTPError as error:
+        return {"status": "no_tile" if error.code == 404 else "fetch_failed"}
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return {"status": "fetch_failed"}
+    if nearest is None:
+        return {"status": "no_tile"}
+    zoom = SURROUND_ZOOM
+    if nearest <= SURROUND_REFINE_WITHIN_M:
+        try:
+            finer = _surround_distance(layer, longitude, latitude, SURROUND_REFINE_ZOOM)
+        except (urllib.error.URLError, TimeoutError, ValueError):
+            finer = None
+        if finer is not None:
+            nearest, zoom = finer, SURROUND_REFINE_ZOOM
+    return {"status": "outside", "nearest_m": nearest, "nearest_zoom": zoom}
+
+
+def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: float, legend: Optional[dict] = None, surroundings: bool = True) -> dict:
     legend = HAZARD_LEGEND if legend is None else legend
     tile_x, tile_y, px, py = pixel_position(longitude, latitude, HAZARD_ZOOM)
     url = HAZARD_URL.format(layer=layer, z=HAZARD_ZOOM, x=tile_x, y=tile_y)
@@ -261,6 +315,8 @@ def _read_hazard(key: str, label: str, layer: str, longitude: float, latitude: f
         image = png.decode(_get(url))
     except urllib.error.HTTPError as error:
         result["status"] = "no_tile" if error.code == 404 else "fetch_failed"
+        if error.code == 404 and surroundings:
+            result.update(_read_surroundings(layer, longitude, latitude))
         return result
     except (urllib.error.URLError, TimeoutError, ValueError):
         result["status"] = "fetch_failed"
@@ -390,7 +446,7 @@ def read_location(longitude: float, latitude: float, distance_m: float = 50) -> 
             for key, label, layer in HAZARD_LAYERS
         ]
         durations = [
-            pool.submit(_read_hazard, key, label, layer, longitude, latitude, DURATION_LEGEND)
+            pool.submit(_read_hazard, key, label, layer, longitude, latitude, DURATION_LEGEND, False)
             for key, label, layer in DURATION_LAYERS
         ]
         landforms = [
