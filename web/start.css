@@ -573,7 +573,7 @@ details.facts[open] { display: flex; }
 .t-bldg.basement { fill: #f3f1ec; stroke-dasharray: none; }
 .t-bldg.unknown { fill: none; stroke-dasharray: 6 5; stroke-width: 1.8; }
 .t-floor-label.muted { fill: var(--muted); }
-/* 画面1の掛け算：ハザードマップ × 線状降水帯で浸かる型（2026-11-07）。各行は事実と出典、当たるかはサーバーの規則。 */
+/* 画面1の掛け算：ハザードマップ × 大雨で浸かる型（2026-11-07）。各行は事実と出典、当たるかはサーバーの規則。 */
 .rh-sub { font-weight: 700; }
 .mul { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: stretch; margin: 0 0 8px; }
 .mul-card { border: 1px solid var(--rule); background: #fff; padding: 6px 8px; min-width: 0; }
@@ -976,3 +976,5 @@ details.facts[open] { display: flex; }
 .part { color: #0b4fa8; }
 .cost-sum.win { border-left: 5px solid var(--clear-line); }
 .aid-box { border-left: 4px solid var(--clear-line); }
+/* 作品名の副題（2026-11-11 改名：アスミズ ― マンション浸水チェック）。狭い画面では小さく。 */
+.brand-sub { font-size: 0.78em; font-weight: 600; }

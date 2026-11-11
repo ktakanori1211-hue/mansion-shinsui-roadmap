@@ -182,7 +182,7 @@ class StateTest(unittest.TestCase):
         rows = judge.judge_location(reading(), state.REPRESENTATIVE, None)
         data = state.new_state(site, {}, rows)
         self.assertEqual(set(data), {"schema_version", "site", "location", "equipment", "pins"})
-        self.assertEqual(len(data["location"]["rows"]), 6)  # 2026-11-07：線状降水帯の行（rainband）が増えた
+        self.assertEqual(len(data["location"]["rows"]), 6)  # 2026-11-07：大雨の型の行（rainband）が増えた
         self.assertEqual(data["location"]["rows"][0]["verdict_label"], "問題なし")
 
 
@@ -303,7 +303,7 @@ if __name__ == "__main__":
 
 
 class RainbandTest(unittest.TestCase):
-    """線状降水帯の大雨で、洪水の地図に色がなくても浸かった型（低い土地・くぼ地・内水の色）。規則で判定し、根拠は報道の実数（2026-11-07）。"""
+    """大雨で、洪水の地図に色がなくても浸かる型（低い土地・くぼ地・内水の色）。規則で判定し、根拠は国土交通省の資料（2026-11-11 にウェザーニューズの数字から差し替え）。"""
 
     def test_low_landform_hits_even_without_map_colour(self):
         data = reading(codes=("11005",))
@@ -312,8 +312,9 @@ class RainbandTest(unittest.TestCase):
         rain = row(rows, "rainband")
         self.assertEqual(rain.verdict, state.RISK)
         self.assertIn("土地の成り立ち", rain.conclusion)
-        self.assertTrue(any("447件" in line and "64%" in line for line in rain.details))
-        self.assertTrue(any("weathernews.jp" in line or "ウェザーニューズ" in line for line in rain.details))
+        self.assertTrue(any("59%" in line and "内水氾濫" in line for line in rain.details))
+        self.assertTrue(any("国土交通省" in line and "mlit.go.jp" in line for line in rain.details))
+        self.assertTrue(any("空白域" in line for line in rain.details))
         # 色がなくても、型に当たるときは全部を問題なしにしない。
         self.assertEqual(row(rows, "flood").verdict, state.CLEAR)
         self.assertEqual([line["hit"] for line in rain.accent["lines"]], [True, False, False])
@@ -508,3 +509,31 @@ class SourceLinesTest(unittest.TestCase):
         more = "".join(judge.ELEVATION_SOURCE_MORE)
         self.assertIn("出典：国土地理院ウェブサイト", more)
         self.assertIn("国土地理院ベクトルタイル提供実験", more)
+
+
+class NoWeathernewsNumbersTest(unittest.TestCase):
+    """ウェザーニューズの記事の数字は、利用規約（無許諾の二次利用・転載の禁止）のため使わない（2026-11-11）。"""
+
+    OLD = ["64%", "447件", "36%", "16%", "48%", "55.7%", "216件", "158件", "73件", "weathernews", "ウェザーニューズ"]
+
+    def test_app_and_chat_facts_do_not_carry_the_old_numbers(self):
+        import pathlib
+        from app import assistant
+        root = pathlib.Path(__file__).resolve().parent.parent
+        texts = {
+            "judge": "\n".join([judge.RAIN_FACT, judge.RAIN_FACT_INLAND, judge.RAIN_SOURCE, judge.RAIN_INLAND_SOURCE, judge.RAIN_SOURCE_URL]),
+            "assistant": "\n".join(item["text"] for item in assistant.FACTS),
+            "materials": (root / "web" / "materials.json").read_text(encoding="utf-8"),
+            "start.js": (root / "web" / "start.js").read_text(encoding="utf-8"),
+        }
+        for name, text in texts.items():
+            for word in self.OLD:
+                self.assertNotIn(word, text, f"{name}: {word}")
+
+    def test_rainband_row_cites_the_ministry(self):
+        rows = judge.judge_location(reading(), state.BUILDING, None)
+        rain = row(rows, "rainband")
+        self.assertEqual(rain.label, "大雨（洪水の地図の外で浸かる型）")
+        self.assertIn("国土交通省", rain.accent["source"])
+        self.assertIn("mlit.go.jp", rain.accent["inland_source_url"])
+

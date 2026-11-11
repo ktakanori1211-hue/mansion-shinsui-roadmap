@@ -51,12 +51,17 @@ OUTSIDE_NOTE = "想定区域の外であることは、安全という意味で�
 # そのため内水だけは、国の地図の「区域の外」を問題なしにせず、未確認にする（2026-11-11 本人が決定）。
 INLAND_OUTSIDE_NOTE = "内水の地図は市区町村ごとに作られます。国の地図で区域の外でも、この市区町村の内水の地図が国の地図に載っていない場合があります。"
 INLAND_OUTSIDE_NEXT = "市区町村の内水ハザードマップで確かめます"
-# 線状降水帯の大雨で、洪水の地図に色がなくても浸かった場所の型（2026年9月の台風25号・千葉県の報道の実数。2026-11-07 原文で確認）。
-RAIN_SOURCE_URL = "https://weathernews.jp/news/202609/220091/"
-RAIN_SOURCE = "出典：ウェザーニューズ 2026/9/22「台風25号 千葉県の浸水・道路冠水447件の分析」"
-RAIN_FACT = "2026年9月の台風25号（千葉県）の浸水・道路冠水447件の内訳：川沿いの低地36%（158件）、海・水路沿いの低地16%（73件）、川から離れた高台のくぼ地48%（216件）。後ろの2つ（足すと64%）は洪水の地図で色のない場所でした。"
-RAIN_FACT_INLAND = "高台で冠水した場所の多くは、内水ハザードマップでは「0.5m未満」の色が付いていました（同じ記事）。"
-# 「低い土地」の型に当たる国土地理院の地形分類（報道の「海・水路沿いの低い土地」に対応）。
+# 洪水の地図に色がなくても浸かる型（低い土地・くぼ地・内水の色）の根拠。国土交通省の公表資料（2026-11-11 原文で確認）。
+# 以前はウェザーニューズの記事の数字を使っていたが、同社の利用規約（第9条：事前の許諾のない二次利用・転載・転用の禁止）のため差し替えた。
+RAIN_SOURCE_URL = "https://shinsui-portal.mlit.go.jp/amege/wp-content/uploads/2024/10/%E8%BF%91%E5%B9%B4%E3%81%AE%E5%85%A8%E5%9B%BD%E3%81%AB%E3%81%8A%E3%81%91%E3%82%8B%E6%B0%B4%E5%AE%B3%E8%A2%AB%E5%AE%B3H25-R4.pdf"
+RAIN_SOURCE_NAME = "国土交通省「近年の全国における水害被害（平成25年～令和4年）」"
+RAIN_SOURCE = f"出典：{RAIN_SOURCE_NAME}（水害統計調査より集計）{RAIN_SOURCE_URL}"
+RAIN_FACT = "過去10年間（平成25年～令和4年）の全国の浸水棟数のうち59%（約17万棟）は、川があふれる洪水ではなく、下水や水路があふれる内水氾濫によるものでした。"
+RAIN_INLAND_URL = "https://www.mlit.go.jp/mizukokudo/river/content/002028107.pdf"
+RAIN_INLAND_NAME = "国土交通省 水管理・国土保全局「都市型水害への対策について」（令和8年10月22日）"
+RAIN_INLAND_SOURCE = f"出典：{RAIN_INLAND_NAME} p.5・p.7 {RAIN_INLAND_URL}"
+RAIN_FACT_INLAND = "国土交通省は、水路や窪地などで起きる浸水のリスク情報に「空白域」があり、そうした地域で浸水被害が確認されていること、住宅地の窪地で深い浸水が生じたこと、高層マンションなどで地下空間の浸水が生活に大きく影響したことを課題に挙げています。"
+# 「低い土地」の型に当たる国土地理院の地形分類（国交省の資料の「低地などの地形」「水路や窪地」に対応）。
 _RAIN_LOW_LANDFORM = re.compile(r"後背低地|湿地|旧河道|三角州|海岸低地|埋立|干拓|旧水部|凹地|低地")
 ELEVATION_SOURCE = "出典：国土地理院 標高API、地形分類（提供実験）を加工して作成"
 # 別紙の出典の欄に、二文に分けて添える。上の文は変えない。
@@ -77,7 +82,7 @@ _BUILDING_NOTE = "これはピンの位置で読んだ値です。ピンの位�
 _FLOOD_CONFIRM = "管理会社が、市の洪水ハザードマップで、建物の位置に色があるかを確かめます。"
 # 国の内水データがないときの理由（2026-11-07・13回目）。数字は足さない。仕組みの文は国交省「内水ハザードマップ作成の手引き（案）」（内水＝下水道等に雨水を排水できず地表面に溜まった水）と
 # 市川市水害ハザードマップ（令和8年4月改訂版 p.5「大雨で排水が追いつかない時…内水氾濫が発生」）の範囲で書く。国のポータルに未配信でも市の地図にはある場合がある（市川市がその例）。
-# 線状降水帯のカードの行は短く（理由は国の地図のカードに1回だけ）。
+# 大雨の型のカードの行は短く（理由は国の地図のカードに1回だけ）。
 INLAND_NO_DATA_SHORT = "国の地図に載っていません（市の内水ハザードマップを確認）"
 INLAND_NO_DATA = "国の内水データは未配信（市の地図にはある場合がある）。大雨で下水道や水路の排水が追いつかないときは、洪水の地図に色のない区域でも冠水が起きる。市の内水ハザードマップと、前面道路の下水道の整備状況（合流式・分流式・側溝放流）を確認"
 _INLAND_CONFIRM = (
@@ -555,7 +560,7 @@ def _record_row(record: Optional[dict]) -> Row:
 
 
 def _rain_lines(reading: dict) -> List[dict]:
-    """線状降水帯で浸かる型に、この場所の事実が当たるか。name・text（数値つき）・hit（True／False／None＝データなし）。"""
+    """大雨で浸かる型に、この場所の事実が当たるか。name・text（数値つき）・hit（True／False／None＝データなし）。"""
     names = _landform_names(reading.get("landforms") or [])
     low_names = [name for name in names if _RAIN_LOW_LANDFORM.search(name)]
     missing = any(lf.get("status") in _LANDFORM_MISSING for lf in reading.get("landforms") or [])
@@ -597,32 +602,32 @@ def _rain_hits(reading: dict) -> bool:
 
 
 def _rainband_row(reading: dict) -> Row:
-    """線状降水帯の大雨で、洪水の地図に色がなくても浸かる型（低い土地・くぼ地・内水の色）に当たるか。規則で判定し、根拠は実数と出典。"""
+    """大雨で、洪水の地図に色がなくても浸かる型（低い土地・くぼ地・内水の色）に当たるか。規則で判定し、根拠は国土交通省の資料。"""
     lines = _rain_lines(reading)
     hits = [line for line in lines if line["hit"]]
     unknown = [line for line in lines if line["hit"] is None]
     details = [f"{line['name']}：{line['text']}" for line in lines]
-    details += [RAIN_FACT, RAIN_FACT_INLAND, RAIN_SOURCE, ELEVATION_SOURCE, *ELEVATION_SOURCE_MORE, HAZARD_SOURCE, HAZARD_PROCESSED]
+    details += [RAIN_FACT, RAIN_SOURCE, RAIN_FACT_INLAND, RAIN_INLAND_SOURCE, ELEVATION_SOURCE, *ELEVATION_SOURCE_MORE, HAZARD_SOURCE, HAZARD_PROCESSED]
     if hits:
         what = "・".join(line["name"] for line in hits)
         verdict = RISK
-        headline = f"線状降水帯の大雨で、洪水の地図に色がなくても浸かった型（{what}）に当たります。"
+        headline = f"大雨で、洪水の地図に色がなくても浸かる型（{what}）に当たります。"
         value = "・".join(line["text"].split("、")[0].split("。")[0] for line in hits)
         conclusion = f"型に当たる（{what}）"
     elif unknown:
         verdict = UNCONFIRMED
-        headline = "線状降水帯で浸かる型には今の根拠では当たりませんが、確かめられていない項目があります。"
+        headline = "大雨で浸かる型には今の根拠では当たりませんが、確かめられていない項目があります。"
         value = "一部が未確認"
         conclusion = f"確かめられていない項目（{'・'.join(line['name'] for line in unknown)}）"
     else:
         verdict = CLEAR
-        headline = "線状降水帯で浸かった型（低い土地・くぼ地・内水の色）のどれにも、今の根拠では当たりません。"
+        headline = "大雨で浸かる型（低い土地・くぼ地・内水の色）のどれにも、今の根拠では当たりません。"
         value = "型に当たらず"
         conclusion = "型に当たらず"
-    return Row("rainband", "線状降水帯の大雨（洪水の地図の外で浸かる型）", verdict, headline, details,
+    return Row("rainband", "大雨（洪水の地図の外で浸かる型）", verdict, headline, details,
                "管理会社が市区町村の内水ハザードマップと浸水履歴で" if verdict == UNCONFIRMED else None,
                summary=conclusion, confirm_short="管理会社が市の内水の図で" if verdict == UNCONFIRMED else None,
-               value=value, conclusion=conclusion, accent={"lines": lines, "fact": RAIN_FACT, "fact_inland": RAIN_FACT_INLAND, "source_url": RAIN_SOURCE_URL, "source": "ウェザーニューズ 2026/9/22"})
+               value=value, conclusion=conclusion, accent={"lines": lines, "fact": RAIN_FACT, "fact_inland": RAIN_FACT_INLAND, "source_url": RAIN_SOURCE_URL, "source": "国土交通省（水害統計調査より集計）", "inland_source_url": RAIN_INLAND_URL, "inland_source": "国土交通省（令和8年10月）"})
 
 
 def _all_clear(reading: dict, record: Optional[dict], basis: str) -> bool:

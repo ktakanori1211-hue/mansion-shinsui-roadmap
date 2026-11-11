@@ -72,3 +72,5 @@ body { margin: 0; background: var(--page); color: var(--ink); font-family: "Hira
   .mt-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mt-voices, .mt-verdicts, .mt-source-groups { grid-template-columns: 1fr; }
 }
+/* 作品名の副題（2026-11-11 改名：アスミズ ― マンション浸水チェック）。狭い画面では小さく。 */
+.brand-sub { font-size: 0.78em; font-weight: 600; }

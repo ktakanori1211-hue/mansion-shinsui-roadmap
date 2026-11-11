@@ -102,7 +102,7 @@ const CHECK_LEAD = "機械室の階によって、浸水時に止まる設備が
 // 図面がない人向けの一文（見て分かる3つで建物の形を仮に決め、確認は管理会社に頼む）。
 const CHECK_LEAD_NO_DRAWING = "竣工図がなくても進められます。外観から分かる3項目で建物の形を仮設定し、確認事項は管理会社への依頼メモにまとめます。";
 // 立地の行の短い名前。
-const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", tsunami: "津波", ground: "土地の高さ", landform: "土地の成り立ち", rainband: "線状降水帯", record: "浸水の記録" };
+const PLACE_SHORT = { flood: "川の洪水", inland: "下水・水路", surge: "高潮", tsunami: "津波", ground: "土地の高さ", landform: "土地の成り立ち", rainband: "大雨の型", record: "浸水の記録" };
 // 対策の短い名前（サーバーの measures の key ごと。くわしい文は折りたたみに入れる）。
 const MEASURE_SHORT = {
   hole: "壁の穴をふさぐ",
@@ -665,7 +665,7 @@ function experienceLine() {
 
 // ---- WHY に沿った画面1・2の部品（2026-11-05 作り直し） ----
 // 画面1の一行：命を守る避難の判断と、機械を守る足元の対策を混ぜない。
-const EVAC_LINE = "避難するかどうかは、自治体のハザードマップと警戒レベルで決めます。マンション浸水チェックは、地図に色がなくても浅い水で止まる、建物の電気と水の足元の対策を整理します。";
+const EVAC_LINE = "避難するかどうかは、自治体のハザードマップと警戒レベルで決めます。アスミズは、地図に色がなくても浅い水で止まる、建物の電気と水の足元の対策を整理します。";
 
 
 // 対策の切り替え（what-019）。名前はサーバーの model_measures のまま。選んだ対策の固定の文（what-026）を言い換えずに添える。
@@ -784,7 +784,7 @@ function mapPairs(by) {
   return MAP_KEYS.filter((key) => key !== "tsunami" || by.tsunami).map((key) => [MAP_NAMES[key], by[key]]);
 }
 
-// 線状降水帯の行の理由（折りたたみ）：結論と、3つの型の全文（4方向の標高の数値を含む）。
+// 大雨の型の行の理由（折りたたみ）：結論と、3つの型の全文（4方向の標高の数値を含む）。
 function rainbandPlain(item) {
   const lines = (item.accent?.lines || []).map((line) => `${line.name}：${line.text}`).join("／");
   return esc(`${item.conclusion || ""}${lines ? `。${lines}` : ""}`);
@@ -1137,11 +1137,12 @@ function resetPlace() {
   window.scrollTo({ top: 0 });
 }
 
-// 折りたたみの中に置く、線状降水帯の事実の全文（カードには短い1行だけ）。
+// 折りたたみの中に置く、大雨の型の根拠の全文（カードには短い1行だけ）。
 function rainFactLine(lines) {
   const rain = (lines || []).find((line) => line.key === "rainband");
   if (!rain?.accent) return "";
-  return `<p class="hint rain-fact">台風・大雨（線状降水帯）の事実：${esc(rain.accent.fact)}（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）</p>`;
+  const inland = rain.accent.fact_inland && rain.accent.inland_source_url ? ` ${esc(rain.accent.fact_inland)}（<a href="${esc(rain.accent.inland_source_url)}" target="_blank" rel="noopener">${esc(rain.accent.inland_source)}</a>）` : "";
+  return `<p class="hint rain-fact">大雨の型の根拠：${esc(rain.accent.fact)}（<a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a>）${inland}</p>`;
 }
 
 // 地図。地理院タイルとハザードマップの色を重ね、東西南北50mの標高を置く。高い方から建物へ水の矢印を引く。
@@ -1708,7 +1709,7 @@ function placeTwoLines(lines) {
 }
 
 function riskHead(lines, compact = false) {
-  // 画面1の結論は「ハザードマップ（国の地図）× 線状降水帯で浸かる型」の掛け算（2026-11-07 本人の指示）。
+  // 画面1の結論は「ハザードマップ（国の地図）× 大雨で浸かる型」の掛け算（2026-11-07 本人の指示）。
   // どちらも事実（国の地図の色・国土地理院の数値・報道の実数）で、当たるかはサーバーの規則（rainband の行）。この画面では言葉を足さない。
   const by = Object.fromEntries(lines.map((line) => [line.key, line]));
   const mapRows = MAP_KEYS.map((key) => by[key]).filter(Boolean);
@@ -1727,8 +1728,9 @@ function riskHead(lines, compact = false) {
       return `<li>${mark(hit)}${name}：${esc(mapShort(line))}</li>`;
     }).join("");
   const rainLines = (rain?.accent?.lines || []).map((line) => `<li>${mark(line.hit)}${esc(line.name)}：${esc(shortRainText(line))}</li>`).join("");
-  // この道具の売り：ハザードマップ × 地形。2枚のカードを1つの比較枠で包み、見出しに 64% を置く（2026-11-07・31回目。数字は出典のまま）。
-  const title = rain?.accent ? `<p class="mul-title">ハザードマップに色がなくても浸水する理由：<span class="mul-fact-line">2026年台風25号では千葉県の浸水447件のうち<b class="big">64%</b>がマップ色なしの場所でした</span><a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a></p>` : "";
+  // この道具の売り：ハザードマップ × 地形。2枚のカードを1つの比較枠で包み、見出しに国交省の数字を置く。
+  // 2026-11-11：民間の報道記事の数字（利用規約で無許諾の二次利用が禁止）を、国土交通省の水害統計の数字に差し替えた。59% は「地図に色がない場所の割合」ではないので、資料が言うことだけを書く。
+  const title = rain?.accent ? `<p class="mul-title">川の洪水の地図だけでは足りない理由：<span class="mul-fact-line">全国の浸水棟数の<b class="big">59%</b>は、下水や水路があふれる内水氾濫によるもの（平成25年～令和4年）</span><a href="${esc(rain.accent.source_url)}" target="_blank" rel="noopener">${esc(rain.accent.source)}</a></p>` : "";
   // 結論の下に「浸かると止まるもの」を添える（画面1の時点で何が止まるか分かるように。建物の階で変わるので、断定せず「浸かると」）。
   const consequence = !compact && head[0] === "risk" ? `<p class="rh-stop"><b>機械室（給水ポンプ室・電気室・借室）が浸かると、全戸で止まるもの：</b><span>水・トイレ</span><span>エレベーター</span><span>各戸の電気</span><small>何階にあるかで変わります。次の画面で竣工図から確かめます。</small></p>` : "";
   return `<div class="risk-head ${head[0]}"><p class="rh-title">${head[0] === "risk" ? "⚠ " : ""}${esc(head[1])}</p><p class="rh-sub">${esc(sub)}</p>${consequence}</div>
@@ -1742,7 +1744,7 @@ function riskHead(lines, compact = false) {
   </div>`;
 }
 
-// 線状降水帯のカードの1行（サーバーの文の最初の句だけ。数値の内訳は折りたたみへ）。
+// 大雨の型のカードの1行（サーバーの文の最初の句だけ。根拠の全文は折りたたみへ）。
 function shortRainText(line) {
   const text = String(line.text || "");
   if (line.name === "内水の地図") return text.startsWith("国の") ? "国の地図になし" : text.startsWith("想定区域の外") ? text.replace("想定区域の外（一番近い区域まで", "区域の外（最寄り").replace("。市の内水の図で確認", "・市の図で確認") : text.split("（")[0];
@@ -2249,7 +2251,7 @@ function consultBox() {
 // 住所は町丁まで。固定の免責は言い換えずに付ける。サーバーには何も送らない。
 function summaryText() {
   const b = S.building;
-  const lines = [`【マンション浸水チェック】${where()}`, `・${titleLine()}`];
+  const lines = [`【アスミズ ― マンション浸水チェック】${where()}`, `・${titleLine()}`];
   // 立地は札の値のまま（地図の想定）。深さを主役にしない。避難の判断は自治体の警戒レベルで。
   const rows = (S.place?.location?.rows || []).map((item) => `${PLACE_SHORT[item.key] || item.label} ${item.value || ""}`.trim());
   if (rows.length) lines.push(`・立地（地図の想定）：${rows.join("／")}`);
@@ -2275,7 +2277,7 @@ async function sendSummary() {
   S.sendText = "";
   if (navigator.share) {
     try {
-      await navigator.share({ title: "マンション浸水チェック", text });
+      await navigator.share({ title: "アスミズ ― マンション浸水チェック", text });
       S.sendMsg = "共有の画面を開きました。";
       render();
       return;
@@ -2343,7 +2345,7 @@ function printSheet() {
       <p>図の番号の所を、竣工図と点検の記録で確かめてください。住民・理事・管理員は、電気やポンプの部屋に入りません。</p>
       <ol class="print-asks">${asks}</ol>
       ${heardItems().length || experienceLine() ? `<p><b>住民の話・見たこと</b></p><ul>${experienceLine() ? `<li>${esc(experienceLine())}</li>` : ""}${heardItems().map((text) => `<li>${esc(text)}</li>`).join("")}</ul>` : ""}
-      <p>答えが分かったら、マンション浸水チェックの「2 確かめる」に入れると、図の色が変わります。</p>
+      <p>答えが分かったら、アスミズの「2 確かめる」に入れると、図の色が変わります。</p>
       ${fixed}
     </div>`;
   } else if (S.tab === "a4") {
